@@ -39,19 +39,30 @@ star health and SSWD symptom onset over time.
   whether food was eaten.
 - **Daily AM/PM checks**: water running in all tubes/systems, star health (arm drops,
   spine drops, lesions, arm curling, flattening, other), sump/system temperature.
-- **Individual tracking**: sea stars/urchins/abalones get unique IDs within their
-  tank/system; larval cone-bottoms are tracked as a batch/cohort, not individual larvae.
-- **Maintenance scheduling**: recurring filter changes and sump flushes need due-date
-  tracking and reminders.
+- **Individual tracking**: sea stars/urchins/abalones get a unique **nickname**
+  (e.g., "Sitara", "Titan"), unique lab-wide, not just a tank-scoped tag; multiple
+  named animals can share one tub, and every feeding/consumption/health log is
+  recorded per individual animal, never bulk-logged for the tub. Larval cone-bottoms
+  are tracked as a batch/cohort **per pair** (the 2-tank pair is the logging unit, not
+  the individual cone-bottom).
+- **Micro-Algae production tracking**: its own logs (density/turbidity, harvest
+  volume fed to Larval, culture condition notes) — not just an implicit input to
+  Larval feeding logs.
+- **Maintenance scheduling**: recurring filter changes and sump flushes, interval
+  configurable **per system** (not shared per task type across all systems), with
+  due-date tracking and reminders to admins/lead techs only.
 - **Historical data migration**: existing Google Sheets and paper logs (feeding, water
   quality, etc.) need to be brought in — via structured CSV import for spreadsheets and
   an efficient bulk/backfill entry UI for paper records — without being confused with
   live-entered data (see provenance fields in §4).
 - **Auth**: Google sign-in (~10-20 accounts), gated by admin approval (not strictly
   limited to a Workspace domain, to allow outside collaborators if needed).
-- **Roles**: Admin, Technician (covers both paid techs and volunteers), Viewer
-  (read-only, e.g. PI/researcher).
-- **Photo attachments** required for health observations.
+- **Roles**: Admin, Technician, Volunteer (lab-wide access like Technician, but a
+  distinct role so paid-staff vs. volunteer entries are distinguishable; exact
+  permission differences TBD), Viewer (read-only, e.g. PI/researcher).
+- **Photo attachments** on health observations: always mandatory for arm drops, spine
+  drops, and lesions; mandatory for other issue types only above a certain severity
+  on a 3-level scale (exact thresholds TBD, see lab operations plan open questions).
 - **Connectivity**: reliable WiFi in the lab — no offline-first requirement.
 - **Analytics**: both in-app dashboards/trend charts and clean raw data export for
   external stats (R/Python/Excel), since this data ultimately supports conservation
@@ -76,8 +87,8 @@ many concurrent users — Next.js + Supabase Auth/RLS is the most robust and mat
 for that, and the maintainer is comfortable in TypeScript/React as well as Python.
 
 **Stack:**
-- **Frontend**: Next.js + TypeScript + Tailwind CSS, deployed to Vercel or Netlify
-  (free tier); responsive layout for tablet use tank-side, designed mobile/tablet-first
+- **Frontend**: Next.js + TypeScript + Tailwind CSS, deployed to Vercel (free "Hobby"
+  tier to start); responsive layout for tablet use tank-side, designed mobile/tablet-first
   since that's where entry actually happens (see §6 usability items).
 - **Backend/DB**: Supabase — Postgres, Google OAuth, Storage (photos), Row Level
   Security for role enforcement, auto-generated REST/GraphQL API.
@@ -107,18 +118,19 @@ erDiagram
     SYSTEMS ||--o{ DAILY_CHECKS : checked
     SYSTEMS ||--o{ MAINTENANCE_TASKS : scheduled
     MAINTENANCE_TASKS ||--o{ MAINTENANCE_LOGS : performed
+    SYSTEMS ||--o{ MICROALGAE_LOGS : produces
     PROFILES ||--o{ WATER_QUALITY_READINGS : records
     PROFILES ||--o{ HEALTH_OBSERVATIONS : records
     HEALTH_OBSERVATIONS ||--o{ ATTACHMENTS : has
 ```
 
 **Core tables:**
-- `profiles` — id (-> auth.users), email, display_name, role (admin|technician|viewer), status (pending|active)
+- `profiles` — id (-> auth.users), email, display_name, role (admin|technician|volunteer|viewer), status (pending|active)
 - `systems` — id, name, description, has_animals (bool, false for e.g. the micro-algae
   system — see lab operations plan for the full list of 8 systems)
-- `tanks` — id, system_id, name/label, tank_type (shelf|cone_bottom|main), pair_group (nullable, for larval pairs)
+- `tanks` — id, system_id, name/label, tank_type (shelf|cone_bottom|main), pair_group (nullable, for larval pairs — feeding/health/water-quality logs for larval tanks are recorded once per `pair_group`, not per individual cone-bottom tank)
 - `species` — id, common_name, scientific_name, category (star|urchin|abalone|other)
-- `animals` — id, tank_id (current), species_id, tag/label, life_stage/size_class, tracking_type (individual|cohort), quantity (default 1), status (active|deceased|transferred), date_added, notes
+- `animals` — id, tank_id (current), species_id, name (nickname, e.g. "Sitara"; unique lab-wide, not just per tank), life_stage/size_class, tracking_type (individual|cohort), quantity (default 1), status (active|deceased|transferred), date_added, notes
 - `animal_movements` — id, animal_id, from_tank_id, to_tank_id, moved_at, reason, recorded_by
 - `water_quality_readings` — id, system_id, tested_at (the actual test date — weekly
   cadence, not daily), recorded_by, ph, ph_source (manual|apex_probe), magnesium,
@@ -126,10 +138,11 @@ erDiagram
   paper_backfill), entered_at (defaults to now(), distinct from `tested_at` for
   backfilled rows)
 - `chemical_additions` — id, system_id, chemical_name, amount, unit, added_at, recorded_by, reason, data_source
-- `daily_checks` — id, system_id, check_type (AM|PM), checked_at, water_running (bool), temperature, recorded_by, notes, data_source
-- `health_observations` — id, animal_id (nullable), tank_id, observed_at, issues (multi-select: arm_drop, spine_drop, lesion, arm_curling, flattening, other), severity, notes, recorded_by, data_source
-- `feeding_logs` — id, tank_id, animal_id (nullable), food_type (krill|brine_shrimp|abalone|urchin_purple|urchin_white|microalgae|other), amount, fed_at, recorded_by, consumption_status (full|partial|none|unknown), consumption_checked_at, notes, data_source
-- `maintenance_tasks` — id, system_id, task_type (filter_change|sump_flush|other), recurrence_days, last_performed_at, next_due_at (computed)
+- `daily_checks` — id, system_id, check_type (AM|PM), checked_at, water_running (bool), temperature, recorded_by, notes, flagged_health_observation_id (nullable, set when a check flags an issue and a follow-up health observation is opened but not yet completed), data_source
+- `microalgae_logs` — id, system_id (the Micro-Algae system), logged_at, density_reading, harvest_volume, condition_notes, recorded_by, data_source
+- `health_observations` — id, animal_id, tank_id, observed_at, issues (multi-select: arm_drop, spine_drop, lesion, arm_curling, flattening, other), severity (3-level scale, exact labels TBD), photo required at submit time for arm_drop/spine_drop/lesion always, and for other issue types above a severity threshold (TBD), notes, recorded_by, data_source
+- `feeding_logs` — id, tank_id, animal_id (required for tanks with named individuals; logged per animal even when multiple animals share a tank), food_type (krill|brine_shrimp|abalone|urchin_purple|urchin_white|microalgae|other), amount, fed_at, recorded_by, consumption_status (full|partial|none|unknown), consumption_checked_at, notes, data_source
+- `maintenance_tasks` — id, system_id, task_type (filter_change|sump_flush|other), recurrence_days (configurable per system, not shared lab-wide per task type), last_performed_at, next_due_at (computed)
 - `maintenance_logs` — id, task_id, performed_at, performed_by, notes
 - `attachments` — id, parent_table, parent_id, storage_path, uploaded_by, uploaded_at (generic photo attachment, primarily used by `health_observations`, also usable to archive scanned paper logs)
 
@@ -145,9 +158,11 @@ data gaps from migration lag, and a bad backfill can't be traced to its source.
 Enforced via Postgres Row Level Security policies:
 - **Admin** — full manage access: systems, tanks, species, animals, users/roles, all logs.
 - **Technician** — insert on all log tables (water quality, feeding, health, daily checks,
-  chemical additions, maintenance), read all data. Covers both paid lab techs and
-  volunteers — no separate volunteer role for MVP (see open questions if per-system
-  restriction is needed later).
+  chemical additions, maintenance, micro-algae), read all data. Lab-wide access, no
+  per-system restriction.
+- **Volunteer** — same lab-wide access as Technician for now (distinguished mainly for
+  reporting on who entered what); exact permission differences, if any, are TBD (see
+  lab operations plan open questions).
 - **Viewer** — read-only across all tables (e.g., PI/researcher).
 
 New Google sign-ins land as `profiles.status = pending`; an Admin approves and assigns
@@ -155,14 +170,20 @@ a role before the account gets any data access.
 
 ## 6. Implementation Roadmap
 
+> For the actionable, priority-ordered checklist (what to build first now that the
+> Supabase project exists), see [implementation-checklist.md](implementation-checklist.md).
+
 1. **Foundations** — Supabase schema/migrations, RLS policies, Google OAuth +
    admin-approval flow, Next.js scaffold deployed. *(no dependencies)*
 2. **Reference data & admin** *(depends on 1)* — CRUD UI for systems, tanks, species,
    animals, user management/approval.
 3. **Daily operational logging** *(depends on 2; the 4 forms below are parallelizable)*
-   - AM/PM check form (water running, temperature, notes)
+   - AM/PM check form (water running, temperature, notes) — an "issue found" flag
+     opens/pre-fills a linked health observation, which can be saved as a follow-up
+     rather than completed immediately; the check itself still submits right away
    - Health observation form (issue checklist, severity, photo upload)
-   - Feeding log form (food type/amount/time) + same-day consumption follow-up
+   - Feeding log form (food type/amount/time), logged per individual named animal,
+     + a same-day consumption follow-up (also per animal) rolled into the PM check
    - Water quality reading form (6 chemistry params, weekly cadence) + chemical
      addition log form
    - Usability requirements for all forms: default to today's date/last-used system,
@@ -193,7 +214,7 @@ a role before the account gets any data access.
 
 ## 7. Cost Estimate
 
-- **Start**: $0/mo — Supabase Free + Vercel/Netlify Free + Resend Free.
+- **Start**: $0/mo — Supabase Free + Vercel Hobby (free) + Resend Free.
 - **Steady state**: ~$25/mo — Supabase Pro, once photo storage/backup needs exceed the
   free tier (500MB DB / 1GB storage).
 
@@ -219,21 +240,43 @@ a role before the account gets any data access.
   distinguished by a `data_source` enum + separate event-time/entered-time fields —
   simpler schema than a parallel "legacy" table set, at the cost of every log table
   needing that column.
-- Volunteers share the Technician role rather than getting a separate role — the
-  team is small enough that per-system restriction isn't worth the RLS complexity yet.
+- Volunteers get their own role (distinct from Technician) even though access is
+  lab-wide for both — mainly to distinguish paid-staff vs. volunteer entries;
+  permission differences, if any, are deferred to a later decision.
+- An AM/PM check that flags an issue auto-opens a linked health observation, but that
+  observation can be saved as a follow-up rather than completed on the spot; it stays
+  flagged on the check record (no separate dashboard-level nagging) until filled in.
+- Individual animals are identified by a unique, lab-wide nickname rather than a
+  tank-scoped tag/label, matching how staff already name animals informally; every
+  feeding, consumption, and health log is recorded per animal, even when several
+  named animals share one tub.
+- Larval cone-bottom pairs are logged as one unit (per `pair_group`), not per
+  individual cone-bottom tank, matching how the cohort is actually managed.
+- Micro-Algae gets its own `microalgae_logs` table (density, harvest volume,
+  condition notes) rather than being tracked only implicitly through Larval feeding.
+- Maintenance interval is configurable per system, not shared per task type across
+  all systems, since systems vary enough in usage/load.
+- Overdue-maintenance email digests go to Admins only, not all techs/volunteers.
+- Trend charts always show all `data_source` values together by default — no
+  live-vs-imported filter/toggle for the MVP.
+- CSV export is sufficient for now; no standardized format (e.g., Darwin Core) is
+  required by a partner/grant at this time.
+- Vercel chosen over Netlify for hosting: first-party Next.js support (zero-config
+  previews, image optimization) fits a solo maintainer better than the marginal ToS
+  benefit of Netlify's free tier; revisit only if Vercel's Hobby-tier non-commercial
+  ToS turns out to be a real blocker for a registered nonprofit, in which case upgrade
+  to a paid Vercel plan rather than switching hosts.
 
 ## 9. Open Questions / Further Considerations
 
-1. Since data may eventually feed conservation reporting/permitting or partner
-   institutions, should exports follow a specific format (e.g., Darwin Core, or
-   whatever format outplanting/regulatory partners expect)?
-2. Should AM/PM checks and health observations be linked (an AM check flags an issue →
-   creates a health observation), or stay fully separate logs?
-3. Vercel's free "Hobby" tier ToS is for non-commercial use — confirm this is
-   acceptable for a registered nonprofit, or default to Netlify's free tier, which has
-   no such restriction.
-4. Is per-system access restriction ever needed for volunteers (e.g., a volunteer only
-   trained/trusted on one system), or is lab-wide Technician access always fine?
-5. Should the Apex Fusion API integration (continuous pH) be prioritized sooner, given
-   it's the only continuously-monitored parameter and could materially improve trend
-   resolution vs. once-a-week manual readings?
+1. Volunteer role permissions — decide what, if anything, differs from Technician
+   (both get lab-wide access regardless).
+2. Health observation severity scale — define the exact 3-level labels/criteria, and
+   which severity level(s) make a photo mandatory for issue types beyond arm
+   drop/spine drop/lesion.
+3. Animal nickname reuse policy — is a name ever reused after an animal dies or is
+   transferred out?
+4. Water quality target/safe ranges per parameter still need to be gathered from
+   staff for inline validation (see lab operations plan).
+5. Feeding cadence varies by system/species/life stage — the actual schedule matrix
+   still needs confirming with staff before encoding (see lab operations plan).
