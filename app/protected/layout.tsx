@@ -34,6 +34,3 @@ export default function ProtectedLayout({
     </main>
   );
 }
-    </main>
-  );
-}
