@@ -55,7 +55,7 @@ export type PhSource = (typeof PH_SOURCES)[number];
 export const PROFILE_ROLES = ["admin", "technician", "volunteer", "viewer"] as const;
 export type ProfileRole = (typeof PROFILE_ROLES)[number];
 
-export const PROFILE_STATUSES = ["pending", "active"] as const;
+export const PROFILE_STATUSES = ["pending", "active", "denied"] as const;
 export type ProfileStatus = (typeof PROFILE_STATUSES)[number];
 
 // Weekly water-quality parameters; target/safe ranges per parameter are still an

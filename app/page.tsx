@@ -1,9 +1,18 @@
 import { AuthButton } from "@/components/auth-button";
+import { createClient } from "@/lib/supabase/server";
 import { hasEnvVars } from "@/lib/utils";
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { Suspense } from "react";
 
-export default function Home() {
+export default async function Home() {
+  const supabase = await createClient();
+  const { data } = await supabase.auth.getClaims();
+
+  if (data?.claims) {
+    redirect("/protected");
+  }
+
   return (
     <main className="min-h-screen flex flex-col items-center">
       <div className="flex-1 w-full flex flex-col gap-20 items-center">

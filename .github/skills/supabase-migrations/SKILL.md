@@ -37,9 +37,20 @@ command doesn't exist for it, stop and ask.
 ## Local-only commands (safe for an agent to run directly)
 | Command | Purpose |
 |---|---|
-| `supabase db reset --local` | Wipe and rebuild the local dev DB from all migration files in order. The standard way to verify a migration change applies cleanly. |
+| `supabase db reset --local` | Wipe and rebuild the local dev DB from all migration files in order. The standard way to verify a migration change applies cleanly. Implicitly starts the full local Docker stack (~12 containers: db, studio, auth, storage, realtime, kong, etc.) if it isn't already running. |
 | `supabase db query --local "..."` / connect via the local Postgres port | Verify table shape, seeded rows, RLS flags, etc. after a reset. |
 | `supabase migration list` | Compare local migration versions against what's recorded as applied on remote. Read-only, safe. |
+| `supabase stop` | Tears down the local Docker stack started by the commands above. Safe for an agent to run — see "Free local Docker resources" below. |
+
+## Free local Docker resources when done
+The running dev server talks to the **hosted** project (check `NEXT_PUBLIC_SUPABASE_URL` in
+`.env.local` — it's the `https://*.supabase.co` URL, not `localhost`), so the local Docker
+stack only exists for the duration of a migration-verification session. Once you've finished
+the local `db reset` → push → `migration list` sequence for a change, run `supabase stop` to
+free those containers rather than leaving them running indefinitely. Verify with
+`docker ps --filter "label=com.supabase.cli.project=ssl-data-collection"` if unsure whether
+anything is still up. Skip stopping only if you know another local-DB task is about to run
+immediately after in the same session.
 
 ## Amend-in-place vs. new migration file
 - **Nothing pushed to remote yet, or remote already reconciled**: prefer amending the

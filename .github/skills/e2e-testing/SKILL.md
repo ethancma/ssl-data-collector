@@ -52,5 +52,23 @@ matching database row is a failure, not a pass.
 - [playwright.smoke.ts](./scripts/playwright.smoke.ts) — skeleton covering steps 2-4.
   Extend it per feature rather than rewriting it from scratch each time.
 
+## Known gotchas (learned from real runs — read before extending the script)
+- **Never assert against schema `core` with the plain service-role Supabase-js client
+  (`db.from(...)`).** The hosted project's `service_role` Postgres role has no `USAGE` grant
+  on schema `core` (only `authenticated` does), so any `db.from("<core table>")` call 403s
+  with "permission denied for schema core". Use the `dbQuery(sql)` helper in the script
+  instead (runs SQL via `supabase db query -f ... --linked`, connects as `postgres`, and
+  needs schema-qualified table names, e.g. `core.profiles`). `db.auth.admin.*` calls (Auth
+  Admin API, not a schema query) are unaffected and fine to use directly.
+- **Scope `test.describe.configure({ mode: "serial" })` inside each `test.describe` block**,
+  not once at the top of the file. Applied file-wide, one failing test cascades into every
+  later, unrelated `describe` block being marked "did not run" instead of executed — which
+  can hide a real regression in a feature you didn't even touch. Each suite that needs
+  ordered/shared state should configure serial mode for itself.
+- When isolating a single new suite while debugging, run
+  `npx playwright test -g "<describe name>"` rather than the whole file, especially if an
+  unrelated pre-existing suite is known-flaky — see the two gotchas above for why the whole
+  file can otherwise report false negatives.
+
 ## References
 - [test-accounts.md](./references/test-accounts.md) — how to create/reset test accounts and roles.
