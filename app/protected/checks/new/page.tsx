@@ -63,10 +63,15 @@ async function NewDailyCheckContent({
     const todayKey = PACIFIC_DAY.format(new Date());
     pendingFeedingLogs = (logs ?? [])
       .filter((log) => PACIFIC_DAY.format(new Date(log.fed_at)) === todayKey)
-      .map((log) => ({
-        id: log.id,
-        animalName: log.animals?.name ?? "Unknown animal",
-      }));
+      .map((log) => {
+        // `animals(...)` returns a single object at runtime, but Supabase's
+        // generic-less client types it as an array. Cast to the actual shape.
+        const animal = log.animals as unknown as { name: string } | null;
+        return {
+          id: log.id,
+          animalName: animal?.name ?? "Unknown animal",
+        };
+      });
   }
 
   return (

@@ -31,7 +31,7 @@ which to start with.
 | # | Page | Route(s) | Scope for this pass |
 |---|------|----------|----------------------|
 | 1 | Landing page | `app/page.tsx` (`/`) | Redesign/expand with more SSL mission content; keep the existing auth-redirect behavior |
-| 2 | Home | `app/protected/today/page.tsx` | Rework in place — keep the existing per-system agenda-board logic (AM/PM/feeding/water-quality done-today status), add snapshot analytics widgets (small counts/summary stats, real data) |
+| 2 | Home | `app/protected/home/page.tsx` | Rework in place — keep the existing per-system agenda-board logic (AM/PM/feeding/water-quality done-today status), add snapshot analytics widgets (small counts/summary stats, real data) |
 | 3 | Daily Operations hub | new `app/protected/daily-operations/page.tsx` | One page, tab/section switcher (plain Button-group + local state, no new dependency) embedding the 5 existing form components (daily check, feeding, water quality, chemical addition, health observation) inline. Existing `/checks/new`, `/feeding/new`, `/water-quality/new`, `/chemical-additions/new`, `/health-observations/new` routes stay untouched for QR-code/deep-link use |
 | 4 | User settings | `app/protected/settings/page.tsx` | Real implementation — edit own `display_name` only (that's all `profiles_update_self` RLS allows); read-only email/role/status |
 | 5 | Admin CRUD | new `app/protected/admin/systems/page.tsx`, `/admin/tanks/page.tsx`, `/admin/species/page.tsx` | Create + edit only, no deactivate/delete. Follows the `admin-users-table.tsx` per-row-writes-to-Supabase pattern. Add a small sub-nav in the admin layout linking Users (existing) / Systems / Tanks / Species |

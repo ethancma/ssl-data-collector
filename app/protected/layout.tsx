@@ -9,8 +9,13 @@ export default async function ProtectedLayout({
 }: {
   children: React.ReactNode;
 }) {
+  const profile = await getCurrentProfile();
+  const showAdmin = profile?.role === "admin" && profile?.status === "active";
+
   return (
     <ProtectedShell
+      showAdmin={showAdmin}
+      userEmail={profile?.email}
       authSlot={
         <Suspense>
           <AuthButton />
