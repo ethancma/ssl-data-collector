@@ -31,7 +31,7 @@ async function NewChemicalAdditionContent({
     .order("name");
 
   if (error) {
-    redirect("/protected/today");
+    redirect("/protected/home");
   }
 
   const { system } = await searchParams;

@@ -147,7 +147,7 @@ export function HealthObservationForm({
       }
     }
 
-    router.push("/protected/today");
+    router.push("/protected/home");
     router.refresh();
   };
 

@@ -24,7 +24,7 @@ async function NewHealthObservationContent() {
     .order("name");
 
   if (error) {
-    redirect("/protected/today");
+    redirect("/protected/home");
   }
 
   const animalOptions = (animals ?? []).map((a) => ({

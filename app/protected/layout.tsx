@@ -6,7 +6,7 @@ import { Suspense } from "react";
 
 const BASE_NAV_LINKS = [
   { label: "User settings", href: "/protected/settings" },
-  { label: "Today", href: "/protected/today" },
+  { label: "Home", href: "/protected/home" },
   { label: "Historic data", href: "/protected/history" },
 ];
 

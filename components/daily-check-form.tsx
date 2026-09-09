@@ -115,7 +115,7 @@ export function DailyCheckForm({
       }
     }
 
-    router.push("/protected/today");
+    router.push("/protected/home");
     router.refresh();
   };
 

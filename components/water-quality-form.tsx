@@ -98,7 +98,7 @@ export function WaterQualityForm({
       setServerError(error.message);
       return;
     }
-    router.push("/protected/today");
+    router.push("/protected/home");
     router.refresh();
   };
 

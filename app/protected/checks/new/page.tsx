@@ -41,7 +41,7 @@ async function NewDailyCheckContent({
     .order("name");
 
   if (error) {
-    redirect("/protected/today");
+    redirect("/protected/home");
   }
 
   const { system, type } = await searchParams;

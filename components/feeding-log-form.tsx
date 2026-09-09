@@ -80,7 +80,7 @@ export function FeedingLogForm({ animals }: { animals: AnimalOption[] }) {
       setServerError(error.message);
       return;
     }
-    router.push("/protected/today");
+    router.push("/protected/home");
     router.refresh();
   };
 
