@@ -4,23 +4,11 @@ import { getCurrentProfile } from "@/lib/supabase/current-profile";
 import { InfoIcon } from "lucide-react";
 import { Suspense } from "react";
 
-const BASE_NAV_LINKS = [
-  { label: "User settings", href: "/protected/settings" },
-  { label: "Home", href: "/protected/home" },
-  { label: "Historic data", href: "/protected/history" },
-];
-
 export default async function ProtectedLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  const profile = await getCurrentProfile();
-  const navLinks =
-    profile?.role === "admin" && profile?.status === "active"
-      ? [{ label: "Admin", href: "/protected/admin" }, ...BASE_NAV_LINKS]
-      : BASE_NAV_LINKS;
-
   return (
     <ProtectedShell
       authSlot={
@@ -28,7 +16,6 @@ export default async function ProtectedLayout({
           <AuthButton />
         </Suspense>
       }
-      navLinks={navLinks}
     >
       <Suspense
         fallback={
