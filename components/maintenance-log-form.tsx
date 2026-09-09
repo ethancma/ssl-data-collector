@@ -3,7 +3,7 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { useForm } from "react-hook-form";
+import { Controller, useForm } from "react-hook-form";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -13,6 +13,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { MAINTENANCE_TASK_TYPES } from "@/lib/config/reference-data";
 import { createClient } from "@/lib/supabase/client";
@@ -45,12 +46,13 @@ export function MaintenanceLogForm({
   const {
     register,
     handleSubmit,
+    control,
     formState: { errors, isSubmitting },
   } = useForm<MaintenanceLogFormInput, unknown, MaintenanceLogFormValues>({
     resolver: zodResolver(maintenanceLogSchema),
     defaultValues: {
       systemId: defaultSystemId ?? "",
-      taskType: "filter_change",
+      taskTypes: ["filter_change"],
       notes: "",
     },
   });
@@ -58,15 +60,35 @@ export function MaintenanceLogForm({
   const onSubmit = async (values: MaintenanceLogFormValues) => {
     setServerError(null);
     const supabase = createClient();
-    const { error } = await supabase.from("maintenance_logs").insert({
-      system_id: values.systemId,
-      task_type: values.taskType,
-      notes: values.notes?.trim() ? values.notes.trim() : null,
-    });
-    if (error) {
-      setServerError(error.message);
+
+    const { data: log, error } = await supabase
+      .from("maintenance_logs")
+      .insert({
+        system_id: values.systemId,
+        notes: values.notes?.trim() ? values.notes.trim() : null,
+      })
+      .select("id")
+      .single();
+    if (error || !log) {
+      setServerError(error?.message ?? "Failed to save maintenance log");
       return;
     }
+
+    if (values.taskTypes.length > 0) {
+      const { error: tasksError } = await supabase
+        .from("maintenance_log_tasks")
+        .insert(
+          values.taskTypes.map((task_type) => ({
+            maintenance_log_id: log.id,
+            task_type,
+          })),
+        );
+      if (tasksError) {
+        setServerError(tasksError.message);
+        return;
+      }
+    }
+
     router.push("/protected/home");
     router.refresh();
   };
@@ -101,20 +123,36 @@ export function MaintenanceLogForm({
           </div>
 
           <div className="grid gap-2">
-            <Label htmlFor="taskType">Task</Label>
-            <select
-              id="taskType"
-              className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-base shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring md:text-sm"
-              {...register("taskType")}
-            >
-              {MAINTENANCE_TASK_TYPES.map((t) => (
-                <option key={t} value={t}>
-                  {TASK_TYPE_LABELS[t]}
-                </option>
-              ))}
-            </select>
-            {errors.taskType && (
-              <p className="text-sm text-red-500">{errors.taskType.message}</p>
+            <Label>Task</Label>
+            <Controller
+              control={control}
+              name="taskTypes"
+              render={({ field }) => (
+                <div className="flex flex-col gap-2">
+                  {MAINTENANCE_TASK_TYPES.map((t) => (
+                    <div key={t} className="flex items-center gap-2">
+                      <Checkbox
+                        id={`taskType-${t}`}
+                        checked={field.value?.includes(t) ?? false}
+                        onCheckedChange={(checked) => {
+                          const current = field.value ?? [];
+                          field.onChange(
+                            checked === true
+                              ? [...current, t]
+                              : current.filter((existing) => existing !== t),
+                          );
+                        }}
+                      />
+                      <Label htmlFor={`taskType-${t}`}>
+                        {TASK_TYPE_LABELS[t]}
+                      </Label>
+                    </div>
+                  ))}
+                </div>
+              )}
+            />
+            {errors.taskTypes && (
+              <p className="text-sm text-red-500">{errors.taskTypes.message}</p>
             )}
           </div>
 
