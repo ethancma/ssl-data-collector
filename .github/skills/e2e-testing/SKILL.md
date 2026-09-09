@@ -69,6 +69,17 @@ matching database row is a failure, not a pass.
   `npx playwright test -g "<describe name>"` rather than the whole file, especially if an
   unrelated pre-existing suite is known-flaky — see the two gotchas above for why the whole
   file can otherwise report false negatives.
+- **For "it looks wrong" visual/CSS-variable bugs (e.g. dark mode, theming), don't trust a
+  screenshot alone** — a screenshot you don't actually look at pixel-by-pixel proves nothing.
+  Instrument the page instead: `page.evaluate` to read `document.documentElement.className`,
+  `window.localStorage`, `getComputedStyle(el).backgroundColor`/`.color`, and the raw CSS
+  custom property via `getComputedStyle(document.documentElement).getPropertyValue("--var")`.
+  Also check `navigator.serviceWorker.getRegistrations()` and the stylesheet's
+  `Cache-Control` response header before concluding it's a real bug — a stale service worker
+  or aggressively cached CSS chunk in the *human's* browser can reproduce as "broken" even
+  when an instrumented run proves the app logic is correct. See `captureThemeState` in
+  [playwright.smoke.ts](./scripts/playwright.smoke.ts) for a reusable pattern — reuse/extend
+  it for the next visual-state bug report instead of writing a one-off check.
 
 ## References
 - [test-accounts.md](./references/test-accounts.md) — how to create/reset test accounts and roles.
