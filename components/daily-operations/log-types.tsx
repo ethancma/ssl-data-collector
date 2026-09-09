@@ -5,12 +5,14 @@ import {
   HeartPulse,
   type LucideIcon,
   UtensilsCrossed,
+  Wrench,
 } from "lucide-react";
 
 import { ChemicalAdditionForm } from "@/components/chemical-addition-form";
 import { DailyCheckForm } from "@/components/daily-check-form";
 import { FeedingLogForm } from "@/components/feeding-log-form";
 import { HealthObservationForm } from "@/components/health-observation-form";
+import { MaintenanceLogForm } from "@/components/maintenance-log-form";
 import { WaterQualityForm } from "@/components/water-quality-form";
 
 export type LogTypeId =
@@ -18,7 +20,8 @@ export type LogTypeId =
   | "feeding"
   | "water-quality"
   | "chemical-addition"
-  | "health-observation";
+  | "health-observation"
+  | "maintenance-log";
 
 export type LogType = {
   id: LogTypeId;
@@ -63,6 +66,12 @@ export const LOG_TYPES: LogType[] = [
     description: "Log an issue observed on an animal.",
     icon: HeartPulse,
   },
+  {
+    id: "maintenance-log",
+    label: "Maintenance",
+    description: "Log a filter swap, sump flush, or other maintenance task.",
+    icon: Wrench,
+  },
 ];
 
 // Single spot mapping a log type id to its real, already-tested form component.
@@ -78,5 +87,7 @@ export function renderLogForm(id: LogTypeId, data: SharedFormData) {
       return <ChemicalAdditionForm systems={data.systems} />;
     case "health-observation":
       return <HealthObservationForm animals={data.animals} />;
+    case "maintenance-log":
+      return <MaintenanceLogForm systems={data.systems} />;
   }
 }
