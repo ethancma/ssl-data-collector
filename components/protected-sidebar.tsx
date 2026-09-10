@@ -14,6 +14,7 @@ import {
   Settings,
   ShieldCheck,
   Sun,
+  Waves,
   type LucideIcon,
 } from "lucide-react";
 
@@ -80,6 +81,7 @@ export function ProtectedSidebar({
 
   const items: NavItem[] = [
     { href: "/protected/daily-operations", label: "Daily Operations", icon: ClipboardList },
+    { href: "/protected/systems", label: "Systems", icon: Waves },
     { href: "/protected/settings", label: "Settings", icon: Settings },
   ];
   if (showAdmin) {
