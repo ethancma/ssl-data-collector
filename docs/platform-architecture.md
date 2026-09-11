@@ -156,14 +156,16 @@ data gaps from migration lag, and a bad backfill can't be traced to its source.
 ## 5. Roles & Permissions
 
 Enforced via Postgres Row Level Security policies:
-- **Admin** — full manage access: systems, tanks, species, animals, users/roles, all logs.
-- **Technician** — insert on all log tables (water quality, feeding, health, daily checks,
-  chemical additions, maintenance, micro-algae), read all data. Lab-wide access, no
+- **Admin** — full manage access: systems, tanks, species, animals, users/roles, all logs
+  (full CRUD on all operational log tables).
+- **Technician** — full CRUD on all log tables (water quality, feeding, health, daily
+  checks, chemical additions, maintenance, micro-algae). Lab-wide access, no
   per-system restriction.
-- **Volunteer** — same lab-wide access as Technician for now (distinguished mainly for
-  reporting on who entered what); exact permission differences, if any, are TBD (see
-  lab operations plan open questions).
+- **Volunteer** — read and update on all log tables, but cannot insert new rows or
+  delete; distinguishes paid-staff vs. volunteer entries by restricting who can create
+  records.
 - **Viewer** — read-only across all tables (e.g., PI/researcher).
+- **Unauthenticated** — no access.
 
 New Google sign-ins land as `profiles.status = pending`; an Admin approves and assigns
 a role before the account gets any data access.
@@ -240,9 +242,9 @@ a role before the account gets any data access.
   distinguished by a `data_source` enum + separate event-time/entered-time fields —
   simpler schema than a parallel "legacy" table set, at the cost of every log table
   needing that column.
-- Volunteers get their own role (distinct from Technician) even though access is
-  lab-wide for both — mainly to distinguish paid-staff vs. volunteer entries;
-  permission differences, if any, are deferred to a later decision.
+- Volunteers get their own role (distinct from Technician) to distinguish paid-staff
+  vs. volunteer entries: Volunteers can read and update log records but cannot insert
+  or delete, while Technicians get the same full CRUD access as Admins on logs.
 - An AM/PM check that flags an issue auto-opens a linked health observation, but that
   observation can be saved as a follow-up rather than completed on the spot; it stays
   flagged on the check record (no separate dashboard-level nagging) until filled in.
@@ -269,14 +271,12 @@ a role before the account gets any data access.
 
 ## 9. Open Questions / Further Considerations
 
-1. Volunteer role permissions — decide what, if anything, differs from Technician
-   (both get lab-wide access regardless).
-2. Health observation severity scale — define the exact 3-level labels/criteria, and
+1. Health observation severity scale — define the exact 3-level labels/criteria, and
    which severity level(s) make a photo mandatory for issue types beyond arm
    drop/spine drop/lesion.
-3. Animal nickname reuse policy — is a name ever reused after an animal dies or is
+2. Animal nickname reuse policy — is a name ever reused after an animal dies or is
    transferred out?
-4. Water quality target/safe ranges per parameter still need to be gathered from
+3. Water quality target/safe ranges per parameter still need to be gathered from
    staff for inline validation (see lab operations plan).
 5. Feeding cadence varies by system/species/life stage — the actual schedule matrix
    still needs confirming with staff before encoding (see lab operations plan).

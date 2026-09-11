@@ -25,6 +25,21 @@ import {
 
 type SystemOption = { id: number; name: string };
 
+function getTodayDateString(): string {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+}
+
+function getCurrentTimeString(): string {
+  const now = new Date();
+  return `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+}
+
+// Combines the user-picked date and time-of-day into a single timestamp.
+function combineDateAndTime(dateStr: string, timeStr: string): string {
+  return new Date(`${dateStr}T${timeStr}:00`).toISOString();
+}
+
 export function ChemicalAdditionForm({
   systems,
   defaultSystemId,
@@ -42,6 +57,8 @@ export function ChemicalAdditionForm({
   } = useForm<ChemicalAdditionFormInput, unknown, ChemicalAdditionFormValues>({
     resolver: zodResolver(chemicalAdditionSchema),
     defaultValues: {
+      date: getTodayDateString(),
+      time: getCurrentTimeString(),
       systemId: defaultSystemId ?? "",
       chemicalName: "",
       amount: "",
@@ -54,6 +71,7 @@ export function ChemicalAdditionForm({
     setServerError(null);
     const supabase = createClient();
     const { error } = await supabase.from("chemical_additions").insert({
+      added_at: combineDateAndTime(values.date, values.time),
       system_id: values.systemId,
       chemical_name: values.chemicalName.trim(),
       amount: Number(values.amount),
@@ -76,6 +94,19 @@ export function ChemicalAdditionForm({
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-6">
+          <div className="grid gap-2 rounded-lg border border-input bg-muted/30 p-4">
+            <Label htmlFor="date">Date</Label>
+            <Input id="date" type="date" {...register("date")} />
+            {errors.date && (
+              <p className="text-sm text-red-500">{errors.date.message}</p>
+            )}
+            <Label htmlFor="time">Time</Label>
+            <Input id="time" type="time" {...register("time")} />
+            {errors.time && (
+              <p className="text-sm text-red-500">{errors.time.message}</p>
+            )}
+          </div>
+
           <div className="grid gap-2">
             <Label htmlFor="systemId">System</Label>
             <select

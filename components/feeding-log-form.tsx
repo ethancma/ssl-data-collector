@@ -26,6 +26,21 @@ import {
 
 type AnimalOption = { id: number; name: string; tankId: number };
 
+function getTodayDateString(): string {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+}
+
+function getCurrentTimeString(): string {
+  const now = new Date();
+  return `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+}
+
+// Combines the user-picked date and time-of-day into a single timestamp.
+function combineDateAndTime(dateStr: string, timeStr: string): string {
+  return new Date(`${dateStr}T${timeStr}:00`).toISOString();
+}
+
 const FOOD_TYPE_LABELS: Record<FoodType, string> = {
   krill: "Krill",
   brine_shrimp: "Brine shrimp",
@@ -49,6 +64,8 @@ export function FeedingLogForm({ animals }: { animals: AnimalOption[] }) {
   } = useForm<FeedingLogFormInput, unknown, FeedingLogFormValues>({
     resolver: zodResolver(feedingLogSchema),
     defaultValues: {
+      date: getTodayDateString(),
+      time: getCurrentTimeString(),
       animalId: "",
       tankId: "",
       foodType: undefined,
@@ -70,6 +87,7 @@ export function FeedingLogForm({ animals }: { animals: AnimalOption[] }) {
     setServerError(null);
     const supabase = createClient();
     const { error } = await supabase.from("feeding_logs").insert({
+      fed_at: combineDateAndTime(values.date, values.time),
       animal_id: values.animalId,
       tank_id: values.tankId,
       food_type: values.foodType,
@@ -93,6 +111,19 @@ export function FeedingLogForm({ animals }: { animals: AnimalOption[] }) {
       <CardContent>
         <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-6">
           <input type="hidden" {...register("tankId")} />
+
+          <div className="grid gap-2 rounded-lg border border-input bg-muted/30 p-4">
+            <Label htmlFor="date">Date</Label>
+            <Input id="date" type="date" {...register("date")} />
+            {errors.date && (
+              <p className="text-sm text-red-500">{errors.date.message}</p>
+            )}
+            <Label htmlFor="time">Time</Label>
+            <Input id="time" type="time" {...register("time")} />
+            {errors.time && (
+              <p className="text-sm text-red-500">{errors.time.message}</p>
+            )}
+          </div>
 
           <div className="grid gap-2">
             <Label htmlFor="animalId">Animal</Label>

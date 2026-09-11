@@ -14,6 +14,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { MAINTENANCE_TASK_TYPES } from "@/lib/config/reference-data";
 import { createClient } from "@/lib/supabase/client";
@@ -26,6 +27,21 @@ import {
 
 type SystemOption = { id: number; name: string };
 type MaintenanceTaskType = (typeof MAINTENANCE_TASK_TYPES)[number];
+
+function getTodayDateString(): string {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+}
+
+function getCurrentTimeString(): string {
+  const now = new Date();
+  return `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+}
+
+// Combines the user-picked date and time-of-day into a single timestamp.
+function combineDateAndTime(dateStr: string, timeStr: string): string {
+  return new Date(`${dateStr}T${timeStr}:00`).toISOString();
+}
 
 const TASK_TYPE_LABELS: Record<MaintenanceTaskType, string> = {
   filter_change: "Filter change",
@@ -51,6 +67,8 @@ export function MaintenanceLogForm({
   } = useForm<MaintenanceLogFormInput, unknown, MaintenanceLogFormValues>({
     resolver: zodResolver(maintenanceLogSchema),
     defaultValues: {
+      date: getTodayDateString(),
+      time: getCurrentTimeString(),
       systemId: defaultSystemId ?? "",
       taskTypes: ["filter_change"],
       notes: "",
@@ -64,6 +82,7 @@ export function MaintenanceLogForm({
     const { data: log, error } = await supabase
       .from("maintenance_logs")
       .insert({
+        performed_at: combineDateAndTime(values.date, values.time),
         system_id: values.systemId,
         notes: values.notes?.trim() ? values.notes.trim() : null,
       })
@@ -103,6 +122,19 @@ export function MaintenanceLogForm({
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-6">
+          <div className="grid gap-2 rounded-lg border border-input bg-muted/30 p-4">
+            <Label htmlFor="date">Date</Label>
+            <Input id="date" type="date" {...register("date")} />
+            {errors.date && (
+              <p className="text-sm text-red-500">{errors.date.message}</p>
+            )}
+            <Label htmlFor="time">Time</Label>
+            <Input id="time" type="time" {...register("time")} />
+            {errors.time && (
+              <p className="text-sm text-red-500">{errors.time.message}</p>
+            )}
+          </div>
+
           <div className="grid gap-2">
             <Label htmlFor="systemId">System</Label>
             <select

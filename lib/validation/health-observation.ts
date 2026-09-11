@@ -15,11 +15,24 @@ const idField = (label: string) =>
     .transform(Number)
     .pipe(z.number().int().positive(label));
 
+const dateField = z
+  .string()
+  .min(1, "Select a date")
+  .regex(/^\d{4}-\d{2}-\d{2}$/, "Enter a date as YYYY-MM-DD")
+  .refine((v) => !Number.isNaN(Date.parse(v)), "Enter a valid date");
+
+const timeField = z
+  .string()
+  .min(1, "Select a time")
+  .regex(/^\d{2}:\d{2}$/, "Enter a time as HH:mm");
+
 // Validation for the health observation form. severity has no meaningful default
 // (the exact scale criteria are still an open question per
 // docs/implementation-checklist.md), so it starts unset and must be chosen.
 export const healthObservationSchema = z
   .object({
+    date: dateField,
+    time: timeField,
     animalId: idField("Select an animal"),
     tankId: idField("Select an animal"),
     severity: z

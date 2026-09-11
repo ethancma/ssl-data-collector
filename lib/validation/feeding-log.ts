@@ -10,9 +10,22 @@ const idField = (label: string) =>
     .transform(Number)
     .pipe(z.number().int().positive(label));
 
+const dateField = z
+  .string()
+  .min(1, "Select a date")
+  .regex(/^\d{4}-\d{2}-\d{2}$/, "Enter a date as YYYY-MM-DD")
+  .refine((v) => !Number.isNaN(Date.parse(v)), "Enter a valid date");
+
+const timeField = z
+  .string()
+  .min(1, "Select a time")
+  .regex(/^\d{2}:\d{2}$/, "Enter a time as HH:mm");
+
 // Validation for the per-animal feeding log form. amount stays free text since
 // units vary by food type (e.g. "2 krill", "half a pellet").
 export const feedingLogSchema = z.object({
+  date: dateField,
+  time: timeField,
   animalId: idField("Select an animal"),
   tankId: idField("Select an animal"),
   foodType: z

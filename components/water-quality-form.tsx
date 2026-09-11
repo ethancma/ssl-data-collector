@@ -30,6 +30,21 @@ import {
 
 type SystemOption = { id: number; name: string };
 
+function getTodayDateString(): string {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+}
+
+function getCurrentTimeString(): string {
+  const now = new Date();
+  return `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+}
+
+// Combines the user-picked date and time-of-day into a single timestamp.
+function combineDateAndTime(dateStr: string, timeStr: string): string {
+  return new Date(`${dateStr}T${timeStr}:00`).toISOString();
+}
+
 const PARAMETER_LABELS: Record<WaterQualityParameter, string> = {
   ph: "pH",
   magnesium: "Magnesium",
@@ -64,6 +79,8 @@ export function WaterQualityForm({
   } = useForm<WaterQualityFormInput, unknown, WaterQualityFormValues>({
     resolver: zodResolver(waterQualitySchema),
     defaultValues: {
+      date: getTodayDateString(),
+      time: getCurrentTimeString(),
       systemId: defaultSystemId ?? "",
       phSource: "manual",
       ph: "",
@@ -83,6 +100,7 @@ export function WaterQualityForm({
     setServerError(null);
     const supabase = createClient();
     const { error } = await supabase.from("water_quality_readings").insert({
+      tested_at: combineDateAndTime(values.date, values.time),
       system_id: values.systemId,
       ph_source: values.phSource,
       ph: values.ph ? Number(values.ph) : null,
@@ -112,6 +130,19 @@ export function WaterQualityForm({
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-6">
+          <div className="grid gap-2 rounded-lg border border-input bg-muted/30 p-4">
+            <Label htmlFor="date">Date</Label>
+            <Input id="date" type="date" {...register("date")} />
+            {errors.date && (
+              <p className="text-sm text-red-500">{errors.date.message}</p>
+            )}
+            <Label htmlFor="time">Time</Label>
+            <Input id="time" type="time" {...register("time")} />
+            {errors.time && (
+              <p className="text-sm text-red-500">{errors.time.message}</p>
+            )}
+          </div>
+
           <div className="grid gap-2">
             <Label htmlFor="systemId">System</Label>
             <select

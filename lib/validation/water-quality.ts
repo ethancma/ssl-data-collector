@@ -16,8 +16,21 @@ const optionalNumeric = (label: string) =>
       `Enter a valid number for ${label}`,
     );
 
+const dateField = z
+  .string()
+  .min(1, "Select a date")
+  .regex(/^\d{4}-\d{2}-\d{2}$/, "Enter a date as YYYY-MM-DD")
+  .refine((v) => !Number.isNaN(Date.parse(v)), "Enter a valid date");
+
+const timeField = z
+  .string()
+  .min(1, "Select a time")
+  .regex(/^\d{2}:\d{2}$/, "Enter a time as HH:mm");
+
 export const waterQualitySchema = z
   .object({
+    date: dateField,
+    time: timeField,
     systemId: z
       .string()
       .min(1, "Select a system")
