@@ -41,8 +41,8 @@ export function ProtectedShell({
     <div className="flex min-h-screen">
       <aside
         className={cn(
-          "sticky top-0 flex h-screen shrink-0 flex-col border-r border-border transition-[width] duration-200 ease-in-out",
-          collapsed ? "w-16" : "w-56",
+          "sticky top-0 flex h-screen shrink-0 flex-col overflow-hidden border-r border-border transition-[width] duration-200 ease-in-out",
+          collapsed ? "w-16" : "w-16 sm:w-56",
         )}
       >
         <ProtectedSidebar

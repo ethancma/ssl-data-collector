@@ -95,8 +95,16 @@ export function ProtectedSidebar({
       <div className="flex h-16 items-center gap-2 border-b border-border px-3">
         <Link
           href="/protected/home"
+          title="SSL Data Collection home"
+          aria-label="SSL Data Collection home"
+          className={cn(iconButtonClassName, "sm:hidden")}
+        >
+          <Waves size={18} strokeWidth={2} />
+        </Link>
+        <Link
+          href="/protected/home"
           className={cn(
-            "flex-1 truncate text-sm font-semibold",
+            "hidden flex-1 truncate text-sm font-semibold sm:block",
             collapsed && "hidden",
           )}
         >
@@ -107,7 +115,7 @@ export function ProtectedSidebar({
           onClick={onToggleCollapsed}
           title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
           aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-          className={cn(iconButtonClassName, collapsed && "mx-auto")}
+          className={cn(iconButtonClassName, "hidden sm:flex", collapsed && "mx-auto")}
         >
           {collapsed ? (
             <PanelLeftOpen size={18} strokeWidth={2} />
@@ -118,8 +126,8 @@ export function ProtectedSidebar({
       </div>
       <div
         className={cn(
-          "flex items-center justify-between gap-2 border-b border-border px-3 py-2",
-          collapsed && "flex-col justify-center gap-2",
+          "flex flex-col items-center justify-center gap-2 border-b border-border px-3 py-2 sm:flex-row sm:justify-between",
+          collapsed && "sm:flex-col sm:justify-center",
         )}
       >
         <Link
@@ -147,22 +155,22 @@ export function ProtectedSidebar({
               title={label}
               aria-label={label}
               className={cn(
-                "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors",
-                collapsed && "justify-center px-0",
+                "flex items-center justify-center gap-3 rounded-md px-0 py-2 text-sm font-medium transition-colors sm:justify-start sm:px-3",
+                collapsed && "sm:justify-center sm:px-0",
                 isActive
                   ? "bg-accent text-accent-foreground"
                   : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
               )}
             >
               <Icon size={16} strokeWidth={2} className="shrink-0" />
-              <span className={cn(collapsed && "hidden")}>{label}</span>
+              <span className={cn("hidden sm:inline", collapsed && "sm:hidden")}>{label}</span>
             </Link>
           );
         })}
       </nav>
       <div className="border-t border-border p-3 text-sm">
         <div
-          className={cn("flex items-center justify-center", !collapsed && "hidden")}
+          className={cn("flex items-center justify-center", !collapsed && "sm:hidden")}
           title={userEmail ?? undefined}
           aria-label={userEmail ? `Signed in as ${userEmail}` : "Account"}
         >
@@ -170,7 +178,7 @@ export function ProtectedSidebar({
             {initial}
           </div>
         </div>
-        <div className={cn(collapsed && "hidden")}>{authSlot}</div>
+        <div className={cn("hidden sm:block", collapsed && "sm:hidden")}>{authSlot}</div>
       </div>
     </div>
   );

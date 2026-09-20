@@ -56,6 +56,7 @@ export function SystemsPageClient({
         <h1 className="text-3xl font-semibold tracking-tight">{data.name}</h1>
       </header>
       <GridOverview
+        key={data.slug}
         data={data}
         range={range}
         onSelectSystem={handleSelectSystem}
