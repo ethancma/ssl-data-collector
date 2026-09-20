@@ -15,6 +15,16 @@ description: 'Supabase CLI workflow for the SSL Data Collection project — writ
 - Local dev runs against a local Docker Postgres instance managed by the CLI, separate from
   the hosted project.
 
+## Schema changes vs. one-time data — not the same thing
+`supabase/migrations/**` is for schema changes only (tables, RLS, functions). One-time
+historical/backfill data imports do **not** belong in a migration going forward — they
+belong in `supabase/seeds/` as a standalone script a human applies manually (Dashboard SQL
+Editor or `psql`), since neither `db reset --local` nor `db push` run that directory
+automatically. Reproducible dev/test fixtures (seeded test accounts, reference data)
+belong in `supabase/seed.sql` instead, which auto-runs on every local `db reset --local`
+but — unlike migrations — is **not** applied to remote by `db push`. See
+[supabase/seeds/README.md](../../../supabase/seeds/README.md) for the full breakdown.
+
 ## The hard rule: no agent-run deletions against remote
 **Any operation that deletes/drops something on the remote (hosted) project — `DROP SCHEMA`,
 `DROP TABLE`, `TRUNCATE`, `supabase db push` before remote is confirmed clean, anything run
