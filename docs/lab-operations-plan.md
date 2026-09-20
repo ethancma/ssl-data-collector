@@ -107,7 +107,7 @@ platform:
 1. **Google Sheets** (existing digital logs, likely water quality + feeding) —
    export to CSV, build a one-time column-mapping import tool (admin-only) that maps
    sheet columns to the matching table (`water_quality_readings`, `feeding_logs`,
-   etc.) and tags every imported row `data_source = historical_import`. Avoids
+   etc.) and tags every imported row `data_source = import`. Avoids
    re-typing years of digital data by hand.
 2. **Paper logs** (feeding, water quality, and likely AM/PM checks/maintenance) —
    these must be manually re-keyed by staff. Rather than the same one-record-at-a-time

@@ -27,7 +27,7 @@
       `chemical_additions`, `daily_checks`, `microalgae_logs`, `health_observations`,
       `feeding_logs`, `maintenance_tasks`, `maintenance_logs`, `attachments`
 - [ ] Add enums: `profiles.role` (admin|technician|volunteer|viewer),
-      `profiles.status` (pending|active), `data_source` (live|historical_import|
+      `profiles.status` (pending|active), `data_source` (live|import|
       paper_backfill), `ph_source` (manual|apex_probe), `tank_type`, `issue` types,
       `food_type`, `task_type`
 - [ ] Set up Supabase Storage bucket for `attachments` (health observation photos,
@@ -82,7 +82,7 @@
       paper vs. not recorded, before building import tooling for data that may not
       exist
 - [ ] Admin-only CSV import with column-mapping to the matching table, tagged
-      `data_source = historical_import`
+      `data_source = import`
 - [ ] Grid/spreadsheet-style backfill entry mode for paper logs, tagged
       `data_source = paper_backfill`, with optional photo-of-original-sheet attachment
 

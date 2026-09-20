@@ -134,7 +134,7 @@ erDiagram
 - `animal_movements` — id, animal_id, from_tank_id, to_tank_id, moved_at, reason, recorded_by
 - `water_quality_readings` — id, system_id, tested_at (the actual test date — weekly
   cadence, not daily), recorded_by, ph, ph_source (manual|apex_probe), magnesium,
-  ammonia, alkalinity, calcium, phosphate, notes, `data_source` (live|historical_import|
+  ammonia, alkalinity, calcium, phosphate, notes, `data_source` (live|import|
   paper_backfill), entered_at (defaults to now(), distinct from `tested_at` for
   backfilled rows)
 - `chemical_additions` — id, system_id, chemical_name, amount, unit, added_at, recorded_by, reason, data_source
@@ -146,7 +146,7 @@ erDiagram
 - `maintenance_logs` — id, task_id, performed_at, performed_by, notes
 - `attachments` — id, parent_table, parent_id, storage_path, uploaded_by, uploaded_at (generic photo attachment, primarily used by `health_observations`, also usable to archive scanned paper logs)
 
-Every log table carries a `data_source` enum (`live` | `historical_import` |
+Every log table carries a `data_source` enum (`live` | `import` |
 `paper_backfill`) plus separate event-time (`tested_at`/`checked_at`/`observed_at`/
 `fed_at`/`added_at`) vs. row-insert-time (`entered_at`) fields. This is the direct
 fix for the usability/analysis risk of mixing live entry with manually-migrated
@@ -199,7 +199,7 @@ a role before the account gets any data access.
    station so a phone/tablet opens directly to that system's forms.
 5. **Historical data migration tooling** *(depends on 3)* — admin-only CSV import
    (column-mapping to `water_quality_readings`/`feeding_logs`/etc., tagged
-   `data_source = historical_import`) for the Google Sheets exports, plus a
+   `data_source = import`) for the Google Sheets exports, plus a
    grid/spreadsheet-style backfill entry mode (multiple past dates at once, tagged
    `data_source = paper_backfill`) for re-keying paper logs — deliberately not the
    same one-record-a-time UI as live daily entry.

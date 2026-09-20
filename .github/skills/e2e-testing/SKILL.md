@@ -36,7 +36,7 @@ matching database row is a failure, not a pass.
    - Maintenance task marked performed → confirm `maintenance_logs` row and that
      `next_due_at` recomputed correctly.
    - Historical import / paper backfill → confirm rows are tagged with the right
-     `data_source` (`historical_import` / `paper_backfill`) and correct `entered_at` vs.
+     `data_source` (`import` / `paper_backfill`) and correct `entered_at` vs.
      event-time split.
 4. **Check the "Today" dashboard** reflects what you just logged (done/outstanding badges
    update for the right system).
@@ -49,26 +49,48 @@ matching database row is a failure, not a pass.
    the dumb stuff first.
 
 ## Scripts
-- [playwright.smoke.ts](./scripts/playwright.smoke.ts) — skeleton covering steps 2-4.
-  Extend it per feature rather than rewriting it from scratch each time.
+Split into one shared helper module plus a section file per area — extend the matching
+section file per feature; only add a new section file for a genuinely new area rather than
+growing an existing one indefinitely:
+- [helpers.ts](./scripts/helpers.ts) — shared module (env constants, `db`, `dbQuery`,
+  `login`/`loginAs`, role clients, date/time helpers). Not a test file itself; imported by
+  every file below.
+- [daily-logging-forms.smoke.ts](./scripts/daily-logging-forms.smoke.ts) — the 6 daily forms
+  (AM/PM check, feeding + consumption follow-up, water quality, chemical addition, health
+  observation, maintenance), the Today dashboard, and each form's date/time-box behavior.
+- [auth-and-admin.smoke.ts](./scripts/auth-and-admin.smoke.ts) — sign-up → pending →
+  admin-approval flow, plus the `/protected/admin` approve/deny UI.
+- [sidebar-ui.smoke.ts](./scripts/sidebar-ui.smoke.ts) — sidebar Home button + theme toggle
+  (UI-only, Tier 1).
+- [rbac-tiers.smoke.ts](./scripts/rbac-tiers.smoke.ts) — per-role (admin/technician/
+  volunteer/viewer) behavior for operational logs, plus the DB-level SELECT/UPDATE/DELETE
+  matrix across every affected table.
+- [rls-rebuild.smoke.ts](./scripts/rls-rebuild.smoke.ts) — full-form regression after an
+  RLS/GRANT rebuild on core tables (`rlsRebuildWriteSuite()`, called once per role).
 
-## Known gotchas (learned from real runs — read before extending the script)
+Run a single section directly by file path instead of the whole suite, e.g.
+`npx playwright test .github/skills/e2e-testing/scripts/daily-logging-forms.smoke.ts`.
+
+## Known gotchas (learned from real runs — read before extending a script)
 - **Never assert against schema `core` with the plain service-role Supabase-js client
   (`db.from(...)`).** The hosted project's `service_role` Postgres role has no `USAGE` grant
   on schema `core` (only `authenticated` does), so any `db.from("<core table>")` call 403s
-  with "permission denied for schema core". Use the `dbQuery(sql)` helper in the script
-  instead (runs SQL via `supabase db query -f ... --linked`, connects as `postgres`, and
-  needs schema-qualified table names, e.g. `core.profiles`). `db.auth.admin.*` calls (Auth
-  Admin API, not a schema query) are unaffected and fine to use directly.
+  with "permission denied for schema core". Use the `dbQuery(sql)` helper from
+  [helpers.ts](./scripts/helpers.ts) instead (runs SQL via `supabase db query -f ... --linked`,
+  connects as `postgres`, and needs schema-qualified table names, e.g. `core.profiles`).
+  `db.auth.admin.*` calls (Auth Admin API, not a schema query) are unaffected and fine to use
+  directly.
 - **Scope `test.describe.configure({ mode: "serial" })` inside each `test.describe` block**,
-  not once at the top of the file. Applied file-wide, one failing test cascades into every
+  not once at the top of a file. Applied file-wide, one failing test cascades into every
   later, unrelated `describe` block being marked "did not run" instead of executed — which
-  can hide a real regression in a feature you didn't even touch. Each suite that needs
-  ordered/shared state should configure serial mode for itself.
+  can hide a real regression in a feature you didn't even touch. This still applies within
+  section files that hold more than one top-level `describe` (e.g. rbac-tiers.smoke.ts) —
+  splitting by file isolates across sections, not within one.
 - When isolating a single new suite while debugging, run
-  `npx playwright test -g "<describe name>"` rather than the whole file, especially if an
-  unrelated pre-existing suite is known-flaky — see the two gotchas above for why the whole
-  file can otherwise report false negatives.
+  `npx playwright test -g "<describe name>"` (optionally combined with a file path) rather
+  than the whole file, especially if an unrelated pre-existing suite in the same file is
+  known-flaky — see the gotcha above for why the whole file can otherwise report false
+  negatives.
 - **For "it looks wrong" visual/CSS-variable bugs (e.g. dark mode, theming), don't trust a
   screenshot alone** — a screenshot you don't actually look at pixel-by-pixel proves nothing.
   Instrument the page instead: `page.evaluate` to read `document.documentElement.className`,
@@ -78,7 +100,7 @@ matching database row is a failure, not a pass.
   `Cache-Control` response header before concluding it's a real bug — a stale service worker
   or aggressively cached CSS chunk in the *human's* browser can reproduce as "broken" even
   when an instrumented run proves the app logic is correct. See `captureThemeState` in
-  [playwright.smoke.ts](./scripts/playwright.smoke.ts) for a reusable pattern — reuse/extend
+  [sidebar-ui.smoke.ts](./scripts/sidebar-ui.smoke.ts) for a reusable pattern — reuse/extend
   it for the next visual-state bug report instead of writing a one-off check.
 
 ## References

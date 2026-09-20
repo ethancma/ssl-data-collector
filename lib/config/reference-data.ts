@@ -46,7 +46,7 @@ export type CheckType = (typeof CHECK_TYPES)[number];
 export const MAINTENANCE_TASK_TYPES = ["filter_change", "sump_flush", "other"] as const;
 export type MaintenanceTaskType = (typeof MAINTENANCE_TASK_TYPES)[number];
 
-export const DATA_SOURCES = ["live", "historical_import", "paper_backfill"] as const;
+export const DATA_SOURCES = ["live", "import", "paper_backfill"] as const;
 export type DataSource = (typeof DATA_SOURCES)[number];
 
 export const PH_SOURCES = ["manual", "apex_probe"] as const;
