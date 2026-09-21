@@ -283,7 +283,7 @@ async function HomeContent() {
       {attentionSystems.map((s) => (
         <div key={s.id} className="flex flex-col gap-1 p-4">
           <div className="flex items-center justify-between gap-3">
-            <span className="font-medium">{s.name}</span>
+            <span className="text-sm font-medium">{s.name}</span>
             <Badge variant="secondary">{s.outstanding.length} open</Badge>
           </div>
           <span className="text-sm text-muted-foreground">{s.outstanding.join(", ")}</span>
