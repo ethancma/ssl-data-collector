@@ -23,7 +23,9 @@ Examples: a new table/column, an RLS policy change, the CSV import or paper-back
   production.
 - Verify directly in the Supabase dashboard (table editor, RLS policy check) — don't trust
   the app UI alone.
-- Re-verify all three roles (Admin/Technician/Viewer) behave as intended, not just Admin.
+- Re-verify all four roles (Admin/Technician/Volunteer/Viewer) behave as intended, not
+  just Admin, including feature-specific exceptions such as Viewer having no Star
+  treatment access.
 - Require a preview deployment before merge.
 
 ## Tier 4 — Anything touching real historical or production data

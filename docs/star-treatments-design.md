@@ -1,10 +1,10 @@
 # Star Treatments Design
 
-- **Status:** Proposed; reanalyzed against current schema, migrations, UI, and hosted
-  migration history
-- **Change class:** Tier 3 when implemented (new table, RLS, and form)
-- **Current scope:** Design only. This document does not authorize or perform schema,
-  application, or data changes.
+- **Status:** Implemented with closure items; this is the current feature contract
+- **Change class:** Tier 3 feature plus a separate Tier 4 Graham reconciliation
+- **Current scope:** Schema, RPC lifecycle, entry form, and correction surface are in the
+  repository. Remaining work is tracked centrally in
+  [implementation-checklist.md](implementation-checklist.md#star-treatment-closure).
 
 ## 1. Summary
 
@@ -19,9 +19,14 @@ The Daily Operations area will present these as separate forms. The existing che
 addition form will be clarified as a system-water dosing form, and a new Star treatment
 form will collect the treated subject and treatment details.
 
-The initial release must not automatically move existing chemical-addition records.
+The implemented release does not automatically move existing chemical-addition records.
 Historical probiotic records need a separate, staff-reviewed reconciliation because the
 source rows may not identify the treated star.
+
+Implemented in the repository: `core.star_treatments`, eligibility and provenance RPCs,
+role-gated Daily Operations entry, URL-backed filters, and the treatment correction/delete
+surface. The System chemical addition database guard and unskipped end-to-end boundary
+verification are still open.
 
 ## 2. Goals
 
@@ -345,26 +350,21 @@ For future imports, add durable import identity such as an import batch and sour
 instead of relying only on `data_source = 'import'`. This is broader than the Star treatment
 table but is necessary before import tooling becomes a recurring workflow.
 
-## 13. Implementation Sequence
+## 13. Remaining Sequence
 
-1. Extract the Graham operational payload into the reviewed CSV bundle, remove the old
-  import migration, and rebuild the disposable hosted schemas from local migration history.
-2. Finalize treatment-time location and amount/concentration semantics from this review.
-3. Add treatment options, custom-value normalization, and validation rules.
-4. Design RPC-backed transactional create/update/hard-delete behavior and immutable
-  provenance enforcement.
-5. Add the `star_treatments` migration, indexes, grants, RLS, and generated types.
-6. Verify the migration against a local or scratch Supabase project.
-7. Build the URL-backed Star treatment panel in Daily Operations and clarify System
-  chemical addition copy.
-8. Add the minimal recent/detail correction surface and focused tests.
-9. Run Tier 3 verification and preview-deployment review.
-10. Perform the separate human-run Tier 4 hosted Graham cleanup/reimport after backup.
-11. Add broader History/export/analytics only after the core workflow is stable.
+The completed implementation steps and all remaining actions have been merged into the
+[implementation checklist](implementation-checklist.md#star-treatment-closure). In order:
+
+1. Add the System chemical addition database guard and repair the schema-gated boundary test.
+2. Align the generic role contract and RBAC suite without changing this feature's narrower
+  Viewer restriction.
+3. Run the complete Tier 3 verification and preview review without skipped lifecycle tests.
+4. Have a human perform the separate Tier 4 Graham import after backup and source checks.
+5. Add deferred History/export/analytics integrations only after the core workflow closes.
 
 ## 14. Verification Plan
 
-When implemented, this is Tier 3 under `docs/testing-strategy.md` because it introduces a
+Closure remains Tier 3 under [testing-strategy.md](testing-strategy.md) because this is a
 new table and RLS-backed workflow.
 
 Required focused coverage:
@@ -426,9 +426,8 @@ the result against the source CSVs.
 - **Role test drift:** native grants allow Volunteer create/update on operational logs,
   while the current RBAC smoke test still expects Volunteer inserts to fail. Update the
   test and role documentation before relying on it for this feature.
-- **Missing role fixture:** local seed creates Admin, Technician, and Volunteer, while the
-  test-account documentation expects Viewer and omits Volunteer. Add a Viewer fixture and
-  align the documented matrix.
+- **Role fixtures:** local seed now includes Admin, Technician, Volunteer, and Viewer. Keep
+  the test-account documentation and role matrix aligned with those fixtures.
 - **Reference data in migrations:** systems/species, Graham tanks, and SSL25 are also
   inserted by migrations. They are not historical operational logs, so do not mix their
   relocation into this feature, but review them separately against the schema-only

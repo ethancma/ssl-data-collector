@@ -29,9 +29,9 @@ star health and SSWD symptom onset over time.
 - **Multiple simultaneous, mixed-experience users** (lab techs + volunteers, ~10-20
   accounts) entering data daily — forms must be fast, guided, and forgiving of typos
   (inline range validation), not just functionally correct.
-- **Water quality testing is weekly per system** (not daily) — pH, magnesium, ammonia,
-  alkalinity, calcium, phosphate, nitrate, nitrite — with pH additionally available
-  continuously from Neptune Apex probes on systems that have them; the other seven
+- **Water quality testing is weekly per system** (not daily) — pH, salinity, magnesium,
+  ammonia, alkalinity, calcium, phosphate, nitrate, nitrite — with pH additionally available
+  continuously from Neptune Apex probes on systems that have them; the other eight
   parameters are always manually tested. Nitrate is measured in ppm, nitrite in ppb
   (not ppm — a different unit than the other parameters).
 - **Chemical additions** (C balance, buffers, etc.) logged per system.
@@ -112,6 +112,7 @@ erDiagram
     ANIMALS ||--o{ ANIMAL_MOVEMENTS : has
     ANIMALS ||--o{ HEALTH_OBSERVATIONS : has
     ANIMALS ||--o{ FEEDING_LOGS : has
+    ANIMALS ||--o{ STAR_TREATMENTS : receives
     TANKS ||--o{ HEALTH_OBSERVATIONS : "location"
     TANKS ||--o{ FEEDING_LOGS : "location"
     SYSTEMS ||--o{ WATER_QUALITY_READINGS : tested
@@ -135,7 +136,7 @@ erDiagram
 - `animal_movements` — id, animal_id, from_tank_id, to_tank_id, moved_at, reason, recorded_by
 - `water_quality_readings` — id, system_id, tested_at (the actual test date — weekly
   cadence, not daily), recorded_by, ph, ph_source (manual|apex_probe), magnesium,
-  ammonia, alkalinity, calcium, phosphate, nitrate (ppm), nitrite (ppb), notes,
+  ammonia, alkalinity, calcium, phosphate, salinity, nitrate (ppm), nitrite (ppb), notes,
   `data_source` (live|import|
   paper_backfill), entered_at (defaults to now(), distinct from `tested_at` for
   backfilled rows)
@@ -144,6 +145,10 @@ erDiagram
 - `microalgae_logs` — id, system_id (the Micro-Algae system), logged_at, density_reading, harvest_volume, condition_notes, recorded_by, data_source
 - `health_observations` — id, animal_id, tank_id, observed_at, issues (multi-select: arm_drop, spine_drop, lesion, arm_curling, flattening, other), severity (3-level scale, exact labels TBD), photo required at submit time for arm_drop/spine_drop/lesion always, and for other issue types above a severity threshold (TBD), notes, recorded_by, data_source
 - `feeding_logs` — id, tank_id, animal_id (required for tanks with named individuals; logged per animal even when multiple animals share a tank), food_type (krill|brine_shrimp|abalone|urchin_purple|urchin_white|microalgae|other), amount, fed_at, recorded_by, consumption_status (full|partial|none|unknown), consumption_checked_at, notes, data_source
+- `star_treatments` — id, animal_id, tank_id treatment-time snapshot, treatment_type,
+  optional amount/unit and concentration/unit pairs, notes, administered_at, recorded_by,
+  data_source, entered_at. See [star-treatments-design.md](star-treatments-design.md) for
+  the implemented feature contract and deferred integrations.
 - `maintenance_tasks` — id, system_id, task_type (filter_change|sump_flush|other), recurrence_days (configurable per system, not shared lab-wide per task type), last_performed_at, next_due_at (computed)
 - `maintenance_logs` — id, task_id, performed_at, performed_by, notes
 - `attachments` — id, parent_table, parent_id, storage_path, uploaded_by, uploaded_at (generic photo attachment, primarily used by `health_observations`, also usable to archive scanned paper logs)
@@ -157,64 +162,30 @@ data gaps from migration lag, and a bad backfill can't be traced to its source.
 
 ## 5. Roles & Permissions
 
-Enforced via Postgres Row Level Security policies:
+The current native-role policy is enforced with Postgres grants, RLS, and RPCs:
 - **Admin** — full manage access: systems, tanks, species, animals, users/roles, all logs
   (full CRUD on all operational log tables).
 - **Technician** — full CRUD on all log tables (water quality, feeding, health, daily
   checks, chemical additions, maintenance, micro-algae). Lab-wide access, no
   per-system restriction.
-- **Volunteer** — read and update on all log tables, but cannot insert new rows or
-  delete; distinguishes paid-staff vs. volunteer entries by restricting who can create
-  records.
+- **Volunteer** — read, create, and update ordinary operational logs, but cannot delete.
 - **Viewer** — read-only across all tables (e.g., PI/researcher).
 - **Unauthenticated** — no access.
+
+Star treatments deliberately narrow this matrix: Viewer has no access, while Volunteer
+can read/create/update but not delete. The current generic matrix still needs explicit
+staff confirmation and test/UI alignment; that closure work is tracked in the
+[implementation checklist](implementation-checklist.md#data-integrity-and-access-control).
 
 New Google sign-ins land as `profiles.status = pending`; an Admin approves and assigns
 a role before the account gets any data access.
 
-## 6. Implementation Roadmap
+## 6. Delivery Status
 
-> For the actionable, priority-ordered checklist (what to build first now that the
-> Supabase project exists), see [implementation-checklist.md](implementation-checklist.md).
-
-1. **Foundations** — Supabase schema/migrations, RLS policies, Google OAuth +
-   admin-approval flow, Next.js scaffold deployed. *(no dependencies)*
-2. **Reference data & admin** *(depends on 1)* — CRUD UI for systems, tanks, species,
-   animals, user management/approval.
-3. **Daily operational logging** *(depends on 2; the 4 forms below are parallelizable)*
-   - AM/PM check form (water running, temperature, notes) — an "issue found" flag
-     opens/pre-fills a linked health observation, which can be saved as a follow-up
-     rather than completed immediately; the check itself still submits right away
-   - Health observation form (issue checklist, severity, photo upload)
-   - Feeding log form (food type/amount/time), logged per individual named animal,
-     + a same-day consumption follow-up (also per animal) rolled into the PM check
-   - Water quality reading form (6 chemistry params, weekly cadence) + chemical
-     addition log form
-   - Usability requirements for all forms: default to today's date/last-used system,
-     numeric-keypad inputs for readings, multi-select checklists (not free text) for
-     health issues, and inline range validation that flags (not blocks) out-of-range
-     values for a tech/volunteer to double-check before submitting.
-4. **"Today" dashboard** *(depends on 3)* — the actual daily landing page: per-system
-   checklist of what's done/outstanding today (AM/PM check, feeding, water quality due
-   this week), so nothing gets silently skipped across 8 systems and multiple people
-   working the same day. Optional: per-system QR code/deep link posted at each tank
-   station so a phone/tablet opens directly to that system's forms.
-5. **Historical data migration tooling** *(depends on 3)* — admin-only CSV import
-   (column-mapping to `water_quality_readings`/`feeding_logs`/etc., tagged
-   `data_source = import`) for the Google Sheets exports, plus a
-   grid/spreadsheet-style backfill entry mode (multiple past dates at once, tagged
-   `data_source = paper_backfill`) for re-keying paper logs — deliberately not the
-   same one-record-a-time UI as live daily entry.
-6. **Maintenance scheduling** *(depends on 2, parallel with 3-5)* — task config (interval
-   per system/task type), maintenance log entry, due/overdue dashboard badges, scheduled
-   email reminders.
-7. **Dashboards & analytics** *(depends on 3's data)*
-   - Trend charts per system/parameter, with chemical-addition event overlays
-   - Correlation exploration view (e.g., water quality vs. health-observation frequency)
-   - CSV export of raw tables; optional direct read-only Postgres access for R/Python analysis
-8. **Polish & rollout** *(depends on all prior)* — tablet/mobile QA at real lab stations,
-   seed real system/tank/species data, staff onboarding, verify automated backups,
-   optional Sentry error monitoring.
+The original phase roadmap has been merged into
+[implementation-checklist.md](implementation-checklist.md), which now records delivered
+work, integrity risks, remaining features, staff decisions, and rollout tasks without
+duplicating status here.
 
 ## 7. Cost Estimate
 
@@ -245,8 +216,8 @@ a role before the account gets any data access.
   simpler schema than a parallel "legacy" table set, at the cost of every log table
   needing that column.
 - Volunteers get their own role (distinct from Technician) to distinguish paid-staff
-  vs. volunteer entries: Volunteers can read and update log records but cannot insert
-  or delete, while Technicians get the same full CRUD access as Admins on logs.
+  vs. volunteer entries. The current policies allow read/create/update without delete;
+  staff confirmation of that generic contract remains open.
 - An AM/PM check that flags an issue auto-opens a linked health observation, but that
   observation can be saved as a follow-up rather than completed on the spot; it stays
   flagged on the check record (no separate dashboard-level nagging) until filled in.
@@ -271,14 +242,9 @@ a role before the account gets any data access.
   ToS turns out to be a real blocker for a registered nonprofit, in which case upgrade
   to a paid Vercel plan rather than switching hosts.
 
-## 9. Open Questions / Further Considerations
+## 9. Open Questions
 
-1. Health observation severity scale — define the exact 3-level labels/criteria, and
-   which severity level(s) make a photo mandatory for issue types beyond arm
-   drop/spine drop/lesion.
-2. Animal nickname reuse policy — is a name ever reused after an animal dies or is
-   transferred out?
-3. Water quality target/safe ranges per parameter still need to be gathered from
-   staff for inline validation (see lab operations plan).
-5. Feeding cadence varies by system/species/life stage — the actual schedule matrix
-   still needs confirming with staff before encoding (see lab operations plan).
+Operational questions and staff decisions are maintained only in
+[lab-operations-plan.md](lab-operations-plan.md#8-open-questions--further-considerations).
+Their implementation impact and completion state are tracked in
+[implementation-checklist.md](implementation-checklist.md#staff-decisions).

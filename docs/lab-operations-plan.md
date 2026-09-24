@@ -65,15 +65,16 @@ timestamped and attributable like the other logs.
   confirmed with staff before it's encoded (see §7). Logged per individual named
   animal (food type/amount), plus a same-day follow-up on whether it was eaten,
   rolled into the PM check, also per individual animal.
-- **Water quality testing** — **weekly per system**, testing the sump: pH, magnesium,
-  ammonia, alkalinity, calcium, phosphate, nitrate, nitrite (nitrate in ppm, nitrite in
+- **Water quality testing** — **weekly per system**, testing the sump: pH, salinity,
+  magnesium, ammonia, alkalinity, calcium, phosphate, nitrate, nitrite (nitrate in ppm, nitrite in
   ppb — a different unit). Target/safe ranges per parameter exist but
   still need to be gathered from staff and encoded for inline validation (see §7).
 - **Chemical additions** — as-needed per system (C balance, buffers, etc.), logged
   whenever dosed.
 - **Health observations** — logged whenever a sighting/issue occurs (arm drops, spine
   drops, lesions, arm curling, flattening, other), against the individual animal.
-  Severity uses a 3-level scale (exact labels/thresholds TBD, see §7). A photo is
+   Severity currently uses provisional Low/Medium/High labels; exact criteria remain TBD
+   (see §8). A photo is
   always mandatory for arm drops, spine drops, and lesions; for other issue types,
   whether a photo is required depends on the severity level once that scale is
   defined.
@@ -84,14 +85,14 @@ timestamped and attributable like the other logs.
 
 ## 4. Water Quality Testing & Apex Probes
 
-Every system's sump has a [Neptune Apex](https://www.neptunesystems.com/probes/)
-pH probe, so pH can be continuously monitored electronically. Magnesium, ammonia,
-alkalinity, calcium, phosphate, nitrate, and nitrite are always tested manually (no probes for those).
+Apex pH coverage is planned or assumed across the systems, but only Graham and Wholey are
+currently confirmed. Magnesium, ammonia, alkalinity, calcium, phosphate, salinity,
+nitrate, and nitrite are always tested manually.
 
 - **Confirmed so far**: Graham and Wholey have working Apex pH probes; coverage for
   the remaining systems (Indoor/Outdoor Quarantine, Yum Yum, Snack Shack, Larval)
   still needs confirming with staff.
-- **MVP**: all six parameters are entered manually once a week, same as today — the
+- **MVP**: all nine parameters are available for weekly entry — the
   weekly reading form just records whatever the Apex display shows for pH at test
   time, tagged `ph_source = apex_probe` vs. a hand-tested `manual` value for systems
   without a working probe.
@@ -121,6 +122,11 @@ Both paths keep event time (when the test/feeding actually happened) separate fr
 entry time (when it was typed into the platform), so trend charts reflect real
 history rather than migration timing.
 
+Current repository status: a destination-ready Graham bundle has been prepared for 270
+water-quality and 242 CBalance records. Probiotics were excluded because the source does
+not identify a treated star. The broader source inventory and reusable import/backfill
+tools remain open.
+
 **Before migration starts**, inventory exactly which systems/date ranges exist in
 Sheets vs. paper vs. not recorded at all, so effort isn't spent building import
 tooling for data that doesn't actually exist.
@@ -129,10 +135,9 @@ tooling for data that doesn't actually exist.
 
 - **Lab techs** — day-to-day data entry (AM/PM checks, feeding, water quality, health
   observations), Technician role.
-- **Volunteers** — same lab-wide access as Technicians (no per-system restriction
-  needed), but get their own **Volunteer** role rather than sharing Technician,
-  so paid-staff vs. volunteer entries can be distinguished. Exact permission
-  differences (if any) between Volunteer and Technician are still TBD (see §7).
+- **Volunteers** — same lab-wide scope as Technicians, but a distinct **Volunteer** role
+   distinguishes volunteer entries. Current policies allow read/create/update without
+   delete; staff still needs to confirm that as the intended contract (see §8).
 - **PI/researchers** — read-only Viewer access for trend charts and exports.
 - **Admin(s)** — lab manager/lead tech; approves new sign-ins, manages
   systems/tanks/species reference data, runs historical imports, receives
@@ -188,3 +193,7 @@ or grant at this time.
    Snack Shack, Larval) with staff — Graham and Wholey are confirmed.
 8. Who owns/assigns the paper-backfill data entry work, and is there a target
    deadline (e.g., before a grant reporting cycle)?
+9. Confirm whether salinity is an official ninth weekly parameter. It exists in the
+   current schema/form but was omitted from earlier requirements prose.
+10. Confirm whether a health observation with no selected issue is a valid general
+    observation or should be rejected.
