@@ -56,7 +56,9 @@ function rlsRebuildWriteSuite(
 
     test(`${label} AM check INSERT lands in core.daily_checks`, async ({ page }) => {
       await signIn(page);
-      await page.goto(`/protected/checks/new?system=${grahamSystemId}&type=AM`);
+      await page.goto(
+        `/protected/daily-operations?type=daily-check&system=${grahamSystemId}&check=AM`,
+      );
       await page.getByLabel("Notes").fill(`${tag} AM check`);
       await page.getByLabel("Temperature (°C)").fill("12.5");
       await page.getByRole("button", { name: "Save check" }).click();
@@ -76,7 +78,7 @@ function rlsRebuildWriteSuite(
 
     test(`${label} feeding INSERT lands in core.feeding_logs`, async ({ page }) => {
       await signIn(page);
-      await page.goto("/protected/feeding/new");
+      await page.goto("/protected/daily-operations?type=feeding");
       await page.getByLabel("Animal").selectOption(String(ssl25AnimalId));
       await page.getByRole("button", { name: "Krill" }).click();
       await page.getByLabel("Amount").fill("2 krill");
@@ -99,9 +101,16 @@ function rlsRebuildWriteSuite(
       page,
     }) => {
       await signIn(page);
-      await page.goto(`/protected/checks/new?system=${grahamSystemId}&type=PM`);
+      await page.goto(
+        `/protected/daily-operations?type=daily-check&system=${grahamSystemId}&check=PM`,
+      );
       await expect(page.getByText("Consumption follow-up")).toBeVisible();
-      await page.getByRole("button", { name: "Full", exact: true }).click();
+      await page
+        .getByText("SSL25", { exact: true })
+        .first()
+        .locator("..")
+        .getByRole("button", { name: "Full", exact: true })
+        .click();
       await page.getByLabel("Notes").fill(`${tag} PM check`);
       await page.getByRole("button", { name: "Save check" }).click();
       await expect(page).toHaveURL(/\/protected\/home/);
@@ -122,7 +131,9 @@ function rlsRebuildWriteSuite(
       page,
     }) => {
       await signIn(page);
-      await page.goto(`/protected/water-quality/new?system=${grahamSystemId}`);
+      await page.goto(
+        `/protected/daily-operations?type=water-quality&system=${grahamSystemId}`,
+      );
       await page.getByRole("button", { name: "Apex probe" }).click();
       await page.getByLabel("pH", { exact: true }).fill("8.1");
       await page.getByLabel("Magnesium").fill("1300");
@@ -150,13 +161,16 @@ function rlsRebuildWriteSuite(
       page,
     }) => {
       await signIn(page);
-      await page.goto(`/protected/chemical-additions/new?system=${grahamSystemId}`);
-      await page.getByLabel("Chemical").fill(`${tag} baking soda`);
+      await page.goto(
+        `/protected/daily-operations?type=chemical-addition&system=${grahamSystemId}`,
+      );
+      await page.getByRole("radio", { name: "Other", exact: true }).click();
+      await page.getByLabel("Chemical/product name").fill(`${tag} baking soda`);
       await page.getByLabel("Amount").fill("50");
       await page.getByLabel("Unit").fill("mL");
       await page.getByLabel("Reason").fill(`${tag} chemical addition`);
-      await page.getByRole("button", { name: "Save addition" }).click();
-      await expect(page).toHaveURL(/\/protected\/(today|home)/);
+      await page.getByRole("button", { name: "Save system addition" }).click();
+      await expect(page).toHaveURL(/\/protected\/home/);
 
       const rows = dbQuery(
         `select system_id, chemical_name, amount, unit
@@ -173,7 +187,7 @@ function rlsRebuildWriteSuite(
       page,
     }) => {
       await signIn(page);
-      await page.goto("/protected/health-observations/new");
+      await page.goto("/protected/daily-operations?type=health-observation");
       await page.getByLabel("Animal").selectOption(String(ssl25AnimalId));
       await page.getByRole("button", { name: "Low" }).click();
       await page.getByLabel("Notes").fill(`${tag} health obs`);

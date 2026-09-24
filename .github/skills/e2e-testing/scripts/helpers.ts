@@ -7,10 +7,11 @@
  * by this script — see AGENTS.md).
  *
  * DB verification uses a service-role Supabase client (bypasses RLS) rather than
- * trusting the UI alone. Provide creds via env — never hardcode them here:
+ * trusting the UI alone. Committed dev/test account defaults target the hosted test
+ * accounts and may be overridden via env:
  *   SUPABASE_URL                  (defaults to the app's hosted project URL)
- *   SUPABASE_SERVICE_ROLE_KEY     (required for DB assertions; assertions are
- *                                  skipped with a warning if it's absent)
+ *   SUPABASE_SERVICE_ROLE_KEY     (required only for service-role Supabase-js
+ *                                  assertions; linked dbQuery still works without it)
  *   E2E_TEST_TECH_EMAIL / E2E_TEST_TECH_PASSWORD — seeded technician test account
  *   (see ../references/test-accounts.md)
  */
@@ -25,18 +26,18 @@ export const SUPABASE_URL =
   process.env.SUPABASE_URL ?? "https://bqylxmsifagnztxhixyl.supabase.co";
 export const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 export const TECH_EMAIL = process.env.E2E_TEST_TECH_EMAIL ?? "test-tech@ssl.dev";
-export const TECH_PASSWORD = process.env.E2E_TEST_TECH_PASSWORD ?? "";
+export const TECH_PASSWORD = process.env.E2E_TEST_TECH_PASSWORD ?? "password";
 export const ADMIN_EMAIL = process.env.E2E_TEST_ADMIN_EMAIL ?? "test-admin@ssl.dev";
-export const ADMIN_PASSWORD = process.env.E2E_TEST_ADMIN_PASSWORD ?? "";
+export const ADMIN_PASSWORD = process.env.E2E_TEST_ADMIN_PASSWORD ?? "password";
 // Seeded volunteer test account (core.profiles.role = 'volunteer').
 export const VOLUNTEER_EMAIL = process.env.E2E_TEST_VOLUNTEER_EMAIL ?? "test-volunteer@ssl.dev";
-export const VOLUNTEER_PASSWORD = process.env.E2E_TEST_VOLUNTEER_PASSWORD ?? "";
+export const VOLUNTEER_PASSWORD = process.env.E2E_TEST_VOLUNTEER_PASSWORD ?? "password";
 // Seeded viewer test account. No dedicated "test-viewer@ssl.dev" account exists yet
 // (unlike admin/technician/volunteer) — this is the one pre-existing active viewer
 // profile in the shared dev project. Consider seeding a proper test-viewer@ssl.dev
 // account for consistency with test-accounts.md.
 export const VIEWER_EMAIL = process.env.E2E_TEST_VIEWER_EMAIL ?? "m@sample.com";
-export const VIEWER_PASSWORD = process.env.E2E_TEST_VIEWER_PASSWORD ?? "";
+export const VIEWER_PASSWORD = process.env.E2E_TEST_VIEWER_PASSWORD ?? "password";
 // Public anon/publishable key — safe to default here the same way SUPABASE_URL is above.
 export const PUBLISHABLE_KEY =
   process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ??
@@ -44,8 +45,8 @@ export const PUBLISHABLE_KEY =
 
 if (!SERVICE_ROLE_KEY) {
   console.warn(
-    "SUPABASE_SERVICE_ROLE_KEY not set — DB-row assertions will be skipped; " +
-      "only UI navigation will be checked.",
+    "SUPABASE_SERVICE_ROLE_KEY not set — service-role Supabase-js assertions " +
+      "will be skipped; linked dbQuery assertions remain available.",
   );
 }
 

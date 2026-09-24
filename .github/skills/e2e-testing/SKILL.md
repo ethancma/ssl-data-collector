@@ -16,6 +16,37 @@ Drive the app the way a lab tech, volunteer, or admin actually would, using Play
 confirm both the UI *and* the underlying Supabase row for each step. A green UI with no
 matching database row is a failure, not a pass.
 
+## Fast path — route, observe, run
+
+Do not begin with an open-ended repository search. Use the requested feature or changed-file
+list to open the matching script directly:
+
+| Area | Script |
+|---|---|
+| Daily checks, feeding, water quality, chemical additions, health, maintenance, Today | `daily-logging-forms.smoke.ts` |
+| Sign-up, pending approval, admin users | `auth-and-admin.smoke.ts` |
+| Sidebar, Home navigation, theme | `sidebar-ui.smoke.ts` |
+| Operational-log roles and permission matrix | `rbac-tiers.smoke.ts` |
+| Star treatments and the Probiotics boundary | `star-treatments.smoke.ts` |
+| RLS/GRANT rebuild regression | `rls-rebuild.smoke.ts` |
+| Systems page and water-quality trend charts | `systems-trends.smoke.ts` |
+
+1. Open only the matching section script and `helpers.ts` first. If the request names changed
+  files, use `git diff --name-only` once to choose the section.
+2. Observe the live page with Playwright MCP `browser_navigate` and `browser_snapshot` before
+  guessing selectors. Prefer the accessible names in that snapshot and existing
+  `getByRole`/`getByLabel` patterns.
+3. Make at most two code searches before executing a browser probe or test. Each search must
+  use an exact route, visible label, component name, or test title and be scoped to the
+  likely file or directory. After a miss, inspect the route file or browser snapshot; do not
+  retry variations of a broad regex.
+4. Run the narrowest existing check first:
+  `npx playwright test <section-file> -g "<exact test or describe title>"`.
+  Run the whole section only after that check passes. Run multiple sections only when the
+  change crosses those areas or the testing tier requires them.
+5. Extend a test only after the targeted run proves the behavior is uncovered. Reuse
+  `helpers.ts`; do not rediscover login, role, date/time, or DB-query behavior.
+
 ## Procedure
 
 1. **Reuse the always-on dev server** on port 3000. Never start a second instance and never
@@ -65,8 +96,13 @@ growing an existing one indefinitely:
 - [rbac-tiers.smoke.ts](./scripts/rbac-tiers.smoke.ts) — per-role (admin/technician/
   volunteer/viewer) behavior for operational logs, plus the DB-level SELECT/UPDATE/DELETE
   matrix across every affected table.
+- [star-treatments.smoke.ts](./scripts/star-treatments.smoke.ts) — Star treatment role
+  visibility, RPC-only create/correct/delete flows, immutable audit rows, filters, and the
+  Probiotics chemical-addition boundary.
 - [rls-rebuild.smoke.ts](./scripts/rls-rebuild.smoke.ts) — full-form regression after an
   RLS/GRANT rebuild on core tables (`rlsRebuildWriteSuite()`, called once per role).
+- [systems-trends.smoke.ts](./scripts/systems-trends.smoke.ts) — systems-page water-quality
+  trend controls, chart rendering, carousel behavior, and responsive layout.
 
 Run a single section directly by file path instead of the whole suite, e.g.
 `npx playwright test .github/skills/e2e-testing/scripts/daily-logging-forms.smoke.ts`.

@@ -12,13 +12,14 @@ email/password or magic-link auth as a local stand-in for Google OAuth:
 
 - `test-admin@<project>.dev` — role `admin`
 - `test-tech@<project>.dev` — role `technician`
+- `test-volunteer@<project>.dev` — role `volunteer`
 - `test-viewer@<project>.dev` — role `viewer`
 
 Seed these via a migration/seed script, not by hand, so they survive a database reset.
 
 ## Testing the onboarding/approval flow itself
 
-Use a disposable 4th account rather than one of the seeded three:
+Use a disposable 5th account rather than one of the seeded four:
 
 1. Sign up, confirm it lands as `profiles.status = pending` with no role.
 2. Approve it as `test-admin`, assign a role, confirm access matches that role.
@@ -29,5 +30,5 @@ Use a disposable 4th account rather than one of the seeded three:
 
 - Never use these credentials, or any test data created with them, against the
   **production** Supabase project.
-- If RLS policies change, re-verify all three roles (Admin/Technician/Viewer) can/can't do
+- If RLS policies change, re-verify all four roles (Admin/Technician/Volunteer/Viewer) can/can't do
   what they're supposed to — a broken policy is easy to miss by testing only as Admin.

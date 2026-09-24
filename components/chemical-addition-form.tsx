@@ -4,6 +4,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
+import { z } from "zod";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -19,11 +20,41 @@ import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 import {
   chemicalAdditionSchema,
-  type ChemicalAdditionFormInput,
   type ChemicalAdditionFormValues,
 } from "@/lib/validation/chemical-addition";
 
 type SystemOption = { id: number; name: string };
+
+const CHEMICAL_OPTIONS = ["C-Balance", "DI-Trace", "Mg", "Other"] as const;
+
+const systemChemicalAdditionSchema = chemicalAdditionSchema
+  .omit({ chemicalName: true })
+  .extend({
+    chemicalChoice: z.enum(CHEMICAL_OPTIONS),
+    customChemicalName: z
+      .string()
+      .max(200, "Keep the chemical name under 200 characters"),
+  })
+  .superRefine((values, context) => {
+    if (values.chemicalChoice === "Other" && values.customChemicalName.trim() === "") {
+      context.addIssue({
+        code: "custom",
+        path: ["customChemicalName"],
+        message: "Enter a chemical/product name",
+      });
+    }
+  })
+  .transform(
+    ({ chemicalChoice, customChemicalName, ...values }): ChemicalAdditionFormValues => ({
+      ...values,
+      chemicalName:
+        chemicalChoice === "Other"
+          ? customChemicalName.trim().replace(/\s+/g, " ")
+          : chemicalChoice,
+    }),
+  );
+
+type SystemChemicalAdditionFormInput = z.input<typeof systemChemicalAdditionSchema>;
 
 function getTodayDateString(): string {
   const now = new Date();
@@ -53,19 +84,26 @@ export function ChemicalAdditionForm({
   const {
     register,
     handleSubmit,
+    watch,
     formState: { errors, isSubmitting },
-  } = useForm<ChemicalAdditionFormInput, unknown, ChemicalAdditionFormValues>({
-    resolver: zodResolver(chemicalAdditionSchema),
+  } = useForm<
+    SystemChemicalAdditionFormInput,
+    unknown,
+    ChemicalAdditionFormValues
+  >({
+    resolver: zodResolver(systemChemicalAdditionSchema),
     defaultValues: {
       date: getTodayDateString(),
       time: getCurrentTimeString(),
       systemId: defaultSystemId ?? "",
-      chemicalName: "",
+      chemicalChoice: "C-Balance",
+      customChemicalName: "",
       amount: "",
       unit: "",
       reason: "",
     },
   });
+  const chemicalChoice = watch("chemicalChoice");
 
   const onSubmit = async (values: ChemicalAdditionFormValues) => {
     setServerError(null);
@@ -89,8 +127,10 @@ export function ChemicalAdditionForm({
   return (
     <Card className="w-full max-w-lg">
       <CardHeader>
-        <CardTitle className="text-2xl">Chemical addition</CardTitle>
-        <CardDescription>Log a dosing event for a system.</CardDescription>
+        <CardTitle className="text-2xl">System chemical addition</CardTitle>
+        <CardDescription>
+          Record a chemical, mineral, trace element, or buffer added to system water.
+        </CardDescription>
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-6">
@@ -126,19 +166,43 @@ export function ChemicalAdditionForm({
             )}
           </div>
 
-          <div className="grid gap-2">
-            <Label htmlFor="chemicalName">Chemical</Label>
-            <Input
-              id="chemicalName"
-              placeholder="e.g. C-Balance"
-              {...register("chemicalName")}
-            />
-            {errors.chemicalName && (
-              <p className="text-sm text-red-500">
-                {errors.chemicalName.message}
-              </p>
-            )}
-          </div>
+          <fieldset className="grid gap-3">
+            <legend className="text-sm font-medium">
+              Chemical/product added to system water
+            </legend>
+            <div className="grid gap-2 sm:grid-cols-2">
+              {CHEMICAL_OPTIONS.map((option) => (
+                <label
+                  key={option}
+                  className="flex min-h-11 cursor-pointer items-center gap-3 rounded-md border border-input px-3 py-2 text-sm has-[:checked]:border-foreground has-[:checked]:bg-muted"
+                >
+                  <input type="radio" value={option} {...register("chemicalChoice")} />
+                  {option}
+                </label>
+              ))}
+            </div>
+          </fieldset>
+
+          {chemicalChoice === "Other" && (
+            <div className="grid gap-2">
+              <Label htmlFor="customChemicalName">Chemical/product name</Label>
+              <Input
+                id="customChemicalName"
+                className="min-h-11"
+                maxLength={200}
+                aria-describedby={
+                  errors.customChemicalName ? "customChemicalName-error" : undefined
+                }
+                aria-invalid={Boolean(errors.customChemicalName)}
+                {...register("customChemicalName")}
+              />
+              {errors.customChemicalName && (
+                <p id="customChemicalName-error" className="text-sm text-red-500">
+                  {errors.customChemicalName.message}
+                </p>
+              )}
+            </div>
+          )}
 
           <div className="grid grid-cols-2 gap-4">
             <div className="grid gap-2">
@@ -183,8 +247,8 @@ export function ChemicalAdditionForm({
 
           {serverError && <p className="text-sm text-red-500">{serverError}</p>}
 
-          <Button type="submit" disabled={isSubmitting}>
-            {isSubmitting ? "Saving…" : "Save addition"}
+          <Button type="submit" className="min-h-11" disabled={isSubmitting}>
+            {isSubmitting ? "Saving…" : "Save system addition"}
           </Button>
         </form>
       </CardContent>

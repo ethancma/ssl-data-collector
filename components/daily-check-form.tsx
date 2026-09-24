@@ -26,7 +26,7 @@ import {
 } from "@/lib/validation/daily-check";
 
 type SystemOption = { id: number; name: string };
-type PendingFeedingLog = { id: number; animalName: string };
+type PendingFeedingLog = { id: number; animalName: string; systemId: number };
 type ConsumptionStatus = (typeof CONSUMPTION_STATUSES)[number];
 
 function getTodayDateString(): string {
@@ -91,6 +91,10 @@ export function DailyCheckForm({
   });
 
   const checkType = watch("checkType");
+  const systemId = watch("systemId");
+  const pendingFeedingLogsForSystem = pendingFeedingLogs.filter(
+    (log) => log.systemId === Number(systemId),
+  );
 
   const onSubmit = async (values: DailyCheckFormValues) => {
     setServerError(null);
@@ -108,7 +112,7 @@ export function DailyCheckForm({
       return;
     }
 
-    const consumptionUpdates = pendingFeedingLogs.filter(
+    const consumptionUpdates = pendingFeedingLogsForSystem.filter(
       (log) => consumption[log.id],
     );
     if (consumptionUpdates.length > 0) {
@@ -243,10 +247,10 @@ export function DailyCheckForm({
             )}
           </div>
 
-          {pendingFeedingLogs.length > 0 && checkType === "PM" && (
+          {pendingFeedingLogsForSystem.length > 0 && checkType === "PM" && (
             <div className="grid gap-4">
               <Label>Consumption follow-up</Label>
-              {pendingFeedingLogs.map((log) => (
+              {pendingFeedingLogsForSystem.map((log) => (
                 <div key={log.id} className="grid gap-2">
                   <Label>{log.animalName}</Label>
                   <div className="flex gap-2">

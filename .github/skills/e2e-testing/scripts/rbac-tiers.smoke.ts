@@ -47,11 +47,13 @@ test.describe("admin can create logs in every form (operational log RBAC tiers)"
 
   test("admin AM check lands in daily_checks", async ({ page }) => {
     await loginAs(page, ADMIN_EMAIL, ADMIN_PASSWORD);
-    await page.goto(`/protected/checks/new?system=${grahamSystemId}&type=AM`);
+    await page.goto(
+      `/protected/daily-operations?type=daily-check&system=${grahamSystemId}&check=AM`,
+    );
     await page.getByLabel("Notes").fill(`${TAG} AM check`);
     await page.getByLabel("Temperature (°C)").fill("12.5");
     await page.getByRole("button", { name: "Save check" }).click();
-    await expect(page).toHaveURL(/\/protected\/today/);
+    await expect(page).toHaveURL(/\/protected\/home/);
     if (db) {
       const rows = dbQuery(
         `select system_id from core.daily_checks where notes = '${TAG} AM check'`,
@@ -62,13 +64,13 @@ test.describe("admin can create logs in every form (operational log RBAC tiers)"
 
   test("admin feeding log lands in feeding_logs", async ({ page }) => {
     await loginAs(page, ADMIN_EMAIL, ADMIN_PASSWORD);
-    await page.goto("/protected/feeding/new");
+    await page.goto("/protected/daily-operations?type=feeding");
     await page.getByLabel("Animal").selectOption(String(ssl25AnimalId));
     await page.getByRole("button", { name: "Krill" }).click();
     await page.getByLabel("Amount").fill("2 krill");
     await page.getByLabel("Notes").fill(`${TAG} feeding`);
     await page.getByRole("button", { name: "Save feeding" }).click();
-    await expect(page).toHaveURL(/\/protected\/today/);
+    await expect(page).toHaveURL(/\/protected\/home/);
     if (db) {
       const rows = dbQuery(
         `select animal_id from core.feeding_logs where notes = '${TAG} feeding'`,
@@ -81,13 +83,15 @@ test.describe("admin can create logs in every form (operational log RBAC tiers)"
     page,
   }) => {
     await loginAs(page, ADMIN_EMAIL, ADMIN_PASSWORD);
-    await page.goto(`/protected/water-quality/new?system=${grahamSystemId}`);
+    await page.goto(
+      `/protected/daily-operations?type=water-quality&system=${grahamSystemId}`,
+    );
     await page.getByRole("button", { name: "Apex probe" }).click();
     await page.getByLabel("pH", { exact: true }).fill("8.1");
     await page.getByLabel("Salinity").fill("32");
     await page.getByLabel("Notes").fill(`${TAG} water quality`);
     await page.getByRole("button", { name: "Save reading" }).click();
-    await expect(page).toHaveURL(/\/protected\/today/);
+    await expect(page).toHaveURL(/\/protected\/home/);
     if (db) {
       const rows = dbQuery(
         `select system_id from core.water_quality_readings where notes = '${TAG} water quality'`,
@@ -98,13 +102,16 @@ test.describe("admin can create logs in every form (operational log RBAC tiers)"
 
   test("admin chemical addition lands in chemical_additions", async ({ page }) => {
     await loginAs(page, ADMIN_EMAIL, ADMIN_PASSWORD);
-    await page.goto(`/protected/chemical-additions/new?system=${grahamSystemId}`);
-    await page.getByLabel("Chemical").fill(`${TAG} baking soda`);
+    await page.goto(
+      `/protected/daily-operations?type=chemical-addition&system=${grahamSystemId}`,
+    );
+    await page.getByRole("radio", { name: "Other", exact: true }).click();
+    await page.getByLabel("Chemical/product name").fill(`${TAG} baking soda`);
     await page.getByLabel("Amount").fill("50");
     await page.getByLabel("Unit").fill("mL");
     await page.getByLabel("Reason").fill(`${TAG} chemical addition`);
-    await page.getByRole("button", { name: "Save addition" }).click();
-    await expect(page).toHaveURL(/\/protected\/today/);
+    await page.getByRole("button", { name: "Save system addition" }).click();
+    await expect(page).toHaveURL(/\/protected\/home/);
     if (db) {
       const rows = dbQuery(
         `select system_id from core.chemical_additions where reason = '${TAG} chemical addition'`,
@@ -115,7 +122,7 @@ test.describe("admin can create logs in every form (operational log RBAC tiers)"
 
   test("admin health observation lands in health_observations", async ({ page }) => {
     await loginAs(page, ADMIN_EMAIL, ADMIN_PASSWORD);
-    await page.goto("/protected/health-observations/new");
+    await page.goto("/protected/daily-operations?type=health-observation");
     await page.getByLabel("Animal").selectOption(String(ssl25AnimalId));
     await page.getByRole("button", { name: "Low" }).click();
     await page.getByLabel("Notes").fill(`${TAG} health obs`);
@@ -175,12 +182,14 @@ test.describe("volunteer can no longer create logs (operational log RBAC tiers)"
     page,
   }) => {
     await loginAs(page, VOLUNTEER_EMAIL, VOLUNTEER_PASSWORD);
-    await page.goto(`/protected/checks/new?system=${grahamSystemId}&type=AM`);
+    await page.goto(
+      `/protected/daily-operations?type=daily-check&system=${grahamSystemId}&check=AM`,
+    );
     await page.getByLabel("Notes").fill(`${TAG} AM check`);
     await page.getByLabel("Temperature (°C)").fill("12.5");
     await page.getByRole("button", { name: "Save check" }).click();
     await expect(page.getByText(/row-level security|permission denied/i)).toBeVisible();
-    await expect(page).toHaveURL(/\/protected\/checks\/new/);
+    await expect(page).toHaveURL(/\/protected\/daily-operations\?type=daily-check/);
     if (db) {
       const rows = dbQuery(
         `select id from core.daily_checks where notes = '${TAG} AM check'`,
@@ -193,14 +202,14 @@ test.describe("volunteer can no longer create logs (operational log RBAC tiers)"
     page,
   }) => {
     await loginAs(page, VOLUNTEER_EMAIL, VOLUNTEER_PASSWORD);
-    await page.goto("/protected/feeding/new");
+    await page.goto("/protected/daily-operations?type=feeding");
     await page.getByLabel("Animal").selectOption(String(ssl25AnimalId));
     await page.getByRole("button", { name: "Krill" }).click();
     await page.getByLabel("Amount").fill("2 krill");
     await page.getByLabel("Notes").fill(`${TAG} feeding`);
     await page.getByRole("button", { name: "Save feeding" }).click();
     await expect(page.getByText(/row-level security|permission denied/i)).toBeVisible();
-    await expect(page).toHaveURL(/\/protected\/feeding\/new/);
+    await expect(page).toHaveURL(/\/protected\/daily-operations\?type=feeding/);
     if (db) {
       const rows = dbQuery(
         `select id from core.feeding_logs where notes = '${TAG} feeding'`,
@@ -213,14 +222,16 @@ test.describe("volunteer can no longer create logs (operational log RBAC tiers)"
     page,
   }) => {
     await loginAs(page, VOLUNTEER_EMAIL, VOLUNTEER_PASSWORD);
-    await page.goto(`/protected/water-quality/new?system=${grahamSystemId}`);
+    await page.goto(
+      `/protected/daily-operations?type=water-quality&system=${grahamSystemId}`,
+    );
     await page.getByRole("button", { name: "Apex probe" }).click();
     await page.getByLabel("pH", { exact: true }).fill("8.1");
     await page.getByLabel("Salinity").fill("32");
     await page.getByLabel("Notes").fill(`${TAG} water quality`);
     await page.getByRole("button", { name: "Save reading" }).click();
     await expect(page.getByText(/row-level security|permission denied/i)).toBeVisible();
-    await expect(page).toHaveURL(/\/protected\/water-quality\/new/);
+    await expect(page).toHaveURL(/\/protected\/daily-operations\?type=water-quality/);
     if (db) {
       const rows = dbQuery(
         `select id from core.water_quality_readings where notes = '${TAG} water quality'`,
@@ -233,14 +244,19 @@ test.describe("volunteer can no longer create logs (operational log RBAC tiers)"
     page,
   }) => {
     await loginAs(page, VOLUNTEER_EMAIL, VOLUNTEER_PASSWORD);
-    await page.goto(`/protected/chemical-additions/new?system=${grahamSystemId}`);
-    await page.getByLabel("Chemical").fill(`${TAG} baking soda`);
+    await page.goto(
+      `/protected/daily-operations?type=chemical-addition&system=${grahamSystemId}`,
+    );
+    await page.getByRole("radio", { name: "Other", exact: true }).click();
+    await page.getByLabel("Chemical/product name").fill(`${TAG} baking soda`);
     await page.getByLabel("Amount").fill("50");
     await page.getByLabel("Unit").fill("mL");
     await page.getByLabel("Reason").fill(`${TAG} chemical addition`);
-    await page.getByRole("button", { name: "Save addition" }).click();
+    await page.getByRole("button", { name: "Save system addition" }).click();
     await expect(page.getByText(/row-level security|permission denied/i)).toBeVisible();
-    await expect(page).toHaveURL(/\/protected\/chemical-additions\/new/);
+    await expect(page).toHaveURL(
+      /\/protected\/daily-operations\?type=chemical-addition/,
+    );
     if (db) {
       const rows = dbQuery(
         `select id from core.chemical_additions where reason = '${TAG} chemical addition'`,
@@ -253,13 +269,15 @@ test.describe("volunteer can no longer create logs (operational log RBAC tiers)"
     page,
   }) => {
     await loginAs(page, VOLUNTEER_EMAIL, VOLUNTEER_PASSWORD);
-    await page.goto("/protected/health-observations/new");
+    await page.goto("/protected/daily-operations?type=health-observation");
     await page.getByLabel("Animal").selectOption(String(ssl25AnimalId));
     await page.getByRole("button", { name: "Low" }).click();
     await page.getByLabel("Notes").fill(`${TAG} health obs`);
     await page.getByRole("button", { name: "Save observation" }).click();
     await expect(page.getByText(/row-level security|permission denied/i)).toBeVisible();
-    await expect(page).toHaveURL(/\/protected\/health-observations\/new/);
+    await expect(page).toHaveURL(
+      /\/protected\/daily-operations\?type=health-observation/,
+    );
     if (db) {
       const rows = dbQuery(
         `select id from core.health_observations where notes = '${TAG} health obs'`,
@@ -303,12 +321,14 @@ test.describe("viewer remains read-only (operational log RBAC tiers, unchanged)"
       ? dbQuery(`select id from core.systems where name = 'Graham'`)
       : [];
     const grahamSystemId = Number(systemRows[0]?.id) || "";
-    await page.goto(`/protected/checks/new?system=${grahamSystemId}&type=AM`);
+    await page.goto(
+      `/protected/daily-operations?type=daily-check&system=${grahamSystemId}&check=AM`,
+    );
     await page.getByLabel("Notes").fill(`${TAG} AM check`);
     await page.getByLabel("Temperature (°C)").fill("12.5");
     await page.getByRole("button", { name: "Save check" }).click();
     await expect(page.getByText(/row-level security|permission denied/i)).toBeVisible();
-    await expect(page).toHaveURL(/\/protected\/checks\/new/);
+    await expect(page).toHaveURL(/\/protected\/daily-operations\?type=daily-check/);
     if (db) {
       const rows = dbQuery(
         `select id from core.daily_checks where notes = '${TAG} AM check'`,
@@ -328,9 +348,8 @@ test.describe("viewer remains read-only (operational log RBAC tiers, unchanged)"
 });
 
 // DB-level matrix across every table touched by the migration. Necessary because the app
-// has no edit/delete UI at all yet (only */new create routes exist for every log type —
-// see app/protected/{checks,feeding,water-quality,chemical-additions,
-// health-observations}/new and the daily-operations Maintenance tab), so UPDATE/DELETE
+// has no edit/delete UI at all yet (create forms live in the Daily Operations hub),
+// so UPDATE/DELETE
 // permissions can't be exercised by clicking through the app; only by calling PostgREST
 // directly as each authenticated role, same as the app's own createClient() would.
 // Seeds one row per table as admin (unaffected by this migration, so a safe writer),
