@@ -6,6 +6,18 @@
       "sourceType": "github",
       "skillPath": "plugins/frontend-design/skills/frontend-design/SKILL.md",
       "computedHash": "b8c8329ad9b98fa57f4a279e37bdf4a0d55743140e54bb7da3e340d754d75b43"
+    },
+    "supabase": {
+      "source": "supabase/agent-skills",
+      "sourceType": "github",
+      "skillPath": "skills/supabase/SKILL.md",
+      "computedHash": "bcbf1c542906f109e9dc3457c389a9cc85854eb90fa6b5cba2e5c131140305e1"
+    },
+    "supabase-postgres-best-practices": {
+      "source": "supabase/agent-skills",
+      "sourceType": "github",
+      "skillPath": "skills/supabase-postgres-best-practices/SKILL.md",
+      "computedHash": "e14e276241805c97dbcfe40dcbea1a3035269cc7293cac4b1832dda41a835e60"
     }
   }
 }
