@@ -102,13 +102,13 @@ not only client validation.
 Defaults alone do not make provenance immutable. The migration must prevent clients from
 overriding `recorded_by`, `data_source`, or `entered_at` on live entry, tie `recorded_by`
 to the authenticated profile, and prevent ordinary updates from rewriting attribution or
-provenance. `updated_at` is not an audit trail; correction actor, reason, action, and
-before/after values belong in the immutable audit log described in Section 8.
+provenance. A general activity audit is deferred as project-wide work; the Star treatment
+feature does not maintain a feature-specific audit log.
 
 After creation, `animal_id`, `tank_id`, `administered_at`, `recorded_by`, `data_source`,
-and `entered_at` are immutable. Corrections may change treatment details and notes with a
-required audit reason. If the wrong star, tank, or event time was recorded, Admin or
-Technician hard-deletes the incorrect row with a required reason and creates a replacement.
+and `entered_at` are immutable. Corrections may change treatment details and notes. If the
+wrong star, tank, or event time was recorded, Admin or Technician hard-deletes the
+incorrect row and creates a replacement.
 
 ## 6. Eligibility
 
@@ -155,9 +155,9 @@ not rely only on older prose documentation.
 
 | Role | Read | Create | Update | Delete |
 |---|---:|---:|---:|---:|
-| Admin | Yes | Yes | Yes, audited | Hard delete, audited |
-| Technician | Yes | Yes | Yes, audited | Hard delete, audited |
-| Volunteer | Yes | Yes | Yes, audited | No |
+| Admin | Yes | Yes | Yes | Hard delete |
+| Technician | Yes | Yes | Yes | Hard delete |
+| Volunteer | Yes | Yes | Yes | No |
 | Viewer | No | No | No | No |
 | Unauthenticated | No | No | No | No |
 
@@ -165,19 +165,15 @@ Blocked users, including Viewers and unauthenticated users, must not be able to 
 Star treatment navigation, form, or data. RLS must independently enforce the same rule.
 
 Admin and Technician can hard-delete treatments; Volunteer cannot delete. All creates and
-updates, plus Admin/Technician hard deletes, are written to a separate
-`star_treatment_audit_log` with the treatment ID, actor, action, timestamp, and before/after
-values. A `hard_delete` audit event must capture the complete treatment before the row is
-deleted, within the same transaction. The retained audit entry must not depend on a
-foreign key to the deleted row. Animal deletion must not cascade into treatment-history
+updates operate on the current treatment row, while deletes remove it. A future general
+activity audit is deferred as a project-wide capability rather than implemented as a
+Star-treatment-specific table. Animal deletion must not cascade into treatment-history
 deletion.
 
 Treatment create, update, and delete operations must go through narrowly granted database
 functions/RPCs. Those functions validate role, active status, star eligibility, current
-tank, immutable provenance, and audit writes atomically. Direct table writes from the
-browser should be revoked for this table. The audit table is append-only through a locked
-`SECURITY DEFINER` trigger/function; API roles cannot insert, update, delete, or truncate
-it. Audit reads should be Admin-only unless a later workflow requires broader access.
+tank, and immutable provenance. Direct table writes from the browser should be revoked for
+this table.
 
 This table is an explicit exception to the repository's generic operational-log policy:
 Admin and Technician get full mutation functions, Volunteer gets create/update functions,
@@ -185,10 +181,10 @@ and Viewer gets no grant or RLS path. UI hiding is supplemental; `core` is Data 
 so grants, RLS, and function permissions are the actual boundary.
 
 Every mutation function must use a fixed safe `search_path`, revoke default `PUBLIC`
-execute, and grant `EXECUTE` only to the intended native roles. Update and delete functions
-require a nonblank correction reason that is stored in the audit row. The feature-specific
-matrix in this document is authoritative; implementation must update conflicting role
-prose and RBAC tests in the same change.
+execute, and grant `EXECUTE` only to the intended native roles. Update accepts treatment
+details only, and delete accepts only the treatment ID; neither RPC requires a reason. The
+feature-specific matrix in this document is authoritative; implementation must update
+conflicting role prose and RBAC tests in the same change.
 
 ## 9. Daily Operations Form
 
@@ -265,9 +261,9 @@ treatment data. The route, server action, and RLS must still reject direct acces
 The first release also needs a treatment-specific list/detail route for authorized users
 because update and hard-delete permissions are otherwise unreachable. The list supports
 date range, star, and treatment-type filters so older records remain discoverable. Edit
-requires a correction reason. Delete confirmation names the star, treatment, and
-administration time and requires a reason; only Admin and Technician see it. The correction
-reason belongs in the audit entry, not the compact treatment row.
+changes treatment details without exposing immutable provenance fields. Delete confirmation
+names the star, treatment, and administration time and clearly states that deletion cannot
+be undone; only Admin and Technician see it.
 
 ## 10. Chemical Addition Changes
 
@@ -325,32 +321,24 @@ Create a bundle such as:
 ```text
 supabase/seeds/20260920_graham/
   README.md
-  import.psql
   graham_water_quality.csv
   graham_chemical_additions.csv
 ```
 
-The two import CSVs contain only already-filtered destination values. Graham system lookup,
-import attribution, timezone conversion, validation, duplicate checks, and transactional
-inserts belong in the single loader. No Probiotics seed is included. Repository-local CSVs
-require `psql`/`\copy`; the Dashboard SQL Editor cannot read a local CSV path.
+The two import CSVs contain only already-filtered destination values and exact destination
+table headers for direct Supabase Table Editor upload. No Probiotics seed is included.
 
 Normalize date-only Graham records using `America/Los_Angeles` explicitly before storing
-`timestamptz`; do not rely on the SQL session timezone. Do not attribute reimported rows to
-`test-admin@ssl.dev`. `import.psql` requires an explicit active Admin profile ID because
-command-line import has no `auth.uid()` context. `recorded_by` is that real importer. The
-loader must abort safely on duplicate source rows or equivalent existing records.
+`timestamptz`; do not rely on the SQL session timezone. Resolve and embed the target Graham
+system ID and active Admin profile ID after each hosted schema rebuild.
 
 ### Hosted reconciliation
 
-1. Stage the exact old payload and compare every value with null-safe equality; never use
-  only Graham + date range + `data_source = 'import'` as a delete predicate.
-2. Materialize candidate IDs for human review and assert exactly 270 water-quality and 443
-  chemical-addition matches, including the 242/201 chemical split. Abort on any mismatch.
-3. Take a fresh hosted backup.
-4. Import only the reviewed water-quality and CBalance CSVs. Probiotics are excluded from
+1. Rebuild the disposable hosted schemas without the old import migration.
+2. Confirm the Graham destination tables are empty and resolve the current system/profile IDs.
+3. Import only the reviewed water-quality and CBalance CSVs. Probiotics are excluded from
   this seed and cannot enter `star_treatments` until each can be tied to a named star.
-5. Verify row counts, timestamps, attribution, representative multiline/null rows, and
+4. Verify row counts, timestamps, attribution, representative multiline/null rows, and
   absence of duplicate source rows.
 
 For future imports, add durable import identity such as an import batch and source-row key
@@ -363,7 +351,8 @@ table but is necessary before import tooling becomes a recurring workflow.
   import migration, and rebuild the disposable hosted schemas from local migration history.
 2. Finalize treatment-time location and amount/concentration semantics from this review.
 3. Add treatment options, custom-value normalization, and validation rules.
-4. Design the audit log and RPC-backed transactional create/update/hard-delete behavior.
+4. Design RPC-backed transactional create/update/hard-delete behavior and immutable
+  provenance enforcement.
 5. Add the `star_treatments` migration, indexes, grants, RLS, and generated types.
 6. Verify the migration against a local or scratch Supabase project.
 7. Build the URL-backed Star treatment panel in Daily Operations and clarify System
@@ -386,10 +375,9 @@ Required focused coverage:
 - Server-controlled attribution/provenance and rejection of direct table writes.
 - Deep-link/default precedence and double-submit prevention.
 - Chemical-addition copy and navigation clearly separating the two workflows.
-- Custom treatment entry, unit text boxes/defaults, role visibility, audit entries, and
-  Admin/Technician hard deletion.
-- Atomic create/update/delete plus audit behavior, immutable audit records, and correction
-  reasons.
+- Custom treatment entry, unit text boxes/defaults, role visibility, current-row updates,
+  and Admin/Technician hard deletion.
+- RPC-only create/update/delete behavior, immutable provenance fields, and role controls.
 - Keyboard, screen-reader labeling, phone-width, and tablet behavior.
 
 Required release verification:
@@ -415,7 +403,8 @@ the result against the source CSVs.
 - Admin, Technician, and Volunteer can read, create, and update treatments. Volunteer
   cannot delete. Viewer, unauthenticated, and other blocked users cannot view the feature
   or its data.
-- Admin and Technician can hard-delete treatments. Changes and hard deletes are audited.
+- Admin and Technician can hard-delete treatments. A future general activity audit is
+  deferred as project-wide work.
 - Reanalysis recommends storing treatment-time `tank_id`. Omitting it would move historical
   treatments whenever `animals.tank_id` changes.
 - Historical Probiotics rows without a known treated star are unresolved. After exact
@@ -440,9 +429,6 @@ the result against the source CSVs.
 - **Missing role fixture:** local seed creates Admin, Technician, and Volunteer, while the
   test-account documentation expects Viewer and omits Volunteer. Add a Viewer fixture and
   align the documented matrix.
-- **Future-table default grants:** current default privileges give Admin and Technician
-  full access to every new `core` table. Explicitly revoke mutation access on the audit
-  table after creation.
 - **Reference data in migrations:** systems/species, Graham tanks, and SSL25 are also
   inserted by migrations. They are not historical operational logs, so do not mix their
   relocation into this feature, but review them separately against the schema-only
@@ -455,4 +441,4 @@ the result against the source CSVs.
   table prematurely.
 - **History is a placeholder:** keep full cross-log filters and export out of the first
   implementation; build only the treatment discovery surface required for correction and
-  audited deletion.
+  authorized deletion.

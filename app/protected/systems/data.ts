@@ -1,5 +1,10 @@
 import { SYSTEMS } from "@/lib/config/systems";
-import { WATER_QUALITY_PARAMETERS, type WaterQualityParameter } from "@/lib/config/reference-data";
+import {
+  WATER_QUALITY_PARAMETERS,
+  type HealthIssueType,
+  type MaintenanceTaskType,
+  type WaterQualityParameter,
+} from "@/lib/config/reference-data";
 import { createClient } from "@/lib/supabase/server";
 import type {
   ChemicalAdditionPoint,
@@ -30,7 +35,7 @@ const PACIFIC_DAY = new Intl.DateTimeFormat("en-CA", {
   day: "2-digit",
 });
 
-const ISSUE_LABELS: Record<string, string> = {
+const ISSUE_LABELS: Record<HealthIssueType, string> = {
   arm_drop: "Arm drop",
   spine_drop: "Spine drop",
   lesion: "Lesion",
@@ -39,7 +44,7 @@ const ISSUE_LABELS: Record<string, string> = {
   other: "Other",
 };
 
-const TASK_LABELS: Record<string, string> = {
+const TASK_LABELS: Record<MaintenanceTaskType, string> = {
   filter_change: "Filter change",
   sump_flush: "Sump flush",
   other: "Other",
@@ -102,13 +107,13 @@ export async function fetchAllSystemsDetailData(): Promise<Record<string, System
       .order("added_at", { ascending: false }),
     supabase
       .from("health_observations")
-      .select("id, observed_at, severity, notes, has_photo, tanks!inner(system_id, name)")
+      .select("id, observed_at, severity, issues, notes, has_photo, tanks!inner(system_id, name)")
       .in("tanks.system_id", systemIds)
       .gte("observed_at", since14d)
       .order("observed_at", { ascending: false }),
     supabase
       .from("maintenance_logs")
-      .select("id, system_id, performed_at, notes")
+      .select("id, system_id, performed_at, task_type, notes")
       .in("system_id", systemIds)
       .gte("performed_at", since14d)
       .order("performed_at", { ascending: false }),
@@ -140,40 +145,6 @@ export async function fetchAllSystemsDetailData(): Promise<Record<string, System
       pmDoneToday: row ? pmDoneBySystem.has(row.id) : false,
     };
   });
-
-  // Shared lookups (issue labels / task labels) are built once across every
-  // system's observations/logs instead of once per system.
-  const healthObsIds = (healthObsRaw ?? []).map((h) => h.id);
-  const { data: issueRows } =
-    healthObsIds.length > 0
-      ? await supabase
-          .from("health_observation_issues")
-          .select("health_observation_id, issue")
-          .in("health_observation_id", healthObsIds)
-      : { data: [] as { health_observation_id: number; issue: string }[] };
-
-  const issuesByObservation = new Map<number, string[]>();
-  for (const row of issueRows ?? []) {
-    const list = issuesByObservation.get(row.health_observation_id) ?? [];
-    list.push(ISSUE_LABELS[row.issue] ?? row.issue);
-    issuesByObservation.set(row.health_observation_id, list);
-  }
-
-  const maintenanceIds = (maintenanceRaw ?? []).map((m) => m.id);
-  const { data: taskRows } =
-    maintenanceIds.length > 0
-      ? await supabase
-          .from("maintenance_log_tasks")
-          .select("maintenance_log_id, task_type")
-          .in("maintenance_log_id", maintenanceIds)
-      : { data: [] as { maintenance_log_id: number; task_type: string }[] };
-
-  const tasksByLog = new Map<number, string[]>();
-  for (const row of taskRows ?? []) {
-    const list = tasksByLog.get(row.maintenance_log_id) ?? [];
-    list.push(TASK_LABELS[row.task_type] ?? row.task_type);
-    tasksByLog.set(row.maintenance_log_id, list);
-  }
 
   const result: Record<string, SystemDetailData> = {};
 
@@ -248,7 +219,9 @@ export async function fetchAllSystemsDetailData(): Promise<Record<string, System
           notes: r.notes,
           hasPhoto: r.has_photo,
           tankName: tank?.name ?? "Unknown tank",
-          issues: issuesByObservation.get(r.id) ?? [],
+          issues: (r.issues as HealthIssueType[]).map(
+            (issue) => ISSUE_LABELS[issue] ?? issue,
+          ),
         };
       });
 
@@ -258,7 +231,8 @@ export async function fetchAllSystemsDetailData(): Promise<Record<string, System
         id: r.id,
         performedAt: r.performed_at,
         notes: r.notes,
-        taskTypes: tasksByLog.get(r.id) ?? [],
+        taskType:
+          TASK_LABELS[r.task_type as MaintenanceTaskType] ?? r.task_type,
       }));
 
     const highlights = buildHighlights({
@@ -333,7 +307,7 @@ function buildHighlights({
       id: `maintenance-${m.id}`,
       kind: "maintenance_log",
       at: m.performedAt,
-      title: m.taskTypes.length > 0 ? m.taskTypes.join(", ") : "Maintenance",
+      title: m.taskType,
       detail: m.notes,
     });
   }

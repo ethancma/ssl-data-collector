@@ -48,11 +48,6 @@ const editSchema = z
       .string()
       .max(50, "Keep the concentration unit under 50 characters"),
     notes: z.string().max(5000, "Keep notes under 5000 characters"),
-    correctionReason: z
-      .string()
-      .trim()
-      .min(1, "Enter a correction reason")
-      .max(1000, "Keep the correction reason under 1000 characters"),
   })
   .superRefine((values, context) => {
     const hasAmount = values.amount.trim() !== "";
@@ -87,12 +82,6 @@ const editSchema = z
       });
     }
   });
-
-const deleteReasonSchema = z
-  .string()
-  .trim()
-  .min(1, "Enter a deletion reason")
-  .max(1000, "Keep the deletion reason under 1000 characters");
 
 type EditInput = z.input<typeof editSchema>;
 type EditValues = z.output<typeof editSchema>;
@@ -129,7 +118,6 @@ export function StarTreatmentRecord({
       : "other";
   const isCanonical = defaultTreatmentChoice !== "other";
   const [updateMessage, setUpdateMessage] = useState("");
-  const [deleteReason, setDeleteReason] = useState("");
   const [deleteError, setDeleteError] = useState("");
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleted, setDeleted] = useState(false);
@@ -152,7 +140,6 @@ export function StarTreatmentRecord({
       concentration: treatment.concentration ?? "",
       concentrationUnit: treatment.concentrationUnit ?? "",
       notes: treatment.notes ?? "",
-      correctionReason: "",
     },
   });
 
@@ -176,7 +163,6 @@ export function StarTreatmentRecord({
       p_concentration_unit:
         concentration === null ? null : values.concentrationUnit.trim(),
       p_notes: values.notes.trim() || null,
-      p_correction_reason: values.correctionReason,
     });
 
     if (error) {
@@ -184,24 +170,16 @@ export function StarTreatmentRecord({
       return;
     }
 
-    setValue("correctionReason", "");
     setUpdateMessage("Correction saved.");
     router.refresh();
   };
 
   const onDelete = async () => {
     setDeleteError("");
-    const parsedReason = deleteReasonSchema.safeParse(deleteReason);
-    if (!parsedReason.success) {
-      setDeleteError(parsedReason.error.issues[0]?.message ?? "Enter a deletion reason");
-      return;
-    }
-
     setIsDeleting(true);
     const supabase = createClient();
     const { error } = await supabase.rpc("hard_delete_star_treatment", {
       p_treatment_id: treatment.id,
-      p_correction_reason: parsedReason.data,
     });
 
     if (error) {
@@ -431,27 +409,6 @@ export function StarTreatmentRecord({
               )}
             </div>
 
-            <div className="grid gap-2">
-              <Label htmlFor={fieldId("correction-reason")}>Correction reason</Label>
-              <textarea
-                id={fieldId("correction-reason")}
-                rows={2}
-                className={cn(
-                  "flex min-h-20 w-full rounded-md border border-input bg-transparent px-3 py-2 text-base shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring md:text-sm",
-                )}
-                aria-describedby={
-                  errors.correctionReason ? fieldId("correction-reason-error") : undefined
-                }
-                aria-invalid={Boolean(errors.correctionReason)}
-                {...register("correctionReason")}
-              />
-              {errors.correctionReason && (
-                <p id={fieldId("correction-reason-error")} className="text-sm text-red-500">
-                  {errors.correctionReason.message}
-                </p>
-              )}
-            </div>
-
             {updateMessage && (
               <p
                 className={cn(
@@ -477,18 +434,9 @@ export function StarTreatmentRecord({
               <div className="grid max-w-2xl gap-3 pt-3">
                 <p className="text-sm">
                   Permanently delete {displayTreatmentType(treatment.treatmentType)} for{" "}
-                  {treatment.animalName} at {formatLabDateTime(treatment.administeredAt)}?
+                  {treatment.animalName} at {formatLabDateTime(treatment.administeredAt)}? This
+                  cannot be undone.
                 </p>
-                <Label htmlFor={fieldId("delete-reason")}>Deletion reason</Label>
-                <textarea
-                  id={fieldId("delete-reason")}
-                  rows={2}
-                  value={deleteReason}
-                  onChange={(event) => setDeleteReason(event.target.value)}
-                  className="flex min-h-20 w-full rounded-md border border-input bg-transparent px-3 py-2 text-base shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring md:text-sm"
-                  aria-describedby={deleteError ? fieldId("delete-error") : undefined}
-                  aria-invalid={Boolean(deleteError)}
-                />
                 {deleteError && (
                   <p id={fieldId("delete-error")} className="text-sm text-red-500" role="alert">
                     {deleteError}

@@ -1,7 +1,7 @@
 /**
  * Operational log RBAC tiers (supabase/migrations/20260910120000_operational_log_rbac_tiers.sql):
  * admin/technician full CRUD, volunteer insert dropped to read+update, viewer/anon
- * unchanged, plus the DB-level SELECT/UPDATE/DELETE matrix across all 9 affected tables.
+ * unchanged, plus the DB-level SELECT/UPDATE/DELETE matrix across all 7 affected tables.
  * Extend this file for further role/RLS-tier changes; see ../SKILL.md for the full
  * procedure.
  */
@@ -36,7 +36,6 @@ test.describe("admin can create logs in every form (operational log RBAC tiers)"
   let ssl25AnimalId: number;
 
   test.beforeAll(async () => {
-    if (!db) return;
     grahamSystemId = Number(
       dbQuery(`select id from core.systems where name = 'Graham'`)[0]?.id,
     );
@@ -128,12 +127,12 @@ test.describe("admin can create logs in every form (operational log RBAC tiers)"
     await page.getByLabel("Notes").fill(`${TAG} health obs`);
     await page.getByRole("button", { name: "Save observation" }).click();
     await expect(page).toHaveURL(/\/protected\/(today|home)/);
-    if (db) {
-      const rows = dbQuery(
-        `select animal_id from core.health_observations where notes = '${TAG} health obs'`,
-      );
-      expect(Number(rows[0]?.animal_id)).toBe(ssl25AnimalId);
-    }
+    const rows = dbQuery(
+      `select animal_id, to_json(issues) as issues
+       from core.health_observations where notes = '${TAG} health obs'`,
+    );
+    expect(Number(rows[0]?.animal_id)).toBe(ssl25AnimalId);
+    expect(rows[0]?.issues).toEqual([]);
   });
 
   test("admin maintenance log lands in maintenance_logs", async ({ page }) => {
@@ -141,15 +140,16 @@ test.describe("admin can create logs in every form (operational log RBAC tiers)"
     await page.goto("/protected/daily-operations");
     await page.getByRole("button", { name: "Maintenance" }).click();
     await page.getByLabel("System").selectOption(String(grahamSystemId));
+    await page.getByLabel("Sump flush").check();
     await page.getByLabel("Notes").fill(`${TAG} maintenance`);
     await page.getByRole("button", { name: "Save maintenance log" }).click();
     await expect(page).toHaveURL(/\/protected\/home/);
-    if (db) {
-      const rows = dbQuery(
-        `select system_id from core.maintenance_logs where notes = '${TAG} maintenance'`,
-      );
-      expect(Number(rows[0]?.system_id)).toBe(grahamSystemId);
-    }
+    const rows = dbQuery(
+      `select system_id, task_type
+       from core.maintenance_logs where notes = '${TAG} maintenance'`,
+    );
+    expect(Number(rows[0]?.system_id)).toBe(grahamSystemId);
+    expect(rows[0]?.task_type).toBe("sump_flush");
   });
 });
 
@@ -169,7 +169,6 @@ test.describe("volunteer can no longer create logs (operational log RBAC tiers)"
   let ssl25AnimalId: number;
 
   test.beforeAll(async () => {
-    if (!db) return;
     grahamSystemId = Number(
       dbQuery(`select id from core.systems where name = 'Graham'`)[0]?.id,
     );
@@ -278,12 +277,10 @@ test.describe("volunteer can no longer create logs (operational log RBAC tiers)"
     await expect(page).toHaveURL(
       /\/protected\/daily-operations\?type=health-observation/,
     );
-    if (db) {
-      const rows = dbQuery(
-        `select id from core.health_observations where notes = '${TAG} health obs'`,
-      );
-      expect(rows.length).toBe(0);
-    }
+    const rows = dbQuery(
+      `select id from core.health_observations where notes = '${TAG} health obs'`,
+    );
+    expect(rows.length).toBe(0);
   });
 
   test("volunteer maintenance log submit is rejected by RLS, no maintenance_logs row created", async ({
@@ -293,20 +290,19 @@ test.describe("volunteer can no longer create logs (operational log RBAC tiers)"
     await page.goto("/protected/daily-operations");
     await page.getByRole("button", { name: "Maintenance" }).click();
     await page.getByLabel("System").selectOption(String(grahamSystemId));
+    await page.getByLabel("Other").check();
     await page.getByLabel("Notes").fill(`${TAG} maintenance`);
     await page.getByRole("button", { name: "Save maintenance log" }).click();
     await expect(page.getByText(/row-level security|permission denied/i)).toBeVisible();
-    if (db) {
-      const rows = dbQuery(
-        `select id from core.maintenance_logs where notes = '${TAG} maintenance'`,
-      );
-      expect(rows.length).toBe(0);
-    }
+    const rows = dbQuery(
+      `select id from core.maintenance_logs where notes = '${TAG} maintenance'`,
+    );
+    expect(rows.length).toBe(0);
   });
 });
 
 // Viewer's tier is unchanged by this migration (select-only, before and after) — one
-// representative form here, full coverage across all 9 tables in the DB-level matrix
+// representative form here, full coverage across all 7 tables in the DB-level matrix
 // describe below.
 test.describe("viewer remains read-only (operational log RBAC tiers, unchanged)", () => {
   test.describe.configure({ mode: "serial" });
@@ -357,7 +353,6 @@ test.describe("viewer remains read-only (operational log RBAC tiers, unchanged)"
 // against that row.
 test.describe("operational log RBAC tiers: SELECT/UPDATE/DELETE matrix (DB-level)", () => {
   test.describe.configure({ mode: "serial" });
-  test.skip(!db, "SUPABASE_SERVICE_ROLE_KEY not set");
   test.skip(!ADMIN_PASSWORD, "E2E_TEST_ADMIN_PASSWORD not set");
   test.skip(!TECH_PASSWORD, "E2E_TEST_TECH_PASSWORD not set");
   test.skip(!VOLUNTEER_PASSWORD, "E2E_TEST_VOLUNTEER_PASSWORD not set");
@@ -383,6 +378,8 @@ test.describe("operational log RBAC tiers: SELECT/UPDATE/DELETE matrix (DB-level
     table: string;
     seedSql: (tag: string) => string;
     updatePatch: Record<string, unknown>;
+    selectColumns?: string;
+    assertRead?: (row: Record<string, unknown>) => void;
   };
 
   // seedSql takes a tag so each table can seed two independent rows: one for the
@@ -409,9 +406,16 @@ test.describe("operational log RBAC tiers: SELECT/UPDATE/DELETE matrix (DB-level
     },
     {
       table: "health_observations",
-      seedSql: (tag) => `insert into core.health_observations (animal_id, tank_id, severity, notes)
-        values (${ssl25AnimalId ?? "null"}, ${ssl25TankId ?? "null"}, 'low', '${tag}') returning id`,
-      updatePatch: { notes: `${TAG} health_observations updated` },
+      seedSql: (tag) => `insert into core.health_observations (animal_id, tank_id, severity, issues, notes)
+        values (${ssl25AnimalId ?? "null"}, ${ssl25TankId ?? "null"}, 'low', array['lesion', 'arm_curling']::text[], '${tag}') returning id`,
+      updatePatch: { issues: ["arm_drop", "other"] },
+      selectColumns: "id, issues",
+      assertRead: (row) => {
+        expect([
+          ["lesion", "arm_curling"],
+          ["arm_drop", "other"],
+        ]).toContainEqual(row.issues);
+      },
     },
     {
       table: "feeding_logs",
@@ -421,9 +425,13 @@ test.describe("operational log RBAC tiers: SELECT/UPDATE/DELETE matrix (DB-level
     },
     {
       table: "maintenance_logs",
-      seedSql: (tag) => `insert into core.maintenance_logs (system_id, notes)
-        values (${grahamSystemId ?? "null"}, '${tag}') returning id`,
-      updatePatch: { notes: `${TAG} maintenance_logs updated` },
+      seedSql: (tag) => `insert into core.maintenance_logs (system_id, task_type, notes)
+        values (${grahamSystemId ?? "null"}, 'filter_change', '${tag}') returning id`,
+      updatePatch: { task_type: "sump_flush" },
+      selectColumns: "id, task_type",
+      assertRead: (row) => {
+        expect(["filter_change", "sump_flush"]).toContain(row.task_type);
+      },
     },
     {
       table: "attachments",
@@ -476,12 +484,13 @@ test.describe("operational log RBAC tiers: SELECT/UPDATE/DELETE matrix (DB-level
 
           const { data: selectData, error: selectError } = await client
             .from(tc.table)
-            .select("id")
+            .select(tc.selectColumns ?? "id")
             .eq("id", rowId)
             .maybeSingle();
           if (expected[role].select) {
             expect(selectError).toBeNull();
             expect(selectData?.id).toBe(rowId);
+            tc.assertRead?.(selectData as Record<string, unknown>);
           } else {
             // RLS with no matching policy returns an empty result set, not an error.
             expect(selectData).toBeNull();
@@ -491,11 +500,12 @@ test.describe("operational log RBAC tiers: SELECT/UPDATE/DELETE matrix (DB-level
             .from(tc.table)
             .update(tc.updatePatch)
             .eq("id", rowId)
-            .select("id")
+            .select(["id", ...Object.keys(tc.updatePatch)].join(","))
             .maybeSingle();
           if (expected[role].update) {
             expect(updateError).toBeNull();
             expect(updateData?.id).toBe(rowId);
+            expect(updateData).toMatchObject(tc.updatePatch);
           } else {
             expect(updateData).toBeNull();
           }

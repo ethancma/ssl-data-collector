@@ -110,6 +110,7 @@ export function HealthObservationForm({
         animal_id: values.animalId,
         tank_id: values.tankId,
         severity: values.severity,
+        issues: values.issues,
         notes: values.notes?.trim() ? values.notes.trim() : null,
       })
       .select("id")
@@ -117,21 +118,6 @@ export function HealthObservationForm({
     if (error || !observation) {
       setServerError(error?.message ?? "Failed to save observation");
       return;
-    }
-
-    if (values.issues.length > 0) {
-      const { error: issuesError } = await supabase
-        .from("health_observation_issues")
-        .insert(
-          values.issues.map((issue) => ({
-            health_observation_id: observation.id,
-            issue,
-          })),
-        );
-      if (issuesError) {
-        setServerError(issuesError.message);
-        return;
-      }
     }
 
     if (values.photoFile) {

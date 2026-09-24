@@ -97,8 +97,10 @@ growing an existing one indefinitely:
   volunteer/viewer) behavior for operational logs, plus the DB-level SELECT/UPDATE/DELETE
   matrix across every affected table.
 - [star-treatments.smoke.ts](./scripts/star-treatments.smoke.ts) — Star treatment role
-  visibility, RPC-only create/correct/delete flows, immutable audit rows, filters, and the
-  Probiotics chemical-addition boundary.
+  visibility, RPC-only create/correct/delete flows, immutable provenance, current-row
+  assertions, filters, and the Probiotics chemical-addition boundary. A general activity
+  audit is deferred as project-wide work; this script does not probe a feature-specific
+  audit table.
 - [rls-rebuild.smoke.ts](./scripts/rls-rebuild.smoke.ts) — full-form regression after an
   RLS/GRANT rebuild on core tables (`rlsRebuildWriteSuite()`, called once per role).
 - [systems-trends.smoke.ts](./scripts/systems-trends.smoke.ts) — systems-page water-quality

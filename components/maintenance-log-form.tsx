@@ -3,7 +3,7 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { Controller, useForm } from "react-hook-form";
+import { useForm } from "react-hook-form";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -13,10 +13,12 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { MAINTENANCE_TASK_TYPES } from "@/lib/config/reference-data";
+import {
+  MAINTENANCE_TASK_TYPES,
+  type MaintenanceTaskType,
+} from "@/lib/config/reference-data";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 import {
@@ -26,7 +28,6 @@ import {
 } from "@/lib/validation/maintenance-log";
 
 type SystemOption = { id: number; name: string };
-type MaintenanceTaskType = (typeof MAINTENANCE_TASK_TYPES)[number];
 
 function getTodayDateString(): string {
   const now = new Date();
@@ -62,7 +63,6 @@ export function MaintenanceLogForm({
   const {
     register,
     handleSubmit,
-    control,
     formState: { errors, isSubmitting },
   } = useForm<MaintenanceLogFormInput, unknown, MaintenanceLogFormValues>({
     resolver: zodResolver(maintenanceLogSchema),
@@ -70,7 +70,7 @@ export function MaintenanceLogForm({
       date: getTodayDateString(),
       time: getCurrentTimeString(),
       systemId: defaultSystemId ?? "",
-      taskTypes: ["filter_change"],
+      taskType: "filter_change",
       notes: "",
     },
   });
@@ -79,33 +79,15 @@ export function MaintenanceLogForm({
     setServerError(null);
     const supabase = createClient();
 
-    const { data: log, error } = await supabase
-      .from("maintenance_logs")
-      .insert({
-        performed_at: combineDateAndTime(values.date, values.time),
-        system_id: values.systemId,
-        notes: values.notes?.trim() ? values.notes.trim() : null,
-      })
-      .select("id")
-      .single();
-    if (error || !log) {
-      setServerError(error?.message ?? "Failed to save maintenance log");
+    const { error } = await supabase.from("maintenance_logs").insert({
+      performed_at: combineDateAndTime(values.date, values.time),
+      system_id: values.systemId,
+      task_type: values.taskType,
+      notes: values.notes?.trim() ? values.notes.trim() : null,
+    });
+    if (error) {
+      setServerError(error.message);
       return;
-    }
-
-    if (values.taskTypes.length > 0) {
-      const { error: tasksError } = await supabase
-        .from("maintenance_log_tasks")
-        .insert(
-          values.taskTypes.map((task_type) => ({
-            maintenance_log_id: log.id,
-            task_type,
-          })),
-        );
-      if (tasksError) {
-        setServerError(tasksError.message);
-        return;
-      }
     }
 
     router.push("/protected/home");
@@ -154,39 +136,27 @@ export function MaintenanceLogForm({
             )}
           </div>
 
-          <div className="grid gap-2">
-            <Label>Task</Label>
-            <Controller
-              control={control}
-              name="taskTypes"
-              render={({ field }) => (
-                <div className="flex flex-col gap-2">
-                  {MAINTENANCE_TASK_TYPES.map((t) => (
-                    <div key={t} className="flex items-center gap-2">
-                      <Checkbox
-                        id={`taskType-${t}`}
-                        checked={field.value?.includes(t) ?? false}
-                        onCheckedChange={(checked) => {
-                          const current = field.value ?? [];
-                          field.onChange(
-                            checked === true
-                              ? [...current, t]
-                              : current.filter((existing) => existing !== t),
-                          );
-                        }}
-                      />
-                      <Label htmlFor={`taskType-${t}`}>
-                        {TASK_TYPE_LABELS[t]}
-                      </Label>
-                    </div>
-                  ))}
-                </div>
-              )}
-            />
-            {errors.taskTypes && (
-              <p className="text-sm text-red-500">{errors.taskTypes.message}</p>
+          <fieldset className="grid gap-3">
+            <legend className="text-sm font-medium">Task</legend>
+            <div className="grid gap-2 sm:grid-cols-3">
+              {MAINTENANCE_TASK_TYPES.map((taskType) => (
+                <label
+                  key={taskType}
+                  className="flex min-h-11 cursor-pointer items-center gap-3 rounded-md border border-input px-3 py-2 text-sm has-[:checked]:border-foreground has-[:checked]:bg-muted"
+                >
+                  <input
+                    type="radio"
+                    value={taskType}
+                    {...register("taskType")}
+                  />
+                  {TASK_TYPE_LABELS[taskType]}
+                </label>
+              ))}
+            </div>
+            {errors.taskType && (
+              <p className="text-sm text-red-500">{errors.taskType.message}</p>
             )}
-          </div>
+          </fieldset>
 
           <div className="grid gap-2">
             <Label htmlFor="notes">Notes</Label>

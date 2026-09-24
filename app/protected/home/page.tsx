@@ -166,7 +166,7 @@ async function HomeContent() {
       .gte("added_at", since36h),
     supabase
       .from("health_observations")
-      .select("id, observed_at, severity, tanks(systems(name))")
+      .select("id, observed_at, severity, issues, tanks(systems(name))")
       .order("observed_at", { ascending: false })
       .limit(5),
     supabase
@@ -228,24 +228,6 @@ async function HomeContent() {
     isToday(h.observed_at),
   ).length;
 
-  // Recent health observations, with their multi-select issues joined in.
-  const observationIds = (recentHealthObservations ?? []).map((h) => h.id);
-  const { data: issueRows } =
-    observationIds.length > 0
-      ? await supabase
-          .from("health_observation_issues")
-          .select("health_observation_id, issue")
-          .in("health_observation_id", observationIds)
-      : { data: [] as { health_observation_id: number; issue: HealthIssueType }[] };
-
-  const issuesByObservation = new Map<number, string[]>();
-  for (const row of issueRows ?? []) {
-    const label = ISSUE_LABELS[row.issue as HealthIssueType] ?? row.issue;
-    const list = issuesByObservation.get(row.health_observation_id) ?? [];
-    list.push(label);
-    issuesByObservation.set(row.health_observation_id, list);
-  }
-
   const healthObservationEntries: HealthObservationEntry[] = (recentHealthObservations ?? []).map(
     (h) => {
       // `tanks(systems(...))` returns single objects at runtime, but Supabase's
@@ -254,7 +236,10 @@ async function HomeContent() {
       return {
         id: h.id,
         system: tank?.systems?.name ?? "Unknown system",
-        issue: (issuesByObservation.get(h.id) ?? []).join(", ") || "—",
+        issue:
+          (h.issues as HealthIssueType[])
+            .map((issue) => ISSUE_LABELS[issue] ?? issue)
+            .join(", ") || "—",
         severity: h.severity,
         observedAt: h.observed_at,
       };

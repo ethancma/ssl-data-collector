@@ -319,7 +319,7 @@ test.describe("e2e smoke", () => {
     }
   });
 
-  test("health observation with photo for lesion succeeds and uploads to Storage", async ({
+  test("health observation with photo stores multiple issues on the parent row and uploads to Storage", async ({
     page,
   }) => {
     await login(page);
@@ -327,6 +327,7 @@ test.describe("e2e smoke", () => {
     await page.getByLabel("Animal").selectOption(String(ssl25AnimalId));
     await page.getByRole("button", { name: "Medium" }).click();
     await page.getByLabel("Lesion").check();
+    await page.getByLabel("Arm curling").check();
     await page
       .locator("#photoFile")
       .setInputFiles(path.join(__dirname, "fixtures/test-photo.png"));
@@ -334,59 +335,58 @@ test.describe("e2e smoke", () => {
     await page.getByRole("button", { name: "Save observation" }).click();
     await expect(page).toHaveURL(/\/protected\/home/);
 
+    const observations = dbQuery(`
+      select id, animal_id, severity, has_photo, observed_at, to_json(issues) as issues
+      from core.health_observations
+      where notes = '${RUN_TAG} health obs with photo'
+    `);
+    expect(observations).toHaveLength(1);
+    const observation = observations[0];
+    expect(Number(observation.animal_id)).toBe(ssl25AnimalId);
+    expect(observation.severity).toBe("medium");
+    expect(observation.has_photo).toBe(true);
+    expect(observation.issues).toEqual(["lesion", "arm_curling"]);
+    expect(localDateOf(String(observation.observed_at))).toBe(todayDateString());
+
+    const attachments = dbQuery(`
+      select storage_path, parent_table, parent_id
+      from core.attachments
+      where parent_table = 'health_observations'
+        and parent_id = ${Number(observation.id)}
+    `);
+    expect(attachments).toHaveLength(1);
+    expect(attachments[0].storage_path).toContain(
+      `health_observations/${observation.id}/`,
+    );
+
     if (db) {
-      const { data: observation, error } = await db
-        .from("health_observations")
-        .select("id, animal_id, severity, has_photo, observed_at")
-        .eq("notes", `${RUN_TAG} health obs with photo`)
-        .maybeSingle();
-      expect(error).toBeNull();
-      expect(observation?.animal_id).toBe(ssl25AnimalId);
-      expect(observation?.severity).toBe("medium");
-      expect(observation?.has_photo).toBe(true);
-      expect(localDateOf(observation?.observed_at)).toBe(todayDateString());
-
-      const { data: issues } = await db
-        .from("health_observation_issues")
-        .select("issue")
-        .eq("health_observation_id", observation!.id);
-      expect(issues?.map((i) => i.issue)).toContain("lesion");
-
-      const { data: attachment } = await db
-        .from("attachments")
-        .select("storage_path, parent_table, parent_id")
-        .eq("parent_table", "health_observations")
-        .eq("parent_id", observation!.id)
-        .maybeSingle();
-      expect(attachment?.storage_path).toContain(
-        `health_observations/${observation!.id}/`,
-      );
-
       const { data: storageFiles } = await db.storage
         .from("attachments")
-        .list(`health_observations/${observation!.id}`);
+        .list(`health_observations/${observation.id}`);
       expect(storageFiles?.length ?? 0).toBeGreaterThan(0);
     }
   });
 
-  test("maintenance log for Graham (default date) lands in maintenance_logs", async ({
+  test("one maintenance submission creates one row with the selected task_type", async ({
     page,
   }) => {
     await login(page);
     await page.goto("/protected/daily-operations?type=maintenance-log");
     await expect(page.getByLabel("Date")).toHaveValue(todayDateString());
     await page.getByLabel("System").selectOption(String(grahamSystemId));
+    await page.getByLabel("Sump flush").check();
     await page.getByLabel("Notes").fill(`${RUN_TAG} maintenance default date`);
     await page.getByRole("button", { name: "Save maintenance log" }).click();
     await expect(page).toHaveURL(/\/protected\/home/);
 
     const rows = dbQuery(`
-      select system_id, performed_at
+      select system_id, task_type, performed_at
       from core.maintenance_logs
       where notes = '${RUN_TAG} maintenance default date'
     `);
     expect(rows).toHaveLength(1);
     expect(Number(rows[0].system_id)).toBe(grahamSystemId);
+    expect(rows[0].task_type).toBe("sump_flush");
     expect(localDateOf(String(rows[0].performed_at))).toBe(todayDateString());
   });
 
@@ -398,21 +398,21 @@ test.describe("e2e smoke", () => {
     await page.goto("/protected/daily-operations?type=maintenance-log");
     await page.getByLabel("Date").fill(pickedDate);
     await page.getByLabel("System").selectOption(String(grahamSystemId));
+    await page.getByLabel("Other").check();
     await page.getByLabel("Notes").fill(`${RUN_TAG} maintenance backdated`);
     await page.getByRole("button", { name: "Save maintenance log" }).click();
     await expect(page).toHaveURL(/\/protected\/home/);
 
-    if (db) {
-      const { data, error } = await db
-        .from("maintenance_logs")
-        .select("system_id, performed_at")
-        .eq("notes", `${RUN_TAG} maintenance backdated`)
-        .maybeSingle();
-      expect(error).toBeNull();
-      expect(data?.system_id).toBe(grahamSystemId);
-      expect(localDateOf(data?.performed_at)).toBe(pickedDate);
-      expect(localDateOf(data?.performed_at)).not.toBe(todayDateString());
-    }
+    const rows = dbQuery(`
+      select system_id, task_type, performed_at
+      from core.maintenance_logs
+      where notes = '${RUN_TAG} maintenance backdated'
+    `);
+    expect(rows).toHaveLength(1);
+    expect(Number(rows[0].system_id)).toBe(grahamSystemId);
+    expect(rows[0].task_type).toBe("other");
+    expect(localDateOf(String(rows[0].performed_at))).toBe(pickedDate);
+    expect(localDateOf(String(rows[0].performed_at))).not.toBe(todayDateString());
   });
 
   test("Today dashboard reflects everything logged for Graham", async ({
@@ -558,13 +558,14 @@ test.describe("e2e smoke", () => {
     await expect(page).toHaveURL(/\/protected\/home/);
 
     const rows = dbQuery(`
-      select animal_id, severity, observed_at
+      select animal_id, severity, observed_at, to_json(issues) as issues
       from core.health_observations
       where notes = '${RUN_TAG} health obs picked time'
     `);
     expect(rows).toHaveLength(1);
     expect(Number(rows[0].animal_id)).toBe(ssl25AnimalId);
     expect(rows[0].severity).toBe("low");
+    expect(rows[0].issues).toEqual([]);
     expect(localDateOf(String(rows[0].observed_at))).toBe(todayDateString());
     expect(localTimeOf(String(rows[0].observed_at))).toBe(PICKED_TIME);
   });
@@ -577,19 +578,19 @@ test.describe("e2e smoke", () => {
     await expectDefaultDateAndTime(page);
     await page.getByLabel("Time").fill(PICKED_TIME);
     await page.getByLabel("System").selectOption(String(grahamSystemId));
+    await page.getByLabel("Filter change").check();
     await page.getByLabel("Notes").fill(`${RUN_TAG} maintenance picked time`);
     await page.getByRole("button", { name: "Save maintenance log" }).click();
     await expect(page).toHaveURL(/\/protected\/home/);
 
-    if (db) {
-      const { data, error } = await db
-        .from("maintenance_logs")
-        .select("performed_at")
-        .eq("notes", `${RUN_TAG} maintenance picked time`)
-        .maybeSingle();
-      expect(error).toBeNull();
-      expect(localDateOf(data?.performed_at)).toBe(todayDateString());
-      expect(localTimeOf(data?.performed_at)).toBe(PICKED_TIME);
-    }
+    const rows = dbQuery(`
+      select task_type, performed_at
+      from core.maintenance_logs
+      where notes = '${RUN_TAG} maintenance picked time'
+    `);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].task_type).toBe("filter_change");
+    expect(localDateOf(String(rows[0].performed_at))).toBe(todayDateString());
+    expect(localTimeOf(String(rows[0].performed_at))).toBe(PICKED_TIME);
   });
 });

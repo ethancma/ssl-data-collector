@@ -190,17 +190,21 @@ function rlsRebuildWriteSuite(
       await page.goto("/protected/daily-operations?type=health-observation");
       await page.getByLabel("Animal").selectOption(String(ssl25AnimalId));
       await page.getByRole("button", { name: "Low" }).click();
+      await page.getByLabel("Arm curling").check();
+      await page.getByLabel("Flattening").check();
       await page.getByLabel("Notes").fill(`${tag} health obs`);
       await page.getByRole("button", { name: "Save observation" }).click();
       await expect(page).toHaveURL(/\/protected\/(today|home)/);
 
       const rows = dbQuery(
-        `select animal_id, severity from core.health_observations
+        `select animal_id, severity, to_json(issues) as issues
+         from core.health_observations
          where notes = '${tag} health obs'`,
       );
       expect(rows.length).toBe(1);
       expect(Number(rows[0]?.animal_id)).toBe(ssl25AnimalId);
       expect(rows[0]?.severity).toBe("low");
+      expect(rows[0]?.issues).toEqual(["arm_curling", "flattening"]);
     });
 
     test(`${label} maintenance INSERT lands in core.maintenance_logs`, async ({
@@ -210,16 +214,18 @@ function rlsRebuildWriteSuite(
       await page.goto("/protected/daily-operations");
       await page.getByRole("button", { name: "Maintenance" }).click();
       await page.getByLabel("System", { exact: true }).selectOption(String(grahamSystemId));
+      await page.getByLabel("Other").check();
       await page.getByLabel("Notes").fill(`${tag} maintenance`);
       await page.getByRole("button", { name: "Save maintenance log" }).click();
       await expect(page).toHaveURL(/\/protected\/home/);
 
       const rows = dbQuery(
-        `select system_id, performed_at from core.maintenance_logs
+        `select system_id, task_type, performed_at from core.maintenance_logs
          where notes = '${tag} maintenance'`,
       );
       expect(rows.length).toBe(1);
       expect(Number(rows[0]?.system_id)).toBe(grahamSystemId);
+      expect(rows[0]?.task_type).toBe("other");
       expect(localDateOf(rows[0]?.performed_at as string)).toBe(todayDateString());
     });
 

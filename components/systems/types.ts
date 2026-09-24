@@ -53,7 +53,7 @@ export type MaintenanceLogPoint = {
   id: number;
   performedAt: string;
   notes: string | null;
-  taskTypes: string[];
+  taskType: string;
 };
 
 export type HighlightKind =

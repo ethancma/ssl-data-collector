@@ -1,5 +1,5 @@
 /**
- * Star treatment verification: role visibility, RPC-only writes, audit history,
+ * Star treatment verification: role visibility, RPC-only writes, current-row lifecycle,
  * correction/deletion permissions, list filters, and the Probiotics boundary.
  * Hosted writes are gated by a read-only schema probe and tagged for RPC cleanup.
  */
@@ -82,10 +82,9 @@ function probeStarSchema(): SchemaStatus {
   try {
     row = dbQuery(`select
       to_regclass('core.star_treatments')::text as star_treatments,
-      to_regclass('core.star_treatment_audit_log')::text as audit_log,
       to_regprocedure('core.create_star_treatment(integer,integer,numeric,text,numeric,text,text,text,timestamp with time zone)')::text as create_rpc,
-      to_regprocedure('core.update_star_treatment(integer,text,numeric,text,numeric,text,text,text)')::text as update_rpc,
-      to_regprocedure('core.hard_delete_star_treatment(integer,text)')::text as delete_rpc,
+      to_regprocedure('core.update_star_treatment(integer,text,numeric,text,numeric,text,text)')::text as update_rpc,
+      to_regprocedure('core.hard_delete_star_treatment(integer)')::text as delete_rpc,
       exists (
         select 1 from pg_trigger
         where tgname = 'chemical_additions_validate_mutation' and not tgisinternal
@@ -95,7 +94,6 @@ function probeStarSchema(): SchemaStatus {
   }
   const required = {
     star_treatments: row?.star_treatments,
-    audit_log: row?.audit_log,
     create_rpc: row?.create_rpc,
     update_rpc: row?.update_rpc,
     delete_rpc: row?.delete_rpc,
@@ -276,7 +274,7 @@ test.describe("Star treatments: Probiotics stays out of system chemical addition
   });
 });
 
-test.describe("Star treatments: hosted schema, RPC, audit, and lifecycle", () => {
+test.describe("Star treatments: hosted schema, RPC, and lifecycle", () => {
   test.describe.configure({ mode: "serial" });
   test.skip(!ADMIN_PASSWORD, "E2E_TEST_ADMIN_PASSWORD not set");
   test.skip(!TECH_PASSWORD, "E2E_TEST_TECH_PASSWORD not set");
@@ -351,13 +349,12 @@ test.describe("Star treatments: hosted schema, RPC, audit, and lifecycle", () =>
     for (const row of remaining) {
       const { error } = await adminClient.rpc("hard_delete_star_treatment", {
         p_treatment_id: Number(row.id),
-        p_correction_reason: `${TAG} automated cleanup`,
       });
       if (error) throw error;
     }
   });
 
-  test("Technician creates concentration-only Probiotics with provenance and create audit", async ({
+  test("Technician creates concentration-only Probiotics with provenance", async ({
     page,
   }) => {
     const notes = `${TAG} probiotics concentration-only`;
@@ -404,20 +401,6 @@ test.describe("Star treatments: hosted schema, RPC, audit, and lifecycle", () =>
     const enteredAt = Date.parse(String(row.entered_at));
     expect(enteredAt).toBeGreaterThanOrEqual(submittedAfter - 5_000);
     expect(enteredAt).toBeLessThanOrEqual(Date.now() + 5_000);
-
-    const audit = dbQuery(`select
-      action, correction_reason, before_data is null as before_is_null,
-      after_data->>'notes' as after_notes,
-      after_data->>'tank_id' as after_tank_id,
-      actor_snapshot->>'email' as actor_email
-    from core.star_treatment_audit_log
-    where treatment_id = ${probioticsId} and action = 'create'`)[0];
-    expect(audit.action).toBe("create");
-    expect(audit.correction_reason).toBeNull();
-    expect(audit.before_is_null).toBe(true);
-    expect(audit.after_notes).toBe(notes);
-    expect(Number(audit.after_tank_id)).toBe(star.tankId);
-    expect(audit.actor_email).toBe(TECH_EMAIL);
   });
 
   test("Technician creates an amount-only custom treatment with normalized type", async ({
@@ -450,15 +433,6 @@ test.describe("Star treatments: hosted schema, RPC, audit, and lifecycle", () =>
     expect(Number(row.recorded_by)).toBe(technicianProfileId);
     expect(row.data_source).toBe("live");
     expect(Date.parse(String(row.entered_at))).not.toBeNaN();
-
-    const audit = dbQuery(`select
-      action, after_data->>'treatment_type' as treatment_type,
-      actor_snapshot->>'email' as actor_email
-    from core.star_treatment_audit_log
-    where treatment_id = ${customTreatmentId} and action = 'create'`)[0];
-    expect(audit.action).toBe("create");
-    expect(audit.treatment_type).toBe("E2E Recovery Bath");
-    expect(audit.actor_email).toBe(TECH_EMAIL);
   });
 
   test("list display and filters isolate Probiotics, Other, and the selected star", async ({
@@ -485,9 +459,13 @@ test.describe("Star treatments: hosted schema, RPC, audit, and lifecycle", () =>
     await expect(treatmentArticle(page, customTreatmentId)).toHaveCount(0);
   });
 
-  test("Volunteer corrects a treatment with audit but cannot delete it", async ({ page }) => {
-    const correctionReason = `${TAG} correct concentration`;
+  test("Volunteer corrects mutable fields without changing provenance and cannot delete", async ({
+    page,
+  }) => {
     const correctedNotes = `${TAG} probiotics corrected by volunteer`;
+    const beforeUpdate = dbQuery(`select
+      animal_id, tank_id, administered_at, recorded_by, data_source, entered_at
+      from core.star_treatments where id = ${probioticsId}`)[0];
     await loginAs(page, VOLUNTEER_EMAIL, VOLUNTEER_PASSWORD);
     await page.goto(
       `/protected/star-treatments?from=${labDateString()}&to=${labDateString()}&animal=${star.id}&treatment=probiotics`,
@@ -496,51 +474,33 @@ test.describe("Star treatments: hosted schema, RPC, audit, and lifecycle", () =>
     await article.getByText("View details and correct").click();
     await article.locator(`#treatment-${probioticsId}-concentration`).fill("12");
     await article.locator(`#treatment-${probioticsId}-notes`).fill(correctedNotes);
-    await article
-      .locator(`#treatment-${probioticsId}-correction-reason`)
-      .fill(correctionReason);
     await article.getByRole("button", { name: "Save correction" }).click();
     await expect(article.getByText("Correction saved.")).toBeVisible();
     await expect(article.getByText("Delete treatment", { exact: true })).toHaveCount(0);
 
-    const row = dbQuery(`select concentration, notes
+    const row = dbQuery(`select
+      animal_id, tank_id, concentration, notes, administered_at, recorded_by, data_source, entered_at
       from core.star_treatments where id = ${probioticsId}`)[0];
     expect(Number(row.concentration)).toBe(12);
     expect(row.notes).toBe(correctedNotes);
-    const audit = dbQuery(`select
-      action, correction_reason,
-      before_data->>'concentration' as before_concentration,
-      after_data->>'concentration' as after_concentration,
-      actor_snapshot->>'email' as actor_email
-    from core.star_treatment_audit_log
-    where treatment_id = ${probioticsId} and action = 'update'
-    order by id desc limit 1`)[0];
-    expect(audit.action).toBe("update");
-    expect(audit.correction_reason).toBe(correctionReason);
-    expect(Number(audit.before_concentration)).toBe(10);
-    expect(Number(audit.after_concentration)).toBe(12);
-    expect(audit.actor_email).toBe(VOLUNTEER_EMAIL);
+    expect(Number(row.animal_id)).toBe(Number(beforeUpdate.animal_id));
+    expect(Number(row.tank_id)).toBe(Number(beforeUpdate.tank_id));
+    expect(row.administered_at).toBe(beforeUpdate.administered_at);
+    expect(Number(row.recorded_by)).toBe(Number(beforeUpdate.recorded_by));
+    expect(row.data_source).toBe(beforeUpdate.data_source);
+    expect(row.entered_at).toBe(beforeUpdate.entered_at);
 
     const volunteerClient = await signInRoleClient(VOLUNTEER_EMAIL, VOLUNTEER_PASSWORD);
-    const { error: deleteError } = await volunteerClient.rpc(
-      "hard_delete_star_treatment",
-      {
-        p_treatment_id: probioticsId,
-        p_correction_reason: `${TAG} volunteer must not delete`,
-      },
-    );
+    const { error: deleteError } = await volunteerClient.rpc("hard_delete_star_treatment", {
+      p_treatment_id: probioticsId,
+    });
     expect(deleteError).not.toBeNull();
     expect(
       dbQuery(`select id from core.star_treatments where id = ${probioticsId}`),
     ).toHaveLength(1);
-    expect(
-      dbQuery(`select id from core.star_treatment_audit_log
-        where treatment_id = ${probioticsId} and action = 'hard_delete'`),
-    ).toHaveLength(0);
   });
 
-  test("Admin hard-deletes through the UI and the audit row is retained", async ({ page }) => {
-    const deletionReason = `${TAG} duplicate custom treatment`;
+  test("Admin hard-deletes through the UI", async ({ page }) => {
     await loginAs(page, ADMIN_EMAIL, ADMIN_PASSWORD);
     await page.goto(
       `/protected/star-treatments?from=${labDateString()}&to=${labDateString()}&animal=${star.id}&treatment=other`,
@@ -548,27 +508,12 @@ test.describe("Star treatments: hosted schema, RPC, audit, and lifecycle", () =>
     const article = treatmentArticle(page, customTreatmentId);
     await article.getByText("View details and correct").click();
     await article.getByText("Delete treatment", { exact: true }).click();
-    await article
-      .locator(`#treatment-${customTreatmentId}-delete-reason`)
-      .fill(deletionReason);
     await article.getByRole("button", { name: "Permanently delete treatment" }).click();
     await expect(article).toHaveCount(0);
 
     expect(
       dbQuery(`select id from core.star_treatments where id = ${customTreatmentId}`),
     ).toHaveLength(0);
-    const audit = dbQuery(`select
-      action, correction_reason, before_data->>'notes' as before_notes,
-      after_data is null as after_is_null, actor_profile_id,
-      actor_snapshot->>'email' as actor_email
-    from core.star_treatment_audit_log
-    where treatment_id = ${customTreatmentId} and action = 'hard_delete'`)[0];
-    expect(audit.action).toBe("hard_delete");
-    expect(audit.correction_reason).toBe(deletionReason);
-    expect(audit.before_notes).toBe(`${TAG} custom amount-only`);
-    expect(audit.after_is_null).toBe(true);
-    expect(Number(audit.actor_profile_id)).toBe(adminProfileId);
-    expect(audit.actor_email).toBe(ADMIN_EMAIL);
   });
 
   test("direct table insert and Viewer SELECT are denied", async () => {
@@ -632,7 +577,6 @@ test.describe("Star treatments: hosted schema, RPC, audit, and lifecycle", () =>
         p_concentration: null,
         p_concentration_unit: null,
         p_notes: `${TAG} ${role} update matrix probe`,
-        p_correction_reason: `${TAG} update matrix probe`,
       });
       expect(updateError).not.toBeNull();
       if (role !== "viewer") {
@@ -641,7 +585,6 @@ test.describe("Star treatments: hosted schema, RPC, audit, and lifecycle", () =>
 
       const { error: deleteError } = await client.rpc("hard_delete_star_treatment", {
         p_treatment_id: 2_147_483_647,
-        p_correction_reason: `${TAG} delete matrix probe`,
       });
       expect(deleteError).not.toBeNull();
       if (role === "admin" || role === "technician") {
