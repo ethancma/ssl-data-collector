@@ -1,13 +1,32 @@
--- health_observations (+ issues junction) and attachments — issue is multi-select so
--- it lives in its own junction table rather than an array column. attachments is a
--- generic parent_table/parent_id pointer, primarily used by health_observations but
--- also usable for scanned paper logs; backed by a private Storage bucket.
+-- health_observations and attachments. Each observation stores its multi-select issues
+-- directly because the selected issues share animal/tank/time/severity/notes/photo.
+-- attachments is a generic parent_table/parent_id pointer, primarily used by
+-- health_observations but also usable for scanned paper logs; backed by a private
+-- Storage bucket.
 
 create table core.health_observations (
   id serial primary key,
   animal_id int not null references core.animals (id) on delete cascade,
   tank_id int not null references core.tanks (id),
   observed_at timestamptz not null default now(),
+  issues text[] not null default '{}'::text[]
+    constraint health_observations_issues_check check (
+      case
+        when coalesce(array_ndims(issues), 1) <> 1 then false
+        else
+          array_position(issues, null) is null
+          and issues <@ array[
+            'arm_drop', 'spine_drop', 'lesion', 'arm_curling', 'flattening', 'other'
+          ]::text[]
+          and cardinality(issues) =
+            (case when 'arm_drop' = any (issues) then 1 else 0 end) +
+            (case when 'spine_drop' = any (issues) then 1 else 0 end) +
+            (case when 'lesion' = any (issues) then 1 else 0 end) +
+            (case when 'arm_curling' = any (issues) then 1 else 0 end) +
+            (case when 'flattening' = any (issues) then 1 else 0 end) +
+            (case when 'other' = any (issues) then 1 else 0 end)
+      end
+    ),
   severity text not null check (severity in ('low', 'medium', 'high')),
   notes text,
   recorded_by int not null default core.current_profile_id() references core.profiles (id),
@@ -21,12 +40,8 @@ create index health_observations_animal_id_idx on core.health_observations (anim
 create index health_observations_tank_observed_idx
   on core.health_observations (tank_id, observed_at desc);
 
-create table core.health_observation_issues (
-  health_observation_id int not null references core.health_observations (id) on delete cascade,
-  issue text not null
-    check (issue in ('arm_drop', 'spine_drop', 'lesion', 'arm_curling', 'flattening', 'other')),
-  primary key (health_observation_id, issue)
-);
+comment on column core.health_observations.issues is
+  'Unique observed issues. An empty array is valid for an issue-less observation.';
 
 -- ---------------------------------------------------------------------------
 -- attachments — generic photo/file pointer keyed by parent_table + parent_id.
@@ -49,7 +64,7 @@ do $$
 declare
   t text;
 begin
-  for t in select unnest(array['health_observations', 'health_observation_issues', 'attachments'])
+  for t in select unnest(array['health_observations', 'attachments'])
   loop
     execute format('alter table core.%I enable row level security', t);
   end loop;
@@ -67,21 +82,6 @@ create policy "health_observations_insert_contributor" on core.health_observatio
   with check (core.is_contributor() and recorded_by = core.current_profile_id());
 
 create policy "health_observations_admin_all" on core.health_observations
-  for all to authenticated
-  using (core.is_admin())
-  with check (core.is_admin());
-
-grant select, insert, update, delete on core.health_observation_issues to authenticated;
-
-create policy "health_observation_issues_read_active_member" on core.health_observation_issues
-  for select to authenticated
-  using (core.is_active_member());
-
-create policy "health_observation_issues_insert_contributor" on core.health_observation_issues
-  for insert to authenticated
-  with check (core.is_contributor());
-
-create policy "health_observation_issues_admin_all" on core.health_observation_issues
   for all to authenticated
   using (core.is_admin())
   with check (core.is_admin());

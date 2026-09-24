@@ -1,4 +1,4 @@
--- Individual-star treatments with RPC-only writes and an immutable audit trail.
+-- Individual-star treatments with RPC-only writes.
 
 set local check_function_bodies = off;
 
@@ -113,114 +113,6 @@ revoke execute on function core.enforce_star_treatment_immutable_fields()
 create trigger star_treatments_immutable_fields
   before update on core.star_treatments
   for each row execute function core.enforce_star_treatment_immutable_fields();
-
-create table core.star_treatment_audit_log (
-  id bigserial primary key,
-  treatment_id int not null,
-  actor_profile_id int not null,
-  actor_snapshot jsonb not null,
-  action text not null check (action in ('create', 'update', 'hard_delete')),
-  correction_reason text,
-  occurred_at timestamptz not null default pg_catalog.clock_timestamp(),
-  transaction_id bigint not null default pg_catalog.txid_current(),
-  before_data jsonb,
-  after_data jsonb,
-  constraint star_treatment_audit_reason_check
-    check (
-      (action = 'create' and correction_reason is null)
-      or (
-        action in ('update', 'hard_delete')
-        and correction_reason is not null
-        and pg_catalog.btrim(correction_reason) <> ''
-        and pg_catalog.length(correction_reason) <= 1000
-      )
-    ),
-  constraint star_treatment_audit_images_check
-    check (
-      (action = 'create' and before_data is null and after_data is not null)
-      or (action = 'update' and before_data is not null and after_data is not null)
-      or (action = 'hard_delete' and before_data is not null and after_data is null)
-    )
-);
-
-create index star_treatment_audit_treatment_idx
-  on core.star_treatment_audit_log (treatment_id, occurred_at desc);
-
-create or replace function core.reject_star_treatment_audit_mutation()
-  returns trigger
-  language plpgsql
-  security definer
-  set search_path = pg_catalog, core
-  as $$
-begin
-  raise exception 'Star treatment audit rows are immutable.'
-    using errcode = '42501';
-end;
-$$;
-
-revoke execute on function core.reject_star_treatment_audit_mutation()
-  from public, anon, authenticated, service_role, admin, technician, volunteer, viewer;
-
-create trigger star_treatment_audit_immutable
-  before update or delete or truncate on core.star_treatment_audit_log
-  for each statement execute function core.reject_star_treatment_audit_mutation();
-
-create or replace function core.write_star_treatment_audit(
-  p_treatment_id int,
-  p_actor_profile_id int,
-  p_action text,
-  p_correction_reason text,
-  p_before_data jsonb,
-  p_after_data jsonb
-)
-  returns void
-  language plpgsql
-  security definer
-  set search_path = pg_catalog, core
-  as $$
-declare
-  actor_snapshot_value jsonb;
-begin
-  select pg_catalog.jsonb_build_object(
-    'profile_id', profile.id,
-    'auth_user_id', profile.auth_user_id,
-    'email', profile.email,
-    'display_name', profile.display_name,
-    'role', profile.role,
-    'status', profile.status
-  )
-  into actor_snapshot_value
-  from core.profiles as profile
-  where profile.id = p_actor_profile_id;
-
-  if actor_snapshot_value is null then
-    raise exception 'The audit actor profile does not exist.'
-      using errcode = '23503';
-  end if;
-
-  insert into core.star_treatment_audit_log (
-    treatment_id,
-    actor_profile_id,
-    actor_snapshot,
-    action,
-    correction_reason,
-    before_data,
-    after_data
-  )
-  values (
-    p_treatment_id,
-    p_actor_profile_id,
-    actor_snapshot_value,
-    p_action,
-    p_correction_reason,
-    p_before_data,
-    p_after_data
-  );
-end;
-$$;
-
-revoke execute on function core.write_star_treatment_audit(int, int, text, text, jsonb, jsonb)
-  from public, anon, authenticated, service_role, admin, technician, volunteer, viewer;
 
 create or replace function core.create_star_treatment(
   p_animal_id int,
@@ -366,15 +258,6 @@ begin
   )
   returning * into created_treatment;
 
-  perform core.write_star_treatment_audit(
-    created_treatment.id,
-    actor_profile.id,
-    'create',
-    null,
-    null,
-    pg_catalog.to_jsonb(created_treatment)
-  );
-
   return created_treatment;
 end;
 $$;
@@ -386,8 +269,7 @@ create or replace function core.update_star_treatment(
   p_unit text,
   p_concentration numeric,
   p_concentration_unit text,
-  p_notes text,
-  p_correction_reason text
+  p_notes text
 )
   returns core.star_treatments
   language plpgsql
@@ -395,17 +277,13 @@ create or replace function core.update_star_treatment(
   set search_path = pg_catalog, core
   as $$
 declare
-  actor_profile core.profiles%rowtype;
-  previous_treatment core.star_treatments%rowtype;
   updated_treatment core.star_treatments%rowtype;
   normalized_type text;
   normalized_unit text;
   normalized_concentration_unit text;
   normalized_notes text;
-  normalized_reason text;
 begin
-  select profile.*
-  into actor_profile
+  perform 1
   from core.profiles as profile
   where profile.auth_user_id = auth.uid()
     and profile.status = 'active'
@@ -416,19 +294,7 @@ begin
       using errcode = '42501';
   end if;
 
-  normalized_reason := pg_catalog.regexp_replace(
-    pg_catalog.btrim(p_correction_reason),
-    '[[:space:]]+',
-    ' ',
-    'g'
-  );
-  if normalized_reason = '' or pg_catalog.length(normalized_reason) > 1000 then
-    raise exception 'Correction reason must be between 1 and 1000 characters.'
-      using errcode = '23514';
-  end if;
-
-  select treatment.*
-  into previous_treatment
+  perform 1
   from core.star_treatments as treatment
   where treatment.id = p_treatment_id
   for update;
@@ -490,35 +356,20 @@ begin
   where id = p_treatment_id
   returning * into updated_treatment;
 
-  perform core.write_star_treatment_audit(
-    updated_treatment.id,
-    actor_profile.id,
-    'update',
-    normalized_reason,
-    pg_catalog.to_jsonb(previous_treatment),
-    pg_catalog.to_jsonb(updated_treatment)
-  );
-
   return updated_treatment;
 end;
 $$;
 
 create or replace function core.hard_delete_star_treatment(
-  p_treatment_id int,
-  p_correction_reason text
+  p_treatment_id int
 )
   returns void
   language plpgsql
   security definer
   set search_path = pg_catalog, core
   as $$
-declare
-  actor_profile core.profiles%rowtype;
-  deleted_treatment core.star_treatments%rowtype;
-  normalized_reason text;
 begin
-  select profile.*
-  into actor_profile
+  perform 1
   from core.profiles as profile
   where profile.auth_user_id = auth.uid()
     and profile.status = 'active'
@@ -529,19 +380,7 @@ begin
       using errcode = '42501';
   end if;
 
-  normalized_reason := pg_catalog.regexp_replace(
-    pg_catalog.btrim(p_correction_reason),
-    '[[:space:]]+',
-    ' ',
-    'g'
-  );
-  if normalized_reason = '' or pg_catalog.length(normalized_reason) > 1000 then
-    raise exception 'Correction reason must be between 1 and 1000 characters.'
-      using errcode = '23514';
-  end if;
-
-  select treatment.*
-  into deleted_treatment
+  perform 1
   from core.star_treatments as treatment
   where treatment.id = p_treatment_id
   for update;
@@ -550,21 +389,11 @@ begin
     raise exception 'Star treatment % does not exist.', p_treatment_id using errcode = 'P0002';
   end if;
 
-  perform core.write_star_treatment_audit(
-    deleted_treatment.id,
-    actor_profile.id,
-    'hard_delete',
-    normalized_reason,
-    pg_catalog.to_jsonb(deleted_treatment),
-    null
-  );
-
   delete from core.star_treatments where id = p_treatment_id;
 end;
 $$;
 
 alter table core.star_treatments enable row level security;
-alter table core.star_treatment_audit_log enable row level security;
 
 revoke all on table core.star_treatments
   from public, anon, authenticated, service_role, admin, technician, volunteer, viewer;
@@ -580,30 +409,16 @@ create policy "star_treatments_volunteer_select"
   on core.star_treatments for select to volunteer
   using (core.is_contributor());
 
-revoke all on table core.star_treatment_audit_log
-  from public, anon, authenticated, service_role, admin, technician, volunteer, viewer;
-revoke all on sequence core.star_treatment_audit_log_id_seq
-  from public, anon, authenticated, service_role, admin, technician, volunteer, viewer;
-
-grant select on table core.star_treatment_audit_log to admin;
-
-create policy "star_treatment_audit_admin_select"
-  on core.star_treatment_audit_log for select to admin
-  using (core.is_admin());
-
 revoke execute on function core.create_star_treatment(int, int, numeric, text, numeric, text, text, text, timestamptz)
   from public, anon, authenticated, service_role, admin, technician, volunteer, viewer;
-revoke execute on function core.update_star_treatment(int, text, numeric, text, numeric, text, text, text)
+revoke execute on function core.update_star_treatment(int, text, numeric, text, numeric, text, text)
   from public, anon, authenticated, service_role, admin, technician, volunteer, viewer;
-revoke execute on function core.hard_delete_star_treatment(int, text)
+revoke execute on function core.hard_delete_star_treatment(int)
   from public, anon, authenticated, service_role, admin, technician, volunteer, viewer;
 
 grant execute on function core.create_star_treatment(int, int, numeric, text, numeric, text, text, text, timestamptz)
   to admin, technician, volunteer;
-grant execute on function core.update_star_treatment(int, text, numeric, text, numeric, text, text, text)
+grant execute on function core.update_star_treatment(int, text, numeric, text, numeric, text, text)
   to admin, technician, volunteer;
-grant execute on function core.hard_delete_star_treatment(int, text)
+grant execute on function core.hard_delete_star_treatment(int)
   to admin, technician;
-
-comment on table core.star_treatment_audit_log is
-  'Immutable star-treatment mutation audit. Treatment and actor identities are retained as snapshots without foreign keys.';

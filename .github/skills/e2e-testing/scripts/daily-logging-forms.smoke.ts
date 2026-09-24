@@ -373,7 +373,9 @@ test.describe("e2e smoke", () => {
     await login(page);
     await page.goto("/protected/daily-operations?type=maintenance-log");
     await expect(page.getByLabel("Date")).toHaveValue(todayDateString());
-    await page.getByLabel("System").selectOption(String(grahamSystemId));
+    await page
+      .getByLabel("System", { exact: true })
+      .selectOption(String(grahamSystemId));
     await page.getByLabel("Sump flush").check();
     await page.getByLabel("Notes").fill(`${RUN_TAG} maintenance default date`);
     await page.getByRole("button", { name: "Save maintenance log" }).click();
@@ -397,7 +399,9 @@ test.describe("e2e smoke", () => {
     await login(page);
     await page.goto("/protected/daily-operations?type=maintenance-log");
     await page.getByLabel("Date").fill(pickedDate);
-    await page.getByLabel("System").selectOption(String(grahamSystemId));
+    await page
+      .getByLabel("System", { exact: true })
+      .selectOption(String(grahamSystemId));
     await page.getByLabel("Other").check();
     await page.getByLabel("Notes").fill(`${RUN_TAG} maintenance backdated`);
     await page.getByRole("button", { name: "Save maintenance log" }).click();

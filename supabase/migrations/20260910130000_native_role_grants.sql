@@ -197,24 +197,6 @@ create policy "health_observations_volunteer_update" on core.health_observations
 create policy "health_observations_viewer_select" on core.health_observations
   for select to viewer using (true);
 
-alter table core.health_observation_issues enable row level security;
-drop policy if exists "health_observation_issues_read_active_member" on core.health_observation_issues;
-drop policy if exists "health_observation_issues_insert_contributor" on core.health_observation_issues;
-drop policy if exists "health_observation_issues_admin_all" on core.health_observation_issues;
-revoke select, insert, update, delete on core.health_observation_issues from authenticated;
-grant select, insert, update on core.health_observation_issues to volunteer;
-grant select on core.health_observation_issues to viewer;
-create policy "health_observation_issues_admin_technician_all" on core.health_observation_issues
-  for all to admin, technician using (true) with check (true);
-create policy "health_observation_issues_volunteer_select" on core.health_observation_issues
-  for select to volunteer using (true);
-create policy "health_observation_issues_volunteer_insert" on core.health_observation_issues
-  for insert to volunteer with check (true);
-create policy "health_observation_issues_volunteer_update" on core.health_observation_issues
-  for update to volunteer using (true) with check (true);
-create policy "health_observation_issues_viewer_select" on core.health_observation_issues
-  for select to viewer using (true);
-
 alter table core.feeding_logs enable row level security;
 drop policy if exists "feeding_logs_read_active_member" on core.feeding_logs;
 drop policy if exists "feeding_logs_insert_contributor" on core.feeding_logs;
@@ -249,24 +231,6 @@ create policy "maintenance_logs_volunteer_insert" on core.maintenance_logs
 create policy "maintenance_logs_volunteer_update" on core.maintenance_logs
   for update to volunteer using (true) with check (true);
 create policy "maintenance_logs_viewer_select" on core.maintenance_logs
-  for select to viewer using (true);
-
-alter table core.maintenance_log_tasks enable row level security;
-drop policy if exists "maintenance_log_tasks_read_active_member" on core.maintenance_log_tasks;
-drop policy if exists "maintenance_log_tasks_insert_contributor" on core.maintenance_log_tasks;
-drop policy if exists "maintenance_log_tasks_admin_all" on core.maintenance_log_tasks;
-revoke select, insert, update, delete on core.maintenance_log_tasks from authenticated;
-grant select, insert, update on core.maintenance_log_tasks to volunteer;
-grant select on core.maintenance_log_tasks to viewer;
-create policy "maintenance_log_tasks_admin_technician_all" on core.maintenance_log_tasks
-  for all to admin, technician using (true) with check (true);
-create policy "maintenance_log_tasks_volunteer_select" on core.maintenance_log_tasks
-  for select to volunteer using (true);
-create policy "maintenance_log_tasks_volunteer_insert" on core.maintenance_log_tasks
-  for insert to volunteer with check (true);
-create policy "maintenance_log_tasks_volunteer_update" on core.maintenance_log_tasks
-  for update to volunteer using (true) with check (true);
-create policy "maintenance_log_tasks_viewer_select" on core.maintenance_log_tasks
   for select to viewer using (true);
 
 alter table core.attachments enable row level security;
@@ -407,8 +371,6 @@ alter default privileges in schema core grant usage, select on sequences to admi
 alter default privileges in schema analytics grant usage, select on sequences to admin, technician;
 
 -- volunteer: only the sequences behind operational-log tables it can INSERT into.
--- core.health_observation_issues and core.maintenance_log_tasks are in that INSERT
--- set too but have composite PKs with no backing sequence, so they're not listed.
 grant usage, select on sequence
   core.daily_checks_id_seq,
   core.water_quality_readings_id_seq,

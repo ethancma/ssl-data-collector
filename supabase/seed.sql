@@ -5,9 +5,8 @@
 -- one-time historical-data imports (which DO need to land on remote) are handled
 -- instead.
 --
--- Creates the three seeded test accounts documented in
--- .github/skills/e2e-testing/references/test-accounts.md (email/password stand-ins
--- for Google OAuth, one per non-viewer role, pre-approved so e2e/manual QA can log
+-- Creates four seeded test accounts (email/password stand-ins for Google OAuth),
+-- one per native role, pre-approved so e2e/manual QA can log
 -- in immediately). Idempotent: safe to run on every reset.
 
 begin;
@@ -17,6 +16,7 @@ declare
   admin_id uuid := '00000000-0000-0000-0000-000000000001';
   tech_id uuid := '00000000-0000-0000-0000-000000000002';
   volunteer_id uuid := '00000000-0000-0000-0000-000000000003';
+  viewer_id uuid := '00000000-0000-0000-0000-000000000004';
   -- Local/dev-only credential, never used against the hosted project (see
   -- test-accounts.md's rules). Fine to keep in plain sight here.
   test_password text := 'ssl-test-password';
@@ -39,6 +39,10 @@ begin
     ('00000000-0000-0000-0000-000000000000', volunteer_id, 'authenticated', 'authenticated',
       'test-volunteer@ssl.dev', extensions.crypt(test_password, extensions.gen_salt('bf')),
       now(), '{"provider":"email","providers":["email"]}'::jsonb, '{}'::jsonb,
+      now(), now(), '', '', '', ''),
+    ('00000000-0000-0000-0000-000000000000', viewer_id, 'authenticated', 'authenticated',
+      'test-viewer@ssl.dev', extensions.crypt(test_password, extensions.gen_salt('bf')),
+      now(), '{"provider":"email","providers":["email"]}'::jsonb, '{}'::jsonb,
       now(), now(), '', '', '', '')
   on conflict (id) do update set
     email = excluded.email,
@@ -60,6 +64,9 @@ begin
       'email', now(), now(), now()),
     (gen_random_uuid(), volunteer_id, volunteer_id::text,
       jsonb_build_object('sub', volunteer_id::text, 'email', 'test-volunteer@ssl.dev'),
+      'email', now(), now(), now()),
+    (gen_random_uuid(), viewer_id, viewer_id::text,
+      jsonb_build_object('sub', viewer_id::text, 'email', 'test-viewer@ssl.dev'),
       'email', now(), now(), now())
   on conflict (provider_id, provider) do nothing;
 
@@ -75,6 +82,9 @@ begin
   update core.profiles set role = 'volunteer', status = 'active',
       display_name = coalesce(display_name, 'Test Volunteer')
     where auth_user_id = volunteer_id;
+  update core.profiles set role = 'viewer', status = 'active',
+      display_name = coalesce(display_name, 'Test Viewer')
+    where auth_user_id = viewer_id;
 end;
 $$;
 
