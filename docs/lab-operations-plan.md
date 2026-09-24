@@ -66,7 +66,8 @@ timestamped and attributable like the other logs.
   animal (food type/amount), plus a same-day follow-up on whether it was eaten,
   rolled into the PM check, also per individual animal.
 - **Water quality testing** — **weekly per system**, testing the sump: pH, magnesium,
-  ammonia, alkalinity, calcium, phosphate. Target/safe ranges per parameter exist but
+  ammonia, alkalinity, calcium, phosphate, nitrate, nitrite (nitrate in ppm, nitrite in
+  ppb — a different unit). Target/safe ranges per parameter exist but
   still need to be gathered from staff and encoded for inline validation (see §7).
 - **Chemical additions** — as-needed per system (C balance, buffers, etc.), logged
   whenever dosed.
@@ -85,7 +86,7 @@ timestamped and attributable like the other logs.
 
 Every system's sump has a [Neptune Apex](https://www.neptunesystems.com/probes/)
 pH probe, so pH can be continuously monitored electronically. Magnesium, ammonia,
-alkalinity, calcium, and phosphate are always tested manually (no probes for those).
+alkalinity, calcium, phosphate, nitrate, and nitrite are always tested manually (no probes for those).
 
 - **Confirmed so far**: Graham and Wholey have working Apex pH probes; coverage for
   the remaining systems (Indoor/Outdoor Quarantine, Yum Yum, Snack Shack, Larval)
@@ -154,7 +155,7 @@ tooling for data that doesn't actually exist.
 
 The single most important trend view, the one meant to prove the tool's value first:
 a **per-system overlay chart** with water-chemistry parameter lines (pH, magnesium,
-ammonia, alkalinity, calcium, phosphate) plotted against time, with health-observation
+ammonia, alkalinity, calcium, phosphate, nitrate, nitrite) plotted against time, with health-observation
 events marked directly on the same timeline (e.g., markers at each observation's
 `observed_at`, colored/shaped by issue type or severity). The goal is to visually spot
 whether chemistry drift precedes SSWD symptom onset or other health issues, per

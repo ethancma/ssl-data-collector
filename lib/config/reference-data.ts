@@ -60,13 +60,28 @@ export type ProfileStatus = (typeof PROFILE_STATUSES)[number];
 
 // Weekly water-quality parameters; target/safe ranges per parameter are still an
 // open question to gather from staff before building inline validation.
-export const WATER_QUALITY_PARAMETERS = [
-  "ph",
-  "magnesium",
-  "ammonia",
-  "alkalinity",
-  "calcium",
-  "phosphate",
-  "salinity",
-] as const;
-export type WaterQualityParameter = (typeof WATER_QUALITY_PARAMETERS)[number];
+// Single source of truth: label + chart color live here so adding a new test
+// (once its DB column exists) is a one-line addition to this array — every
+// consumer (validation, form, charts, types, data fetch) derives from it.
+export type WaterQualityParamConfig = {
+  key: string;
+  label: string;
+  color: string;
+};
+
+export const WATER_QUALITY_PARAMS = [
+  { key: "ph", label: "pH", color: "#6366f1" },
+  { key: "magnesium", label: "Magnesium", color: "#f59e0b" },
+  { key: "ammonia", label: "Ammonia", color: "#ef4444" },
+  { key: "alkalinity", label: "Alkalinity", color: "#10b981" },
+  { key: "calcium", label: "Calcium", color: "#3b82f6" },
+  { key: "phosphate", label: "Phosphate", color: "#a855f7" },
+  { key: "salinity", label: "Salinity", color: "#14b8a6" },
+  { key: "nitrate", label: "Nitrate", color: "#f97316" },
+  { key: "nitrite", label: "Nitrite", color: "#84cc16" },
+] as const satisfies readonly WaterQualityParamConfig[];
+
+export type WaterQualityParameter = (typeof WATER_QUALITY_PARAMS)[number]["key"];
+export const WATER_QUALITY_PARAMETERS = WATER_QUALITY_PARAMS.map(
+  (p) => p.key,
+) as WaterQualityParameter[];

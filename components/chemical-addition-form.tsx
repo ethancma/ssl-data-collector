@@ -130,7 +130,7 @@ export function ChemicalAdditionForm({
             <Label htmlFor="chemicalName">Chemical</Label>
             <Input
               id="chemicalName"
-              placeholder="e.g. Baking soda"
+              placeholder="e.g. C-Balance"
               {...register("chemicalName")}
             />
             {errors.chemicalName && (

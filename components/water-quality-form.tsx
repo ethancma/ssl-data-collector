@@ -18,7 +18,7 @@ import { Label } from "@/components/ui/label";
 import {
   PH_SOURCES,
   WATER_QUALITY_PARAMETERS,
-  type WaterQualityParameter,
+  WATER_QUALITY_PARAMS,
 } from "@/lib/config/reference-data";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
@@ -44,16 +44,6 @@ function getCurrentTimeString(): string {
 function combineDateAndTime(dateStr: string, timeStr: string): string {
   return new Date(`${dateStr}T${timeStr}:00`).toISOString();
 }
-
-const PARAMETER_LABELS: Record<WaterQualityParameter, string> = {
-  ph: "pH",
-  magnesium: "Magnesium",
-  ammonia: "Ammonia",
-  alkalinity: "Alkalinity",
-  calcium: "Calcium",
-  phosphate: "Phosphate",
-  salinity: "Salinity",
-};
 
 const PH_SOURCE_LABELS: Record<(typeof PH_SOURCES)[number], string> = {
   manual: "Manual",
@@ -83,13 +73,7 @@ export function WaterQualityForm({
       time: getCurrentTimeString(),
       systemId: defaultSystemId ?? "",
       phSource: "manual",
-      ph: "",
-      magnesium: "",
-      ammonia: "",
-      alkalinity: "",
-      calcium: "",
-      phosphate: "",
-      salinity: "",
+      ...Object.fromEntries(WATER_QUALITY_PARAMETERS.map((key) => [key, ""])),
       notes: "",
     },
   });
@@ -103,13 +87,9 @@ export function WaterQualityForm({
       tested_at: combineDateAndTime(values.date, values.time),
       system_id: values.systemId,
       ph_source: values.phSource,
-      ph: values.ph ? Number(values.ph) : null,
-      magnesium: values.magnesium ? Number(values.magnesium) : null,
-      ammonia: values.ammonia ? Number(values.ammonia) : null,
-      alkalinity: values.alkalinity ? Number(values.alkalinity) : null,
-      calcium: values.calcium ? Number(values.calcium) : null,
-      phosphate: values.phosphate ? Number(values.phosphate) : null,
-      salinity: values.salinity ? Number(values.salinity) : null,
+      ...Object.fromEntries(
+        WATER_QUALITY_PARAMETERS.map((key) => [key, values[key] ? Number(values[key]) : null]),
+      ),
       notes: values.notes?.trim() ? values.notes.trim() : null,
     });
     if (error) {
@@ -125,7 +105,7 @@ export function WaterQualityForm({
       <CardHeader>
         <CardTitle className="text-2xl">Water quality reading</CardTitle>
         <CardDescription>
-          Log any of the 7 water chemistry parameters for a system.
+          Log any of the {WATER_QUALITY_PARAMS.length} water chemistry parameters for a system.
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -180,17 +160,17 @@ export function WaterQualityForm({
           </div>
 
           <div className="grid grid-cols-2 gap-4">
-            {WATER_QUALITY_PARAMETERS.map((param) => (
-              <div key={param} className="grid gap-2">
-                <Label htmlFor={param}>{PARAMETER_LABELS[param]}</Label>
+            {WATER_QUALITY_PARAMS.map((param) => (
+              <div key={param.key} className="grid gap-2">
+                <Label htmlFor={param.key}>{param.label}</Label>
                 <Input
-                  id={param}
+                  id={param.key}
                   inputMode="decimal"
                   placeholder="—"
-                  {...register(param)}
+                  {...register(param.key)}
                 />
-                {errors[param] && (
-                  <p className="text-sm text-red-500">{errors[param]?.message}</p>
+                {errors[param.key] && (
+                  <p className="text-sm text-red-500">{errors[param.key]?.message}</p>
                 )}
               </div>
             ))}

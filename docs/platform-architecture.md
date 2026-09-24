@@ -30,9 +30,10 @@ star health and SSWD symptom onset over time.
   accounts) entering data daily — forms must be fast, guided, and forgiving of typos
   (inline range validation), not just functionally correct.
 - **Water quality testing is weekly per system** (not daily) — pH, magnesium, ammonia,
-  alkalinity, calcium, phosphate — with pH additionally available continuously from
-  Neptune Apex probes on systems that have them; the other five parameters are always
-  manually tested.
+  alkalinity, calcium, phosphate, nitrate, nitrite — with pH additionally available
+  continuously from Neptune Apex probes on systems that have them; the other seven
+  parameters are always manually tested. Nitrate is measured in ppm, nitrite in ppb
+  (not ppm — a different unit than the other parameters).
 - **Chemical additions** (C balance, buffers, etc.) logged per system.
 - **Feeding** every other day: krill, brine shrimp, abalone, urchin (purple, sometimes white
   painted), microalgae — varies by species/life stage — plus a same-day follow-up on
@@ -134,7 +135,8 @@ erDiagram
 - `animal_movements` — id, animal_id, from_tank_id, to_tank_id, moved_at, reason, recorded_by
 - `water_quality_readings` — id, system_id, tested_at (the actual test date — weekly
   cadence, not daily), recorded_by, ph, ph_source (manual|apex_probe), magnesium,
-  ammonia, alkalinity, calcium, phosphate, notes, `data_source` (live|import|
+  ammonia, alkalinity, calcium, phosphate, nitrate (ppm), nitrite (ppb), notes,
+  `data_source` (live|import|
   paper_backfill), entered_at (defaults to now(), distinct from `tested_at` for
   backfilled rows)
 - `chemical_additions` — id, system_id, chemical_name, amount, unit, added_at, recorded_by, reason, data_source

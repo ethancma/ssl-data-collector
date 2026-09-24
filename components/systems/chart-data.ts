@@ -1,45 +1,23 @@
 import type { ChartSeries } from "@/components/systems/charts";
+import {
+  WATER_QUALITY_PARAMETERS,
+  WATER_QUALITY_PARAMS,
+  type WaterQualityParameter,
+} from "@/lib/config/reference-data";
 import type { SystemDetailData, WaterQualityPoint } from "@/components/systems/types";
 
-export type WaterQualityParam =
-  | "ph"
-  | "alkalinity"
-  | "ammonia"
-  | "calcium"
-  | "phosphate"
-  | "magnesium"
-  | "salinity";
+export type WaterQualityParam = WaterQualityParameter;
 
 // Canonical order for pill/segmented-control lists (chart isolate + compare views).
-export const ALL_WATER_QUALITY_PARAMS: WaterQualityParam[] = [
-  "ph",
-  "alkalinity",
-  "ammonia",
-  "calcium",
-  "phosphate",
-  "magnesium",
-  "salinity",
-];
+export const ALL_WATER_QUALITY_PARAMS: WaterQualityParam[] = WATER_QUALITY_PARAMETERS;
 
-export const WATER_QUALITY_COLORS: Record<WaterQualityParam, string> = {
-  ph: "#6366f1",
-  alkalinity: "#10b981",
-  ammonia: "#ef4444",
-  calcium: "#3b82f6",
-  phosphate: "#a855f7",
-  magnesium: "#f59e0b",
-  salinity: "#14b8a6",
-};
+export const WATER_QUALITY_COLORS: Record<WaterQualityParam, string> = Object.fromEntries(
+  WATER_QUALITY_PARAMS.map((p) => [p.key, p.color]),
+) as Record<WaterQualityParam, string>;
 
-export const WATER_QUALITY_LABELS: Record<WaterQualityParam, string> = {
-  ph: "pH",
-  alkalinity: "Alkalinity",
-  ammonia: "Ammonia",
-  calcium: "Calcium",
-  phosphate: "Phosphate",
-  magnesium: "Magnesium",
-  salinity: "Salinity",
-};
+export const WATER_QUALITY_LABELS: Record<WaterQualityParam, string> = Object.fromEntries(
+  WATER_QUALITY_PARAMS.map((p) => [p.key, p.label]),
+) as Record<WaterQualityParam, string>;
 
 // Builds one series per water-quality parameter, keeping only the readings
 // where that parameter was actually recorded — cadence is weekly-ish and
@@ -48,14 +26,7 @@ export const WATER_QUALITY_LABELS: Record<WaterQualityParam, string> = {
 // the selected trend chart range without re-fetching.
 export function buildWaterQualitySeries(
   data: SystemDetailData,
-  parameters: WaterQualityParam[] = [
-    "ph",
-    "alkalinity",
-    "ammonia",
-    "calcium",
-    "phosphate",
-    "magnesium",
-  ],
+  parameters: WaterQualityParam[] = ALL_WATER_QUALITY_PARAMS,
   days?: number,
 ): ChartSeries[] {
   // Anchor the cutoff to the latest reading already present in `data` rather

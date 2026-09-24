@@ -1,4 +1,5 @@
 import { SYSTEMS } from "@/lib/config/systems";
+import { WATER_QUALITY_PARAMETERS, type WaterQualityParameter } from "@/lib/config/reference-data";
 import { createClient } from "@/lib/supabase/server";
 import type {
   ChemicalAdditionPoint,
@@ -10,6 +11,15 @@ import type {
   SystemOverviewEntry,
   WaterQualityPoint,
 } from "@/components/systems/types";
+
+// Explicit shape for the water_quality_readings row, since its select string
+// is built dynamically (see waterQualityColumns below) and can't be inferred.
+type WaterQualityRow = {
+  id: number;
+  system_id: number;
+  tested_at: string;
+  ph_source: string | null;
+} & Record<WaterQualityParameter, number | null>;
 
 // Same Pacific-day rule used across the app (home page, checks/new) so "today"
 // means the lab's local calendar day, not the server's UTC day.
@@ -55,6 +65,10 @@ export async function fetchAllSystemsDetailData(): Promise<Record<string, System
   const { data: systemRows } = await supabase.from("systems").select("id, slug, name").order("id");
   const systemIds = (systemRows ?? []).map((s) => s.id);
 
+  // Widened to `string` (not a literal) so postgrest-js's select-string
+  // parser doesn't try (and fail) to statically parse this runtime-built list.
+  const waterQualityColumns: string = `id, system_id, tested_at, ph_source, ${WATER_QUALITY_PARAMETERS.join(", ")}`;
+
   const [
     { data: recentChecksAll },
     { data: dailyChecksRaw },
@@ -76,9 +90,7 @@ export async function fetchAllSystemsDetailData(): Promise<Record<string, System
       .order("checked_at", { ascending: true }),
     supabase
       .from("water_quality_readings")
-      .select(
-        "id, system_id, tested_at, ph_source, ph, magnesium, ammonia, alkalinity, calcium, phosphate, salinity",
-      )
+      .select(waterQualityColumns)
       .in("system_id", systemIds)
       .gte("tested_at", since60d)
       .order("tested_at", { ascending: true }),
@@ -198,19 +210,15 @@ export async function fetchAllSystemsDetailData(): Promise<Record<string, System
         checkedAt: r.checked_at,
       }));
 
-    const waterQuality: WaterQualityPoint[] = (waterQualityRaw ?? [])
+    const waterQuality: WaterQualityPoint[] = ((waterQualityRaw ?? []) as unknown as WaterQualityRow[])
       .filter((r) => r.system_id === systemId)
       .map((r) => ({
         id: r.id,
         testedAt: r.tested_at,
         phSource: r.ph_source,
-        ph: r.ph,
-        magnesium: r.magnesium,
-        ammonia: r.ammonia,
-        alkalinity: r.alkalinity,
-        calcium: r.calcium,
-        phosphate: r.phosphate,
-        salinity: r.salinity,
+        ...(Object.fromEntries(
+          WATER_QUALITY_PARAMETERS.map((key) => [key, r[key] ?? null]),
+        ) as Record<WaterQualityParameter, number | null>),
       }));
 
     const chemicalAdditions: ChemicalAdditionPoint[] = (chemicalAdditionsRaw ?? [])

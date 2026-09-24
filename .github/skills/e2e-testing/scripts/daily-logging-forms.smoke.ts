@@ -125,8 +125,14 @@ test.describe("e2e smoke", () => {
   test("water quality reading for Graham lands in water_quality_readings", async ({
     page,
   }) => {
+    const systemRows = dbQuery(`select id from core.systems where name = 'Graham'`);
+    const waterQualitySystemId = Number(systemRows[0]?.id);
+    expect(waterQualitySystemId).toBeGreaterThan(0);
+
     await login(page);
-    await page.goto(`/protected/water-quality/new?system=${grahamSystemId}`);
+    await page.goto(`/protected/water-quality/new?system=${waterQualitySystemId}`);
+    await expect(page.getByLabel("Nitrate")).toBeVisible();
+    await expect(page.getByLabel("Nitrite")).toBeVisible();
     await page.getByRole("button", { name: "Apex probe" }).click();
     await page.getByLabel("pH", { exact: true }).fill("8.1");
     await page.getByLabel("Magnesium").fill("1300");
@@ -135,23 +141,26 @@ test.describe("e2e smoke", () => {
     await page.getByLabel("Calcium").fill("420");
     await page.getByLabel("Phosphate").fill("0.02");
     await page.getByLabel("Salinity").fill("32");
+    await page.getByLabel("Nitrate").fill("7.13");
+    await page.getByLabel("Nitrite").fill("41");
     await page.getByLabel("Notes").fill(`${RUN_TAG} water quality`);
     await page.getByRole("button", { name: "Save reading" }).click();
-    await expect(page).toHaveURL(/\/protected\/today/);
+    await expect(page).toHaveURL(/\/protected\/home/);
 
-    if (db) {
-      const { data, error } = await db
-        .from("water_quality_readings")
-        .select("system_id, ph_source, ph, salinity, tested_at")
-        .eq("notes", `${RUN_TAG} water quality`)
-        .maybeSingle();
-      expect(error).toBeNull();
-      expect(data?.system_id).toBe(grahamSystemId);
-      expect(data?.ph_source).toBe("apex_probe");
-      expect(Number(data?.ph)).toBe(8.1);
-      expect(Number(data?.salinity)).toBe(32);
-      expect(localDateOf(data?.tested_at)).toBe(todayDateString());
-    }
+    const rows = dbQuery(`
+      select system_id, ph_source, ph, salinity, nitrate, nitrite, tested_at
+      from core.water_quality_readings
+      where notes = '${RUN_TAG} water quality'
+    `);
+    expect(rows).toHaveLength(1);
+    const reading = rows[0];
+    expect(Number(reading.system_id)).toBe(waterQualitySystemId);
+    expect(reading.ph_source).toBe("apex_probe");
+    expect(Number(reading.ph)).toBe(8.1);
+    expect(Number(reading.salinity)).toBe(32);
+    expect(Number(reading.nitrate)).toBe(7.13);
+    expect(Number(reading.nitrite)).toBe(41);
+    expect(localDateOf(String(reading.tested_at))).toBe(todayDateString());
   });
 
   test("chemical addition for Graham lands in chemical_additions", async ({

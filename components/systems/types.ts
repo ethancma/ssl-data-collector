@@ -1,6 +1,8 @@
 // Shared types for the systems detail page (Grid Overview layout).
 // See app/protected/systems/data.ts for how these are populated from Supabase.
 
+import type { WaterQualityParameter } from "@/lib/config/reference-data";
+
 // Trend chart window options — the client slices the already-fetched 60-day
 // superset down to one of these rather than re-fetching per selection.
 export const CHART_RANGE_DAYS = [14, 30, 60] as const;
@@ -26,14 +28,7 @@ export type WaterQualityPoint = {
   id: number;
   testedAt: string;
   phSource: string | null;
-  ph: number | null;
-  magnesium: number | null;
-  ammonia: number | null;
-  alkalinity: number | null;
-  calcium: number | null;
-  phosphate: number | null;
-  salinity: number | null;
-};
+} & Record<WaterQualityParameter, number | null>;
 
 export type ChemicalAdditionPoint = {
   id: number;

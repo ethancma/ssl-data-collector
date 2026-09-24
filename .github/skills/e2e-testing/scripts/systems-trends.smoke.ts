@@ -152,6 +152,50 @@ test.describe("systems page water quality trends card", () => {
     expect(consoleFindings, consoleFindings.join("\n")).toEqual([]);
   });
 
+  test("Nitrate and Nitrite appear in isolate and compare controls for recent readings", async ({
+    page,
+  }) => {
+    await login(page);
+
+    const networkFindings: string[] = [];
+    page.on("requestfailed", (request) => {
+      networkFindings.push(
+        `${request.method()} ${request.url()}: ${request.failure()?.errorText ?? "failed"}`,
+      );
+    });
+    page.on("response", (response) => {
+      if (response.status() >= 400) {
+        networkFindings.push(`${response.status()} ${response.request().method()} ${response.url()}`);
+      }
+    });
+
+    await page.goto("/protected/systems?system=graham&range=60");
+    await expect(page.getByText("Water quality trends")).toBeVisible();
+
+    const chart = page.locator('[role="group"][aria-label*="trend chart"]');
+    for (const [parameter, value] of [
+      ["Nitrate", "7.13"],
+      ["Nitrite", "41"],
+    ] as const) {
+      await page.getByRole("button", { name: parameter, exact: true }).click();
+      expect(await chart.locator("circle title").allTextContents()).toContain(
+        `${parameter}: ${value}`,
+      );
+    }
+
+    await page.getByRole("button", { name: "Next chart page" }).click();
+    const selects = chart.locator("select");
+    await expect(selects).toHaveCount(2);
+    for (const select of await selects.all()) {
+      const optionValues = await select.locator("option").evaluateAll((options) =>
+        options.map((option) => (option as HTMLOptionElement).value),
+      );
+      expect(optionValues).toEqual(expect.arrayContaining(["nitrate", "nitrite"]));
+    }
+
+    expect(networkFindings, networkFindings.join("\n")).toEqual([]);
+  });
+
   test("Page 1: All <-> single-chemical isolate redraws and rescales the chart", async ({
     page,
   }) => {

@@ -1,8 +1,12 @@
 import { z } from "zod";
 
-import { PH_SOURCES } from "@/lib/config/reference-data";
+import {
+  PH_SOURCES,
+  WATER_QUALITY_PARAMS,
+  type WaterQualityParameter,
+} from "@/lib/config/reference-data";
 
-// Validation for the weekly water quality reading form. The 7 params stay as
+// Validation for the weekly water quality reading form. The params stay as
 // strings (form inputs); the caller parses them to numbers on submit, same as
 // temperature in daily-check.ts. No target-range validation yet — the ranges are
 // an open question per docs/implementation-checklist.md §3, so we only check that
@@ -15,6 +19,11 @@ const optionalNumeric = (label: string) =>
       (v) => !v || !Number.isNaN(Number(v)),
       `Enter a valid number for ${label}`,
     );
+
+// Built once from WATER_QUALITY_PARAMS so adding a param there is enough.
+const paramFields = Object.fromEntries(
+  WATER_QUALITY_PARAMS.map((p) => [p.key, optionalNumeric(p.label)]),
+) as Record<WaterQualityParameter, ReturnType<typeof optionalNumeric>>;
 
 const dateField = z
   .string()
@@ -38,26 +47,12 @@ export const waterQualitySchema = z
       .transform(Number)
       .pipe(z.number().int().positive("Select a system")),
     phSource: z.enum(PH_SOURCES),
-    ph: optionalNumeric("pH"),
-    magnesium: optionalNumeric("magnesium"),
-    ammonia: optionalNumeric("ammonia"),
-    alkalinity: optionalNumeric("alkalinity"),
-    calcium: optionalNumeric("calcium"),
-    phosphate: optionalNumeric("phosphate"),
-    salinity: optionalNumeric("salinity"),
+    ...paramFields,
     notes: z.string().max(2000, "Keep notes under 2000 characters").optional(),
   })
   .superRefine((values, ctx) => {
-    const params = [
-      values.ph,
-      values.magnesium,
-      values.ammonia,
-      values.alkalinity,
-      values.calcium,
-      values.phosphate,
-      values.salinity,
-    ];
-    if (params.every((v) => !v)) {
+    const hasAnyParam = WATER_QUALITY_PARAMS.some((p) => values[p.key]);
+    if (!hasAnyParam) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         message: "Enter at least one water quality parameter",

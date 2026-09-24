@@ -96,7 +96,7 @@
 ## 7. Dashboards & analytics
 
 - [ ] **Priority trend view**: per-system overlay chart — water chemistry lines
-      (pH, magnesium, ammonia, alkalinity, calcium, phosphate) + health-observation
+      (pH, magnesium, ammonia, alkalinity, calcium, phosphate, nitrate, nitrite) + health-observation
       event markers on the same timeline, all `data_source` values shown together
 - [ ] Additional trend charts per system/parameter with chemical-addition overlays
 - [ ] Correlation exploration view (water quality vs. health-observation frequency)
