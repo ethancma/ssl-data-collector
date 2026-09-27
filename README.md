@@ -47,7 +47,7 @@ For details on any of the above, see the linked file in [docs/](docs/) rather th
 README — this file stays a high-level map.
 
 ## Getting started
-1. Copy `.env.example` to `.env.local` and fill in your Supabase project URL/anon key.
+1. Copy `.env.example` to `.env.local` and fill in your Supabase project URL/publishable key.
 2. `npm install` (if not already installed), then `npm run dev` — runs on port 3000.
 
 ## Status
