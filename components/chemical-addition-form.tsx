@@ -70,7 +70,6 @@ export function ChemicalAdditionForm({
   const {
     register,
     handleSubmit,
-    getValues,
     watch,
     setError,
     setValue,
@@ -193,8 +192,17 @@ export function ChemicalAdditionForm({
                 </label>
               ))}
               <label className="flex min-h-11 cursor-pointer items-center gap-3 rounded-md border border-input px-3 py-2 text-sm has-[:checked]:border-foreground has-[:checked]:bg-muted">
-                <input type="radio" value="" {...register("catalogId")} />
-                Enter manually
+                <input
+                  type="radio"
+                  value=""
+                  {...register("catalogId", {
+                    onChange: () => {
+                      setValue("chemicalName", "", { shouldValidate: true });
+                      setValue("unit", "", { shouldValidate: true });
+                    },
+                  })}
+                />
+                Other
               </label>
             </div>
           </fieldset>
@@ -205,39 +213,26 @@ export function ChemicalAdditionForm({
             </p>
           )}
 
-          <div className="grid gap-2">
-            <Label htmlFor="chemicalName">Chemical/product name</Label>
-            <Input
-              id="chemicalName"
-              className="min-h-11"
-              maxLength={200}
-              aria-describedby={errors.chemicalName ? "chemicalName-error" : undefined}
-              aria-invalid={Boolean(errors.chemicalName)}
-              {...register("chemicalName", {
-                onChange: (event) => {
-                  const selectedCatalog = catalogs.find(
-                    (item) => String(item.id) === getValues("catalogId"),
-                  );
-                  if (
-                    selectedCatalog &&
-                    normalizeSnapshot(event.target.value) !== selectedCatalog.name
-                  ) {
-                    setValue("catalogId", "", { shouldDirty: true });
-                  }
-                },
-              })}
-            />
-            {errors.chemicalName && (
-              <p id="chemicalName-error" className="text-sm text-red-500">
-                {errors.chemicalName.message}
-              </p>
-            )}
-            <p className="text-xs text-muted-foreground">
-              {catalogId ? "Editing the name switches this entry to free text." : "Free-text entry"}
-            </p>
-          </div>
+          {catalogId === "" && (
+            <div className="grid gap-2">
+              <Label htmlFor="chemicalName">Chemical/product name</Label>
+              <Input
+                id="chemicalName"
+                className="min-h-11"
+                maxLength={200}
+                aria-describedby={errors.chemicalName ? "chemicalName-error" : undefined}
+                aria-invalid={Boolean(errors.chemicalName)}
+                {...register("chemicalName")}
+              />
+              {errors.chemicalName && (
+                <p id="chemicalName-error" className="text-sm text-red-500">
+                  {errors.chemicalName.message}
+                </p>
+              )}
+            </div>
+          )}
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-2 items-start gap-4">
             <div className="grid gap-2">
               <Label htmlFor="amount">Amount</Label>
               <Input
