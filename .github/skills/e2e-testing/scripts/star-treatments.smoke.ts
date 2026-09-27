@@ -14,6 +14,7 @@ import {
   VIEWER_PASSWORD,
   VOLUNTEER_EMAIL,
   VOLUNTEER_PASSWORD,
+  collectBrowserFailures,
   dbQuery,
   loginAs,
   signInRoleClient,
@@ -22,6 +23,12 @@ import {
 const TAG = `e2e-star-treatment-${Date.now()}`;
 const LAB_TIME_ZONE = "America/Los_Angeles";
 const PICKED_TIME = "05:37";
+const EXPECTED_NEXT_REDIRECT_FAILURES = new Set([
+  "pageerror: Failed to execute 'measure' on 'Performance': '\u200bDailyOperationsPage' cannot have a negative time stamp.",
+  "pageerror: Router action dispatched before initialization",
+  "pageerror: Internal Next.js error: Router action dispatched before initialization.",
+  "console: Error: Router action dispatched before initialization",
+]);
 
 type EligibleStar = {
   id: number;
@@ -37,9 +44,39 @@ type SchemaStatus = {
   missing: string[];
 };
 
+type ProfileAccessState = {
+  status: string;
+  role: string | null;
+};
+
+let viewerProfileState: ProfileAccessState | undefined;
+
 function sqlLiteral(value: string) {
   return `'${value.replaceAll("'", "''")}'`;
 }
+
+test.beforeAll(() => {
+  const row = dbQuery(`select status, role
+    from core.profiles where email = ${sqlLiteral(VIEWER_EMAIL)}`)[0];
+  expect(row).toBeTruthy();
+  viewerProfileState = {
+    status: String(row.status),
+    role: row.role === null ? null : String(row.role),
+  };
+  dbQuery(`update core.profiles
+    set status = 'active', role = 'viewer'
+    where email = ${sqlLiteral(VIEWER_EMAIL)}`);
+});
+
+test.afterAll(() => {
+  if (!viewerProfileState) return;
+  const originalRole = viewerProfileState.role
+    ? sqlLiteral(viewerProfileState.role)
+    : "null";
+  dbQuery(`update core.profiles
+    set status = ${sqlLiteral(viewerProfileState.status)}, role = ${originalRole}
+    where email = ${sqlLiteral(VIEWER_EMAIL)}`);
+});
 
 function labDateString(date = new Date()) {
   const parts = new Intl.DateTimeFormat("en-US", {
@@ -150,6 +187,17 @@ function treatmentArticle(page: Page, treatmentId: number) {
   return page.locator(`article[data-treatment-id="${treatmentId}"]`);
 }
 
+function expectNoUnexpectedRedirectFailures(failures: string[]) {
+  const unexpected = unexpectedRedirectFailures(failures);
+  expect(unexpected, failures.join("\n")).toEqual([]);
+}
+
+function unexpectedRedirectFailures(failures: string[]) {
+  return failures.filter(
+    (failure) => !EXPECTED_NEXT_REDIRECT_FAILURES.has(failure),
+  );
+}
+
 test.describe("Star treatments: role visibility and no-access behavior", () => {
   const visibleRoles = [
     ["Admin", ADMIN_EMAIL, ADMIN_PASSWORD],
@@ -160,12 +208,14 @@ test.describe("Star treatments: role visibility and no-access behavior", () => {
   for (const [role, email, password] of visibleRoles) {
     test(`${role} sees Star treatment and can open its list`, async ({ page }) => {
       test.skip(!password, `E2E_TEST_${role.toUpperCase()}_PASSWORD not set`);
+      const browserFailures = collectBrowserFailures(page);
       await loginAs(page, email, password);
       await page.goto("/protected/daily-operations");
       await expect(page.getByRole("link", { name: "Star treatment" })).toBeVisible();
       const response = await page.goto("/protected/star-treatments");
       expect(response?.status()).toBe(200);
       await expect(page.getByRole("heading", { name: "Star treatments" })).toBeVisible();
+      expect(browserFailures, browserFailures.join("\n")).toEqual([]);
     });
   }
 
@@ -173,6 +223,7 @@ test.describe("Star treatments: role visibility and no-access behavior", () => {
     page,
   }) => {
     test.skip(!VIEWER_PASSWORD, "E2E_TEST_VIEWER_PASSWORD not set");
+    const browserFailures = collectBrowserFailures(page);
     await loginAs(page, VIEWER_EMAIL, VIEWER_PASSWORD);
     await page.goto("/protected/daily-operations");
     await expect(page.getByRole("link", { name: "Star treatment" })).toHaveCount(0);
@@ -181,11 +232,14 @@ test.describe("Star treatments: role visibility and no-access behavior", () => {
     await expect(
       page.getByRole("heading", { name: "This page could not be found." }),
     ).toBeVisible();
+    expectNoUnexpectedRedirectFailures(browserFailures);
   });
 
   test("signed-out access redirects to login", async ({ page }) => {
+    const browserFailures = collectBrowserFailures(page);
     await page.goto("/protected/star-treatments");
     await expect(page).toHaveURL(/\/auth\/login/);
+    expectNoUnexpectedRedirectFailures(browserFailures);
   });
 });
 
@@ -196,16 +250,24 @@ test.describe("Star treatments: URL controls and client validation", () => {
     page,
   }) => {
     const mutationAttempts = await blockRestMutations(page);
+    const browserFailures = collectBrowserFailures(page);
     const today = labDateString();
 
     await loginAs(page, TECH_EMAIL, TECH_PASSWORD);
     await page.goto("/protected/daily-operations?type=star-treatment");
-    await expect(page.getByRole("heading", { name: "Star treatment" })).toBeVisible();
+    await expect(
+      page.getByText(
+        "Record treatment administered to one individually tracked star.",
+        { exact: true },
+      ),
+    ).toBeVisible();
     await expect(page.getByLabel("Administered date")).toHaveValue(today);
     await expect(page.getByLabel("Administered date")).toHaveAttribute("min", today);
     await expect(page.getByLabel("Administered date")).toHaveAttribute("max", today);
-    await expect(page.getByLabel("Time")).toHaveValue(/^\d{2}:\d{2}$/);
+    await expect(page.locator("#star-treatment-time")).toHaveValue(/^\d{2}:\d{2}$/);
     await expect(page.getByLabel("Probiotics", { exact: true })).toBeChecked();
+    await expect(page.locator("#star-treatment-unit")).toHaveValue("mL");
+    await expect(page.locator("#star-treatment-concentration-unit")).toHaveValue("ppm");
 
     const system = page.getByLabel("System", { exact: true });
     const systemId = await system.locator("option:not([value=''])").first().getAttribute("value");
@@ -234,6 +296,8 @@ test.describe("Star treatments: URL controls and client validation", () => {
 
     await page.getByLabel("Other", { exact: true }).check();
     await expect(page.getByLabel("Treatment name")).toBeVisible();
+  await expect(page.locator("#star-treatment-unit")).toHaveValue("");
+  await expect(page.locator("#star-treatment-concentration-unit")).toHaveValue("");
     await page.getByRole("button", { name: "Save star treatment" }).click();
     await expect(page.getByText("Enter the treatment name")).toBeVisible();
     await expect(page.getByText("Enter an amount or concentration")).toBeVisible();
@@ -255,6 +319,27 @@ test.describe("Star treatments: URL controls and client validation", () => {
     await page.getByRole("button", { name: "Save star treatment" }).click();
     await expect(page.getByText("Enter a concentration unit")).toBeVisible();
     expect(mutationAttempts).toEqual([]);
+
+    await page.getByLabel("Administered date").fill(today);
+    await page.locator("#star-treatment-concentration").fill("");
+    await page.getByLabel("Reef Dip", { exact: true }).check();
+    await expect(page.locator("#star-treatment-amount")).toHaveValue("");
+    await expect(page.locator("#star-treatment-unit")).toHaveValue("");
+    await expect(page.locator("#star-treatment-concentration")).toHaveValue("");
+    await expect(page.locator("#star-treatment-concentration-unit")).toHaveValue("");
+    await page.getByRole("button", { name: "Save star treatment" }).click();
+    await expect.poll(() => mutationAttempts).toEqual([
+      "POST /rest/v1/rpc/create_star_treatment",
+    ]);
+    await expect(page.getByText("Enter an amount or concentration")).toHaveCount(0);
+    await expect
+      .poll(() => unexpectedRedirectFailures(browserFailures))
+      .toEqual([
+        expect.stringMatching(
+          /^requestfailed: POST .*\/rest\/v1\/rpc\/create_star_treatment /,
+        ),
+        "console: Failed to load resource: net::ERR_FAILED",
+      ]);
   });
 });
 
@@ -264,7 +349,11 @@ test.describe("Star treatments: Probiotics stays out of system chemical addition
 
   test("chemical addition form rejects Probiotics without creating a row", async ({ page }) => {
     const reason = `${TAG} prohibited chemical`;
-    const mutationAttempts = await blockRestMutations(page);
+    const browserFailures = collectBrowserFailures(page);
+    expect(
+      dbQuery(`select id from core.chemical_additions
+        where reason = ${sqlLiteral(reason)}`),
+    ).toHaveLength(0);
 
     await loginAs(page, TECH_EMAIL, TECH_PASSWORD);
     await page.goto("/protected/daily-operations?type=chemical-addition");
@@ -279,13 +368,29 @@ test.describe("Star treatments: Probiotics stays out of system chemical addition
     await page.getByLabel("Reason", { exact: true }).fill(reason);
     await system.selectOption(systemId ?? "");
     await expect(system).toHaveValue(systemId ?? "");
+    const rejectedResponsePromise = page.waitForResponse(
+      (response) =>
+        response.request().method() === "POST" &&
+        new URL(response.url()).pathname === "/rest/v1/chemical_additions",
+    );
     await page.getByRole("button", { name: "Save system addition" }).click();
+    const rejectedResponse = await rejectedResponsePromise;
 
+    expect(rejectedResponse.status()).toBe(400);
     await expect(
       page.getByText("Record Probiotics as an individual Star treatment"),
     ).toBeVisible();
     await expect(page).toHaveURL(/type=chemical-addition/);
-    expect(mutationAttempts).toEqual([]);
+    expect(
+      dbQuery(`select id from core.chemical_additions
+        where reason = ${sqlLiteral(reason)}`),
+    ).toHaveLength(0);
+    await expect.poll(() => browserFailures).toEqual([
+      expect.stringMatching(
+        /^response: 400 POST .*\/rest\/v1\/chemical_additions/,
+      ),
+      "console: Failed to load resource: the server responded with a status of 400 ()",
+    ]);
   });
 });
 

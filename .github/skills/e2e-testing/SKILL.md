@@ -18,21 +18,39 @@ matching database row is a failure, not a pass.
 
 ## Fast path — route, observe, run
 
-Do not begin with an open-ended repository search. Use the requested feature or changed-file
-list to open the matching script directly:
+Do not begin with an open-ended repository search. Start with the explicit list of files
+touched in the current coding session, not every pre-existing dirty worktree file:
 
-| Area | Script |
+```sh
+npm run test:e2e:plan -- --files <session-file> [<session-file> ...]
+```
+
+This is a dry run. It prints the selected section files, why each was selected, and the exact
+Playwright command. Review it, then either run that printed command or repeat with `--run`.
+Use `--git-diff` instead of `--files` only as a convenience when the worktree contains no
+unrelated changes. Use `npm run test:e2e:full` as the explicit full-suite escape hatch.
+
+The selector applies this policy:
+
+| Changed area | Selected script |
 |---|---|
-| Daily checks, feeding, water quality, chemical additions, health, maintenance, Today | `daily-logging-forms.smoke.ts` |
+| Daily checks, feeding, water quality, chemical additions, health, maintenance, Today/Home | `daily-logging-forms.smoke.ts` |
 | Sign-up, pending approval, admin users | `auth-and-admin.smoke.ts` |
-| Sidebar, Home navigation, theme | `sidebar-ui.smoke.ts` |
+| Sidebar, protected shell, navigation, theme | `sidebar-ui.smoke.ts` |
 | Operational-log roles and permission matrix | `rbac-tiers.smoke.ts` |
 | Star treatments and the Probiotics boundary | `star-treatments.smoke.ts` |
 | RLS/GRANT rebuild regression | `rls-rebuild.smoke.ts` |
 | Systems page and water-quality trend charts | `systems-trends.smoke.ts` |
+| Shared app/runtime files, unknown app/runtime files, shared e2e helpers | Full suite |
+| Supabase migrations, RLS/grants, database config, or seed data | Full suite (Tier 3+) |
+| Documentation or other non-runtime files only | No browser section |
 
-1. Open only the matching section script and `helpers.ts` first. If the request names changed
-  files, use `git diff --name-only` once to choose the section.
+The full suite includes all seven section scripts, so migration and broad changes cannot
+silently omit operational RBAC or RLS-rebuild coverage. The selector only chooses sections;
+it does not weaken each section's UI and direct-Supabase assertions.
+
+1. Open only the selected section script and `helpers.ts` first. Prefer explicit `--files`
+  input; do not let unrelated dirty files broaden a focused session run.
 2. Observe the live page with Playwright MCP `browser_navigate` and `browser_snapshot` before
   guessing selectors. Prefer the accessible names in that snapshot and existing
   `getByRole`/`getByLabel` patterns.
@@ -108,6 +126,20 @@ growing an existing one indefinitely:
 
 Run a single section directly by file path instead of the whole suite, e.g.
 `npx playwright test .github/skills/e2e-testing/scripts/daily-logging-forms.smoke.ts`.
+
+Selector examples:
+
+```sh
+# Preferred: only files changed in this coding session
+npm run test:e2e:plan -- --files components/water-quality-form.tsx lib/validation/water-quality.ts
+
+# Execute the reviewed selection
+npm run test:e2e:plan -- --files components/water-quality-form.tsx lib/validation/water-quality.ts --run
+
+# Convenience for a clean, single-purpose worktree, or force every section
+npm run test:e2e:plan -- --git-diff
+npm run test:e2e:full
+```
 
 ## Known gotchas (learned from real runs — read before extending a script)
 - **Never assert against schema `core` with the plain service-role Supabase-js client

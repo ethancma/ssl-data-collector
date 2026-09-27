@@ -12,13 +12,17 @@ Match effort to how much damage a wrong change could do.
 
 ## Tier 2 — Standard features & bug fixes
 Examples: a new form field, a dashboard tweak, a non-destructive query change.
-- Full run of the [e2e-testing skill](../.github/skills/e2e-testing/SKILL.md).
+- Pass only the files touched in the current coding session to the dry-run selector documented
+  in the [e2e-testing skill](../.github/skills/e2e-testing/SKILL.md), review its reasons, and
+  run the selected Playwright sections.
+- Run the full e2e suite when the selector escalates broad, shared, or unknown runtime changes.
 - Automated PR review (e.g. CodeRabbit) if/when configured — agent addresses flags.
 - Human reads the diff before merge.
 
 ## Tier 3 — Schema/migrations, RLS policies, auth & roles, import tooling
 Examples: a new table/column, an RLS policy change, the CSV import or paper-backfill tools.
 - Everything in Tier 2, plus:
+- Run the complete e2e suite. Tier 3 never relies on a narrower selector result.
 - Run migrations against a scratch/staging Supabase project first — never directly against
   production.
 - Verify directly in the Supabase dashboard (table editor, RLS policy check) — don't trust

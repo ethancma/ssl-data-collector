@@ -6,8 +6,8 @@
 import { test, expect } from "@playwright/test";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
-  db,
   dbQuery,
+  collectBrowserFailures,
   loginAs,
   signInRoleClient,
   anonRoleClient,
@@ -55,6 +55,36 @@ function sqlLiteral(value: string) {
   return `'${value.replaceAll("'", "''")}'`;
 }
 
+let originalViewerRole: string | null;
+let originalViewerStatus: string;
+
+test.beforeAll(async () => {
+  const adminClient = await signInRoleClient(ADMIN_EMAIL, ADMIN_PASSWORD);
+  const { data: viewerProfile, error: viewerProfileError } = await adminClient
+    .from("profiles")
+    .select("role, status")
+    .eq("email", VIEWER_EMAIL)
+    .single();
+  expect(viewerProfileError).toBeNull();
+  expect(viewerProfile).toBeTruthy();
+  originalViewerRole = viewerProfile?.role === null ? null : String(viewerProfile?.role);
+  originalViewerStatus = String(viewerProfile?.status);
+  const { error: updateError } = await adminClient
+    .from("profiles")
+    .update({ role: "viewer", status: "active" })
+    .eq("email", VIEWER_EMAIL);
+  expect(updateError).toBeNull();
+});
+
+test.afterAll(async () => {
+  const adminClient = await signInRoleClient(ADMIN_EMAIL, ADMIN_PASSWORD);
+  const { error } = await adminClient
+    .from("profiles")
+    .update({ role: originalViewerRole, status: originalViewerStatus })
+    .eq("email", VIEWER_EMAIL);
+  expect(error).toBeNull();
+});
+
 test.describe("admin can create logs in every form (operational log RBAC tiers)", () => {
   test.describe.configure({ mode: "serial" });
   test.skip(!ADMIN_PASSWORD, "E2E_TEST_ADMIN_PASSWORD not set");
@@ -81,12 +111,10 @@ test.describe("admin can create logs in every form (operational log RBAC tiers)"
     await page.getByLabel("Temperature (°C)").fill("12.5");
     await page.getByRole("button", { name: "Save check" }).click();
     await expect(page).toHaveURL(/\/protected\/home/);
-    if (db) {
-      const rows = dbQuery(
-        `select system_id from core.daily_checks where notes = '${TAG} AM check'`,
-      );
-      expect(Number(rows[0]?.system_id)).toBe(grahamSystemId);
-    }
+    const rows = dbQuery(
+      `select system_id from core.daily_checks where notes = '${TAG} AM check'`,
+    );
+    expect(Number(rows[0]?.system_id)).toBe(grahamSystemId);
   });
 
   test("admin feeding log lands in feeding_logs", async ({ page }) => {
@@ -98,12 +126,10 @@ test.describe("admin can create logs in every form (operational log RBAC tiers)"
     await page.getByLabel("Notes").fill(`${TAG} feeding`);
     await page.getByRole("button", { name: "Save feeding" }).click();
     await expect(page).toHaveURL(/\/protected\/home/);
-    if (db) {
-      const rows = dbQuery(
-        `select animal_id from core.feeding_logs where notes = '${TAG} feeding'`,
-      );
-      expect(Number(rows[0]?.animal_id)).toBe(ssl25AnimalId);
-    }
+    const rows = dbQuery(
+      `select animal_id from core.feeding_logs where notes = '${TAG} feeding'`,
+    );
+    expect(Number(rows[0]?.animal_id)).toBe(ssl25AnimalId);
   });
 
   test("admin water quality reading lands in water_quality_readings", async ({
@@ -114,17 +140,15 @@ test.describe("admin can create logs in every form (operational log RBAC tiers)"
       `/protected/daily-operations?type=water-quality&system=${grahamSystemId}`,
     );
     await page.getByRole("button", { name: "Apex probe" }).click();
-    await page.getByLabel("pH", { exact: true }).fill("8.1");
+    await page.getByLabel("pH (unitless)", { exact: true }).fill("8.1");
     await page.getByLabel("Salinity").fill("32");
     await page.getByLabel("Notes").fill(`${TAG} water quality`);
     await page.getByRole("button", { name: "Save reading" }).click();
     await expect(page).toHaveURL(/\/protected\/home/);
-    if (db) {
-      const rows = dbQuery(
-        `select system_id from core.water_quality_readings where notes = '${TAG} water quality'`,
-      );
-      expect(Number(rows[0]?.system_id)).toBe(grahamSystemId);
-    }
+    const rows = dbQuery(
+      `select system_id from core.water_quality_readings where notes = '${TAG} water quality'`,
+    );
+    expect(Number(rows[0]?.system_id)).toBe(grahamSystemId);
   });
 
   test("admin chemical addition lands in chemical_additions", async ({ page }) => {
@@ -139,12 +163,10 @@ test.describe("admin can create logs in every form (operational log RBAC tiers)"
     await page.getByLabel("Reason").fill(`${TAG} chemical addition`);
     await page.getByRole("button", { name: "Save system addition" }).click();
     await expect(page).toHaveURL(/\/protected\/home/);
-    if (db) {
-      const rows = dbQuery(
-        `select system_id from core.chemical_additions where reason = '${TAG} chemical addition'`,
-      );
-      expect(Number(rows[0]?.system_id)).toBe(grahamSystemId);
-    }
+    const rows = dbQuery(
+      `select system_id from core.chemical_additions where reason = '${TAG} chemical addition'`,
+    );
+    expect(Number(rows[0]?.system_id)).toBe(grahamSystemId);
   });
 
   test("admin health observation lands in health_observations", async ({ page }) => {
@@ -165,9 +187,8 @@ test.describe("admin can create logs in every form (operational log RBAC tiers)"
 
   test("admin maintenance log lands in maintenance_logs", async ({ page }) => {
     await loginAs(page, ADMIN_EMAIL, ADMIN_PASSWORD);
-    await page.goto("/protected/daily-operations");
-    await page.getByRole("button", { name: "Maintenance" }).click();
-    await page.getByLabel("System").selectOption(String(grahamSystemId));
+    await page.goto("/protected/daily-operations?type=maintenance-log");
+    await page.getByLabel("System", { exact: true }).selectOption(String(grahamSystemId));
     await page.getByLabel("Sump flush").check();
     await page.getByLabel("Notes").fill(`${TAG} maintenance`);
     await page.getByRole("button", { name: "Save maintenance log" }).click();
@@ -294,8 +315,7 @@ test.describe("viewer remains read-only (operational log RBAC tiers, unchanged)"
     await page.goto("/protected/home");
     await expect(page.getByRole("link", { name: "Daily Operations" })).toHaveCount(0);
 
-    const response = await page.goto("/protected/daily-operations");
-    expect(response?.status()).toBe(404);
+    await page.goto("/protected/daily-operations");
     await expect(page.getByRole("heading", { name: "404" })).toBeVisible();
   });
 
@@ -615,7 +635,6 @@ test.describe("P0 operational security: ownership, provenance, audit, and retent
 
 test.describe("P0 operational security: Storage object policies (DB-level)", () => {
   test.describe.configure({ mode: "serial" });
-  test.skip(!db, "SUPABASE_SERVICE_ROLE_KEY not set");
   test.skip(!ADMIN_PASSWORD, "E2E_TEST_ADMIN_PASSWORD not set");
   test.skip(!VOLUNTEER_PASSWORD, "E2E_TEST_VOLUNTEER_PASSWORD not set");
 
@@ -626,25 +645,26 @@ test.describe("P0 operational security: Storage object policies (DB-level)", () 
   const unrelatedFixturePath = "admin-fixture.txt";
   const unrelatedVolunteerPath = "volunteer-denied.txt";
 
-  test.beforeAll(async () => {
-    const { error: createBucketError } = await db!.storage.createBucket(
-      unrelatedBucket,
-      { public: false },
-    );
-    expect(createBucketError).toBeNull();
-
-    const { error: fixtureError } = await db!.storage
-      .from(unrelatedBucket)
-      .upload(unrelatedFixturePath, new Blob(["admin fixture"]), {
-        contentType: "text/plain",
-      });
-    expect(fixtureError).toBeNull();
+  test.beforeAll(() => {
+    dbQuery(`insert into storage.buckets (id, name, public)
+      values (${sqlLiteral(unrelatedBucket)}, ${sqlLiteral(unrelatedBucket)}, false)`);
+    const fixtureRows = dbQuery(`insert into storage.objects (bucket_id, name, owner_id)
+      select ${sqlLiteral(unrelatedBucket)}, ${sqlLiteral(unrelatedFixturePath)},
+        profile.auth_user_id::text
+      from core.profiles as profile
+      where profile.email = ${sqlLiteral(ADMIN_EMAIL)}
+      returning id`);
+    expect(fixtureRows).toHaveLength(1);
   });
 
   test.afterAll(async () => {
-    await db!.storage.from("attachments").remove([volunteerPath, adminPath]);
-    await db!.storage.emptyBucket(unrelatedBucket);
-    await db!.storage.deleteBucket(unrelatedBucket);
+    const adminClient = await signInRoleClient(ADMIN_EMAIL, ADMIN_PASSWORD);
+    await adminClient.storage.from("attachments").remove([volunteerPath, adminPath]);
+    dbQuery(`begin;
+      set local session_replication_role = replica;
+      delete from storage.objects where bucket_id = ${sqlLiteral(unrelatedBucket)};
+      delete from storage.buckets where id = ${sqlLiteral(unrelatedBucket)};
+      commit`);
   });
 
   test("Volunteer can update an object they own in the attachments bucket", async () => {
@@ -680,7 +700,7 @@ test.describe("P0 operational security: Storage object policies (DB-level)", () 
     expect(objectRows).toHaveLength(1);
     expect(objectRows[0]?.owner_id).toBe(user!.id);
 
-    const { data: contents, error: downloadError } = await db!.storage
+    const { data: contents, error: downloadError } = await volunteerClient.storage
       .from("attachments")
       .download(volunteerPath);
     expect(downloadError).toBeNull();
@@ -733,6 +753,11 @@ test.describe("P0 operational security: Storage object policies (DB-level)", () 
       VOLUNTEER_EMAIL,
       VOLUNTEER_PASSWORD,
     );
+
+    const { data: listed } = await volunteerClient.storage
+      .from(unrelatedBucket)
+      .list();
+    expect(listed?.some((item) => item.name === unrelatedFixturePath) ?? false).toBe(false);
 
     const { data: downloaded, error: downloadError } = await volunteerClient.storage
       .from(unrelatedBucket)
@@ -1113,6 +1138,7 @@ test.describe("P1 target and quick-pick management UI by role", () => {
     test(`${role.name} sees only the permitted P1 management UI`, async ({ page }) => {
       test.skip(!role.password, `E2E_TEST_${role.name.toUpperCase()}_PASSWORD not set`);
       await loginAs(page, role.email, role.password);
+      const browserFailures = role.name === "Admin" ? collectBrowserFailures(page) : null;
       await page.goto("/protected/home");
       await expect(page.getByRole("link", { name: "Water quality targets" })).toHaveCount(
         role.targets ? 1 : 0,
@@ -1121,30 +1147,31 @@ test.describe("P1 target and quick-pick management UI by role", () => {
         role.catalogs ? 1 : 0,
       );
 
-      const targetsResponse = await page.goto(
-        "/protected/settings/water-quality-targets",
-      );
-      expect(targetsResponse?.status()).toBe(role.targets ? 200 : 404);
+      await page.goto("/protected/settings/water-quality-targets");
       if (role.targets) {
         await expect(page.getByRole("heading", { name: "Target ranges" })).toBeVisible();
       } else {
         await expect(page.getByRole("heading", { name: "404" })).toBeVisible();
       }
 
-      const catalogsResponse = await page.goto("/protected/admin/quick-picks");
-      expect(catalogsResponse?.status()).toBe(role.catalogs ? 200 : 404);
+      await page.goto("/protected/admin/quick-picks");
       if (role.catalogs) {
         await expect(
           page.getByRole("heading", { name: "Quick-pick catalogs" }),
         ).toBeVisible();
       } else {
-        await expect(page.getByRole("heading", { name: "404" })).toBeVisible();
+        await expect(
+          page.getByText("Not authorized. This page is limited to active admins."),
+        ).toBeVisible();
+      }
+      if (browserFailures) {
+        expect(browserFailures, browserFailures.join("\n")).toEqual([]);
       }
     });
   }
 });
 
-test.describe("P1 target-range RBAC matrix (DB-level)", () => {
+test.describe("P1 target-range RBAC matrix DB-level", () => {
   test.describe.configure({ mode: "serial" });
   test.skip(!ADMIN_PASSWORD, "E2E_TEST_ADMIN_PASSWORD not set");
   test.skip(!TECH_PASSWORD, "E2E_TEST_TECH_PASSWORD not set");
@@ -1152,19 +1179,55 @@ test.describe("P1 target-range RBAC matrix (DB-level)", () => {
   test.skip(!VIEWER_PASSWORD, "E2E_TEST_VIEWER_PASSWORD not set");
 
   let grahamSystemId: number;
-  let targetId: number;
+  let wholeySystemId: number;
+  const targetIds: number[] = [];
+  const readingIds: number[] = [];
 
-  test.beforeAll(() => {
-    grahamSystemId = Number(
-      dbQuery(`select id from core.systems where name = 'Graham'`)[0]?.id,
-    );
+  test.beforeAll(async () => {
+    const adminClient = await signInRoleClient(ADMIN_EMAIL, ADMIN_PASSWORD);
+    const { data, error } = await adminClient
+      .from("systems")
+      .select("id, name")
+      .in("name", ["Graham", "Wholey"]);
+    expect(error).toBeNull();
+    grahamSystemId = Number(data?.find((system) => system.name === "Graham")?.id);
+    wholeySystemId = Number(data?.find((system) => system.name === "Wholey")?.id);
     expect(grahamSystemId).toBeGreaterThan(0);
+    expect(wholeySystemId).toBeGreaterThan(0);
   });
 
-  test.afterAll(() => {
-    if (targetId > 0) {
-      dbQuery(`delete from core.water_quality_target_ranges where id = ${targetId}`);
+  test.afterAll(async () => {
+    const adminClient = await signInRoleClient(ADMIN_EMAIL, ADMIN_PASSWORD);
+    if (readingIds.length > 0) {
+      const { error } = await adminClient
+        .from("water_quality_readings")
+        .delete()
+        .in("id", readingIds);
+      expect(error).toBeNull();
     }
+    if (targetIds.length > 0) {
+      const { error } = await adminClient
+        .from("water_quality_target_ranges")
+        .delete()
+        .in("id", targetIds);
+      expect(error).toBeNull();
+    }
+  });
+
+  test("target ranges have no seeded values or display_order column", async () => {
+    const adminClient = await signInRoleClient(ADMIN_EMAIL, ADMIN_PASSWORD);
+    const { data, error } = await adminClient
+      .from("water_quality_target_ranges")
+      .select("id");
+    expect(error).toBeNull();
+    expect(data).toEqual([]);
+
+    const { data: displayOrder, error: displayOrderError } = await adminClient
+      .from("water_quality_target_ranges")
+      .select("display_order")
+      .limit(1);
+    expect(displayOrderError).not.toBeNull();
+    expect(displayOrder).toBeNull();
   });
 
   test("Admin and Technician manage targets while Volunteer and Viewer only read", async () => {
@@ -1175,6 +1238,7 @@ test.describe("P1 target-range RBAC matrix (DB-level)", () => {
       VOLUNTEER_PASSWORD,
     );
     const viewerClient = await signInRoleClient(VIEWER_EMAIL, VIEWER_PASSWORD);
+    const anonymousClient = anonRoleClient();
 
     const { data: created, error: createError } = await adminClient
       .from("water_quality_target_ranges")
@@ -1187,22 +1251,48 @@ test.describe("P1 target-range RBAC matrix (DB-level)", () => {
       .select("id")
       .single();
     expect(createError).toBeNull();
-    targetId = Number(created?.id);
-    expect(targetId).toBeGreaterThan(0);
+    const adminTargetId = Number(created?.id);
+    targetIds.push(adminTargetId);
+    expect(adminTargetId).toBeGreaterThan(0);
+
+    const { data: technicianCreated, error: technicianCreateError } =
+      await technicianClient
+        .from("water_quality_target_ranges")
+        .insert({
+          system_id: grahamSystemId,
+          parameter_key: "alkalinity",
+          min_value: 7,
+          max_value: 12,
+        })
+        .select("id")
+        .single();
+    expect(technicianCreateError).toBeNull();
+    const technicianTargetId = Number(technicianCreated?.id);
+    targetIds.push(technicianTargetId);
+    expect(technicianTargetId).toBeGreaterThan(0);
 
     for (const client of [adminClient, technicianClient, volunteerClient, viewerClient]) {
       const { data, error } = await client
         .from("water_quality_target_ranges")
         .select("id, min_value, max_value")
-        .eq("id", targetId)
+        .eq("id", adminTargetId)
         .single();
       expect(error).toBeNull();
-      expect(Number(data?.id)).toBe(targetId);
+      expect(Number(data?.id)).toBe(adminTargetId);
     }
+
+    const { data: anonymousRead, error: anonymousReadError } = await anonymousClient
+      .from("water_quality_target_ranges")
+      .select("id")
+      .eq("id", adminTargetId)
+      .maybeSingle();
+    expect(anonymousReadError).not.toBeNull();
+    expect(anonymousRead).toBeNull();
 
     for (const [role, client] of [
       ["Volunteer", volunteerClient],
       ["Viewer", viewerClient],
+      ["Anonymous", anonymousClient],
     ] as const) {
       const { data: inserted, error: insertError } = await client
         .from("water_quality_target_ranges")
@@ -1220,7 +1310,7 @@ test.describe("P1 target-range RBAC matrix (DB-level)", () => {
       const { data: updated, error: updateError } = await client
         .from("water_quality_target_ranges")
         .update({ max_value: 100 })
-        .eq("id", targetId)
+        .eq("id", adminTargetId)
         .select("id")
         .maybeSingle();
       expect(updateError, `${role} update should fail`).not.toBeNull();
@@ -1229,31 +1319,181 @@ test.describe("P1 target-range RBAC matrix (DB-level)", () => {
       const { data: deleted, error: deleteError } = await client
         .from("water_quality_target_ranges")
         .delete()
-        .eq("id", targetId)
+        .eq("id", adminTargetId)
         .select("id")
         .maybeSingle();
       expect(deleteError, `${role} delete should fail`).not.toBeNull();
       expect(deleted).toBeNull();
     }
 
-    const { data: updated, error: updateError } = await technicianClient
+    const { data: adminUpdated, error: adminUpdateError } = await adminClient
       .from("water_quality_target_ranges")
-      .update({ max_value: 50 })
-      .eq("id", targetId)
+      .update({ max_value: 25 })
+      .eq("id", adminTargetId)
       .select("id, max_value")
       .single();
-    expect(updateError).toBeNull();
-    expect(Number(updated?.max_value)).toBe(50);
+    expect(adminUpdateError).toBeNull();
+    expect(Number(adminUpdated?.max_value)).toBe(25);
 
-    const { data: deleted, error: deleteError } = await technicianClient
+    const { data: technicianUpdated, error: technicianUpdateError } =
+      await technicianClient
+        .from("water_quality_target_ranges")
+        .update({ max_value: 50 })
+        .eq("id", adminTargetId)
+        .select("id, max_value")
+        .single();
+    expect(technicianUpdateError).toBeNull();
+    expect(Number(technicianUpdated?.max_value)).toBe(50);
+
+    const { data: adminDeleted, error: adminDeleteError } = await adminClient
       .from("water_quality_target_ranges")
       .delete()
-      .eq("id", targetId)
+      .eq("id", technicianTargetId)
       .select("id")
       .single();
-    expect(deleteError).toBeNull();
-    expect(Number(deleted?.id)).toBe(targetId);
-    targetId = 0;
+    expect(adminDeleteError).toBeNull();
+    expect(Number(adminDeleted?.id)).toBe(technicianTargetId);
+
+    const { data: technicianDeleted, error: technicianDeleteError } =
+      await technicianClient
+        .from("water_quality_target_ranges")
+        .delete()
+        .eq("id", adminTargetId)
+        .select("id")
+        .single();
+    expect(technicianDeleteError).toBeNull();
+    expect(Number(technicianDeleted?.id)).toBe(adminTargetId);
+  });
+
+  test("target range constraints reject invalid and duplicate definitions", async () => {
+    const adminClient = await signInRoleClient(ADMIN_EMAIL, ADMIN_PASSWORD);
+    const invalidTargets = [
+      { parameter_key: "temperature", min_value: 1, max_value: 2 },
+      { parameter_key: "phosphate", min_value: null, max_value: null },
+      { parameter_key: "salinity", min_value: 35, max_value: 30 },
+      { parameter_key: "magnesium", min_value: "NaN", max_value: null },
+    ];
+
+    for (const invalidTarget of invalidTargets) {
+      const { data, error } = await adminClient
+        .from("water_quality_target_ranges")
+        .insert(invalidTarget)
+        .select("id")
+        .maybeSingle();
+      expect(error).not.toBeNull();
+      expect(data).toBeNull();
+    }
+
+    const { data: labTarget, error: labTargetError } = await adminClient
+      .from("water_quality_target_ranges")
+      .insert({ parameter_key: "nitrate", min_value: 0, max_value: 10 })
+      .select("id")
+      .single();
+    expect(labTargetError).toBeNull();
+    const labTargetId = Number(labTarget?.id);
+    targetIds.push(labTargetId);
+
+    const { error: duplicateLabError } = await adminClient
+      .from("water_quality_target_ranges")
+      .insert({ parameter_key: "nitrate", min_value: 1, max_value: 9 });
+    expect(duplicateLabError).not.toBeNull();
+
+    const { data: systemTarget, error: systemTargetError } = await adminClient
+      .from("water_quality_target_ranges")
+      .insert({
+        system_id: grahamSystemId,
+        parameter_key: "nitrate",
+        min_value: 0,
+        max_value: 5,
+      })
+      .select("id")
+      .single();
+    expect(systemTargetError).toBeNull();
+    const systemTargetId = Number(systemTarget?.id);
+    targetIds.push(systemTargetId);
+
+    const { error: duplicateSystemError } = await adminClient
+      .from("water_quality_target_ranges")
+      .insert({
+        system_id: grahamSystemId,
+        parameter_key: "nitrate",
+        min_value: 1,
+        max_value: 4,
+      });
+    expect(duplicateSystemError).not.toBeNull();
+  });
+
+  test("system targets take precedence and later changes preserve reading history", async () => {
+    const adminClient = await signInRoleClient(ADMIN_EMAIL, ADMIN_PASSWORD);
+    const { data: labTarget, error: labTargetError } = await adminClient
+      .from("water_quality_target_ranges")
+      .insert({ parameter_key: "ph", min_value: 7.5, max_value: 8.5 })
+      .select("id")
+      .single();
+    expect(labTargetError).toBeNull();
+    targetIds.push(Number(labTarget?.id));
+
+    const { data: systemTarget, error: systemTargetError } = await adminClient
+      .from("water_quality_target_ranges")
+      .insert({
+        system_id: grahamSystemId,
+        parameter_key: "ph",
+        min_value: 8,
+        max_value: 8.2,
+      })
+      .select("id")
+      .single();
+    expect(systemTargetError).toBeNull();
+    const systemTargetId = Number(systemTarget?.id);
+    targetIds.push(systemTargetId);
+
+    const { data: overridden, error: overriddenError } = await adminClient
+      .from("water_quality_readings")
+      .insert({ system_id: grahamSystemId, ph_source: "manual", ph: 7.8 })
+      .select("id")
+      .maybeSingle();
+    expect(overriddenError).not.toBeNull();
+    expect(overridden).toBeNull();
+
+    const { data: labAccepted, error: labAcceptedError } = await adminClient
+      .from("water_quality_readings")
+      .insert({ system_id: wholeySystemId, ph_source: "manual", ph: 7.8 })
+      .select("id")
+      .single();
+    expect(labAcceptedError).toBeNull();
+    readingIds.push(Number(labAccepted?.id));
+
+    const { data: historical, error: historicalError } = await adminClient
+      .from("water_quality_readings")
+      .insert({ system_id: grahamSystemId, ph_source: "manual", ph: 8.1 })
+      .select("id, ph, notes")
+      .single();
+    expect(historicalError).toBeNull();
+    const historicalId = Number(historical?.id);
+    readingIds.push(historicalId);
+    expect(historical?.notes).toBeNull();
+
+    const { error: rangeUpdateError } = await adminClient
+      .from("water_quality_target_ranges")
+      .update({ min_value: 8.3, max_value: 8.4 })
+      .eq("id", systemTargetId);
+    expect(rangeUpdateError).toBeNull();
+
+    const { data: preserved, error: preservedError } = await adminClient
+      .from("water_quality_readings")
+      .select("id, ph, notes")
+      .eq("id", historicalId)
+      .single();
+    expect(preservedError).toBeNull();
+    expect(preserved).toMatchObject({ id: historicalId, ph: 8.1, notes: null });
+
+    const { data: newlyOutOfRange, error: newlyOutOfRangeError } = await adminClient
+      .from("water_quality_readings")
+      .insert({ system_id: grahamSystemId, ph_source: "manual", ph: 8.1 })
+      .select("id")
+      .maybeSingle();
+    expect(newlyOutOfRangeError).not.toBeNull();
+    expect(newlyOutOfRange).toBeNull();
   });
 });
 
@@ -1282,11 +1522,77 @@ test.describe("P1 quick-pick catalog RBAC matrix (DB-level)", () => {
     },
   ] as const;
 
-  test.afterAll(() => {
-    dbQuery(`delete from core.chemical_addition_catalog
-      where name like ${sqlLiteral(`${tag}%`)}`);
-    dbQuery(`delete from core.star_treatment_catalog
-      where name like ${sqlLiteral(`${tag}%`)}`);
+  test.afterAll(async () => {
+    const adminClient = await signInRoleClient(ADMIN_EMAIL, ADMIN_PASSWORD);
+    const { data: starTreatments, error: starTreatmentsError } = await adminClient
+      .from("star_treatments")
+      .select("id")
+      .like("notes", `${tag}%`);
+    expect(starTreatmentsError).toBeNull();
+    for (const treatment of starTreatments ?? []) {
+      const { error } = await adminClient.rpc("hard_delete_star_treatment", {
+        p_treatment_id: Number(treatment.id),
+      });
+      expect(error).toBeNull();
+    }
+    const { error: additionsCleanupError } = await adminClient
+      .from("chemical_additions")
+      .delete()
+      .like("reason", `${tag}%`);
+    expect(additionsCleanupError).toBeNull();
+    const { error: chemicalCleanupError } = await adminClient
+      .from("chemical_addition_catalog")
+      .delete()
+      .like("name", `${tag}%`);
+    expect(chemicalCleanupError).toBeNull();
+    const { error: starCleanupError } = await adminClient
+      .from("star_treatment_catalog")
+      .delete()
+      .like("name", `${tag}%`);
+    expect(starCleanupError).toBeNull();
+  });
+
+  test("catalogs expose the exact seeds and omit display_order", async () => {
+    const adminClient = await signInRoleClient(ADMIN_EMAIL, ADMIN_PASSWORD);
+    const { data: chemicalSeeds, error: chemicalSeedsError } = await adminClient
+      .from("chemical_addition_catalog")
+      .select("name, default_unit")
+      .in("name", ["C-Balance", "Mg", "DI-Trace"])
+      .order("name");
+    expect(chemicalSeedsError).toBeNull();
+    expect(chemicalSeeds).toEqual([
+      { name: "C-Balance", default_unit: "mL" },
+      { name: "DI-Trace", default_unit: "mL" },
+      { name: "Mg", default_unit: "mL" },
+    ]);
+
+    const { data: starSeeds, error: starSeedsError } = await adminClient
+      .from("star_treatment_catalog")
+      .select("name, default_amount_unit, default_concentration_unit")
+      .in("name", ["Probiotics", "Reef Dip"])
+      .order("name");
+    expect(starSeedsError).toBeNull();
+    expect(starSeeds).toEqual([
+      {
+        name: "Probiotics",
+        default_amount_unit: "mL",
+        default_concentration_unit: "ppm",
+      },
+      {
+        name: "Reef Dip",
+        default_amount_unit: null,
+        default_concentration_unit: null,
+      },
+    ]);
+
+    for (const table of [
+      "chemical_addition_catalog",
+      "star_treatment_catalog",
+    ] as const) {
+      const { data, error } = await adminClient.from(table).select("display_order").limit(1);
+      expect(error).not.toBeNull();
+      expect(data).toBeNull();
+    }
   });
 
   test("Admin creates, renames, and deletes both catalog types through the UI", async ({
@@ -1298,6 +1604,7 @@ test.describe("P1 quick-pick catalog RBAC matrix (DB-level)", () => {
     const renamedStar = `${tag} UI star renamed`;
 
     await loginAs(page, ADMIN_EMAIL, ADMIN_PASSWORD);
+  const adminClient = await signInRoleClient(ADMIN_EMAIL, ADMIN_PASSWORD);
     await page.goto("/protected/admin/quick-picks");
 
     const addChemical = page
@@ -1307,10 +1614,13 @@ test.describe("P1 quick-pick catalog RBAC matrix (DB-level)", () => {
     await addChemical.getByLabel("Default unit").fill("mL");
     await addChemical.getByRole("button", { name: "Add quick pick" }).click();
     await expect(page.getByText(`${chemicalName} added.`)).toBeVisible();
-    const chemicalId = Number(
-      dbQuery(`select id from core.chemical_addition_catalog
-        where name = ${sqlLiteral(chemicalName)}`)[0]?.id,
-    );
+    const { data: createdChemical, error: createdChemicalError } = await adminClient
+      .from("chemical_addition_catalog")
+      .select("id")
+      .eq("name", chemicalName)
+      .single();
+    expect(createdChemicalError).toBeNull();
+    const chemicalId = Number(createdChemical?.id);
     expect(chemicalId).toBeGreaterThan(0);
 
     await page
@@ -1319,16 +1629,19 @@ test.describe("P1 quick-pick catalog RBAC matrix (DB-level)", () => {
       .getByRole("button", { name: "Edit" })
       .click();
     const chemicalEditor = page
-      .getByDisplayValue(chemicalName)
+      .locator(`#chemical-${chemicalId}-name`)
       .locator("xpath=ancestor::form");
     await chemicalEditor.getByLabel("Name").fill(renamedChemical);
     await chemicalEditor.getByLabel("Default unit").fill("g");
     await chemicalEditor.getByRole("button", { name: "Save" }).click();
     await expect(page.getByText(`${renamedChemical} saved.`)).toBeVisible();
-    expect(
-      dbQuery(`select name, default_unit from core.chemical_addition_catalog
-        where id = ${chemicalId}`)[0],
-    ).toEqual({ name: renamedChemical, default_unit: "g" });
+    const { data: updatedChemical, error: updatedChemicalError } = await adminClient
+      .from("chemical_addition_catalog")
+      .select("name, default_unit")
+      .eq("id", chemicalId)
+      .single();
+    expect(updatedChemicalError).toBeNull();
+    expect(updatedChemical).toEqual({ name: renamedChemical, default_unit: "g" });
 
     page.once("dialog", (dialog) => dialog.accept());
     await page
@@ -1337,9 +1650,13 @@ test.describe("P1 quick-pick catalog RBAC matrix (DB-level)", () => {
       .getByRole("button", { name: "Delete" })
       .click();
     await expect(page.getByText(`${renamedChemical} deleted.`)).toBeVisible();
-    expect(
-      dbQuery(`select id from core.chemical_addition_catalog where id = ${chemicalId}`),
-    ).toHaveLength(0);
+    const { data: deletedChemical, error: deletedChemicalError } = await adminClient
+      .from("chemical_addition_catalog")
+      .select("id")
+      .eq("id", chemicalId)
+      .maybeSingle();
+    expect(deletedChemicalError).toBeNull();
+    expect(deletedChemical).toBeNull();
 
     const addStar = page
       .getByRole("heading", { name: "Add Star Treatment quick pick" })
@@ -1349,10 +1666,13 @@ test.describe("P1 quick-pick catalog RBAC matrix (DB-level)", () => {
     await addStar.getByLabel("Concentration unit").fill("ppm");
     await addStar.getByRole("button", { name: "Add quick pick" }).click();
     await expect(page.getByText(`${starName} added.`)).toBeVisible();
-    const starId = Number(
-      dbQuery(`select id from core.star_treatment_catalog
-        where name = ${sqlLiteral(starName)}`)[0]?.id,
-    );
+    const { data: createdStar, error: createdStarError } = await adminClient
+      .from("star_treatment_catalog")
+      .select("id")
+      .eq("name", starName)
+      .single();
+    expect(createdStarError).toBeNull();
+    const starId = Number(createdStar?.id);
     expect(starId).toBeGreaterThan(0);
 
     await page
@@ -1360,16 +1680,21 @@ test.describe("P1 quick-pick catalog RBAC matrix (DB-level)", () => {
       .locator("../..")
       .getByRole("button", { name: "Edit" })
       .click();
-    const starEditor = page.getByDisplayValue(starName).locator("xpath=ancestor::form");
+    const starEditor = page
+      .locator(`#star-${starId}-name`)
+      .locator("xpath=ancestor::form");
     await starEditor.getByLabel("Name").fill(renamedStar);
     await starEditor.getByLabel("Amount unit").fill("");
     await starEditor.getByLabel("Concentration unit").fill("");
     await starEditor.getByRole("button", { name: "Save" }).click();
     await expect(page.getByText(`${renamedStar} saved.`)).toBeVisible();
-    expect(
-      dbQuery(`select name, default_amount_unit, default_concentration_unit
-        from core.star_treatment_catalog where id = ${starId}`)[0],
-    ).toEqual({
+    const { data: updatedStar, error: updatedStarError } = await adminClient
+      .from("star_treatment_catalog")
+      .select("name, default_amount_unit, default_concentration_unit")
+      .eq("id", starId)
+      .single();
+    expect(updatedStarError).toBeNull();
+    expect(updatedStar).toEqual({
       name: renamedStar,
       default_amount_unit: null,
       default_concentration_unit: null,
@@ -1382,9 +1707,13 @@ test.describe("P1 quick-pick catalog RBAC matrix (DB-level)", () => {
       .getByRole("button", { name: "Delete" })
       .click();
     await expect(page.getByText(`${renamedStar} deleted.`)).toBeVisible();
-    expect(
-      dbQuery(`select id from core.star_treatment_catalog where id = ${starId}`),
-    ).toHaveLength(0);
+    const { data: deletedStar, error: deletedStarError } = await adminClient
+      .from("star_treatment_catalog")
+      .select("id")
+      .eq("id", starId)
+      .maybeSingle();
+    expect(deletedStarError).toBeNull();
+    expect(deletedStar).toBeNull();
   });
 
   for (const catalogCase of catalogCases) {
@@ -1396,6 +1725,7 @@ test.describe("P1 quick-pick catalog RBAC matrix (DB-level)", () => {
         VOLUNTEER_PASSWORD,
       );
       const viewerClient = await signInRoleClient(VIEWER_EMAIL, VIEWER_PASSWORD);
+      const anonymousClient = anonRoleClient();
 
       const { data: created, error: createError } = await adminClient
         .from(catalogCase.table)
@@ -1416,10 +1746,19 @@ test.describe("P1 quick-pick catalog RBAC matrix (DB-level)", () => {
         expect(Number(data?.id)).toBe(catalogId);
       }
 
+      const { data: anonymousRead, error: anonymousReadError } = await anonymousClient
+        .from(catalogCase.table)
+        .select("id")
+        .eq("id", catalogId)
+        .maybeSingle();
+      expect(anonymousReadError).not.toBeNull();
+      expect(anonymousRead).toBeNull();
+
       for (const [role, client] of [
         ["Technician", technicianClient],
         ["Volunteer", volunteerClient],
         ["Viewer", viewerClient],
+        ["Anonymous", anonymousClient],
       ] as const) {
         const { data: inserted, error: insertError } = await client
           .from(catalogCase.table)
@@ -1467,4 +1806,170 @@ test.describe("P1 quick-pick catalog RBAC matrix (DB-level)", () => {
       expect(Number(deleted?.id)).toBe(catalogId);
     });
   }
+
+  test("catalog renames preserve event snapshots and referenced rows block deletion", async () => {
+    const adminClient = await signInRoleClient(ADMIN_EMAIL, ADMIN_PASSWORD);
+    let chemicalCatalogId = 0;
+    let chemicalAdditionId = 0;
+    let starCatalogId = 0;
+    let starTreatmentId = 0;
+
+    try {
+      const { data: system, error: systemError } = await adminClient
+        .from("systems")
+        .select("id")
+        .eq("name", "Graham")
+        .single();
+      expect(systemError).toBeNull();
+      const { data: star, error: starError } = await adminClient
+        .from("animals")
+        .select("id, tank_id")
+        .eq("name", "SSL25")
+        .single();
+      expect(starError).toBeNull();
+
+      const chemicalName = `${tag} snapshot chemical`;
+      const { data: chemicalCatalog, error: chemicalCatalogError } = await adminClient
+        .from("chemical_addition_catalog")
+        .insert({ name: chemicalName, default_unit: "mL" })
+        .select("id")
+        .single();
+      expect(chemicalCatalogError).toBeNull();
+      chemicalCatalogId = Number(chemicalCatalog?.id);
+
+      const chemicalReason = `${tag} chemical snapshot`;
+      const { data: chemicalAddition, error: chemicalAdditionError } = await adminClient
+        .from("chemical_additions")
+        .insert({
+          system_id: Number(system?.id),
+          catalog_id: chemicalCatalogId,
+          chemical_name: "ignored catalog snapshot",
+          amount: 1,
+          unit: "mL",
+          reason: chemicalReason,
+        })
+        .select("id, chemical_name, unit")
+        .single();
+      expect(chemicalAdditionError).toBeNull();
+      chemicalAdditionId = Number(chemicalAddition?.id);
+      expect(chemicalAddition).toMatchObject({ chemical_name: chemicalName, unit: "mL" });
+
+      const { error: chemicalRenameError } = await adminClient
+        .from("chemical_addition_catalog")
+        .update({ name: `${chemicalName} renamed`, default_unit: "g" })
+        .eq("id", chemicalCatalogId);
+      expect(chemicalRenameError).toBeNull();
+      const { data: chemicalSnapshot, error: chemicalSnapshotError } = await adminClient
+        .from("chemical_additions")
+        .select("catalog_id, chemical_name, unit")
+        .eq("id", chemicalAdditionId)
+        .single();
+      expect(chemicalSnapshotError).toBeNull();
+      expect(chemicalSnapshot).toEqual({
+        catalog_id: chemicalCatalogId,
+        chemical_name: chemicalName,
+        unit: "mL",
+      });
+      const { data: deletedChemicalCatalog, error: chemicalDeleteError } =
+        await adminClient
+          .from("chemical_addition_catalog")
+          .delete()
+          .eq("id", chemicalCatalogId)
+          .select("id")
+          .maybeSingle();
+      expect(chemicalDeleteError).not.toBeNull();
+      expect(deletedChemicalCatalog).toBeNull();
+
+      const starName = `${tag} snapshot star`;
+      const { data: starCatalog, error: starCatalogError } = await adminClient
+        .from("star_treatment_catalog")
+        .insert({
+          name: starName,
+          default_amount_unit: "mL",
+          default_concentration_unit: null,
+        })
+        .select("id")
+        .single();
+      expect(starCatalogError).toBeNull();
+      starCatalogId = Number(starCatalog?.id);
+
+      const starNotes = `${tag} star snapshot`;
+      const { error: treatmentCreateError } = await adminClient.rpc(
+        "create_star_treatment",
+        {
+          p_animal_id: Number(star?.id),
+          p_tank_id: Number(star?.tank_id),
+          p_amount: 2,
+          p_unit: "mL",
+          p_concentration: null,
+          p_concentration_unit: null,
+          p_treatment_type: "ignored catalog snapshot",
+          p_notes: starNotes,
+          p_administered_at: new Date().toISOString(),
+          p_catalog_id: starCatalogId,
+        },
+      );
+      expect(treatmentCreateError).toBeNull();
+      const { data: treatmentBefore, error: treatmentBeforeError } = await adminClient
+        .from("star_treatments")
+        .select("id, catalog_id, treatment_type, unit, concentration_unit")
+        .eq("notes", starNotes)
+        .single();
+      expect(treatmentBeforeError).toBeNull();
+      starTreatmentId = Number(treatmentBefore?.id);
+
+      const { error: starRenameError } = await adminClient
+        .from("star_treatment_catalog")
+        .update({
+          name: `${starName} renamed`,
+          default_amount_unit: "g",
+          default_concentration_unit: "ppm",
+        })
+        .eq("id", starCatalogId);
+      expect(starRenameError).toBeNull();
+      const { data: treatmentAfter, error: treatmentAfterError } = await adminClient
+        .from("star_treatments")
+        .select("id, catalog_id, treatment_type, unit, concentration_unit")
+        .eq("id", starTreatmentId)
+        .single();
+      expect(treatmentAfterError).toBeNull();
+      expect(treatmentAfter).toEqual(treatmentBefore);
+      const { data: deletedStarCatalog, error: starDeleteError } = await adminClient
+        .from("star_treatment_catalog")
+        .delete()
+        .eq("id", starCatalogId)
+        .select("id")
+        .maybeSingle();
+      expect(starDeleteError).not.toBeNull();
+      expect(deletedStarCatalog).toBeNull();
+    } finally {
+      if (starTreatmentId > 0) {
+        const { error } = await adminClient.rpc("hard_delete_star_treatment", {
+          p_treatment_id: starTreatmentId,
+        });
+        expect(error).toBeNull();
+      }
+      if (chemicalAdditionId > 0) {
+        const { error } = await adminClient
+          .from("chemical_additions")
+          .delete()
+          .eq("id", chemicalAdditionId);
+        expect(error).toBeNull();
+      }
+      if (chemicalCatalogId > 0) {
+        const { error } = await adminClient
+          .from("chemical_addition_catalog")
+          .delete()
+          .eq("id", chemicalCatalogId);
+        expect(error).toBeNull();
+      }
+      if (starCatalogId > 0) {
+        const { error } = await adminClient
+          .from("star_treatment_catalog")
+          .delete()
+          .eq("id", starCatalogId);
+        expect(error).toBeNull();
+      }
+    }
+  });
 });

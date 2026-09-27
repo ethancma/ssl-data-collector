@@ -128,6 +128,12 @@ These are the highest-priority open items because they affect data ownership or 
 - [ ] Add per-system recurrence/task configuration and due/overdue dashboard badges.
 - [ ] Add scheduled Resend reminders to Admins/lead techs only.
 
+## Engineering Maintainability
+
+- [x] Add a deterministic changed-file e2e selector with explicit session-file input,
+      dry-run reasoning, focused credential-free unit tests, conservative full-suite
+      escalation, and a documented full-suite escape hatch.
+
 ## Star Treatment Closure
 
 - [x] Core schema, eligibility rules, provenance, treatment-time tank snapshot, and indexes.

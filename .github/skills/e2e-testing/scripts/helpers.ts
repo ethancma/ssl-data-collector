@@ -20,7 +20,10 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { expect, type Page } from "@playwright/test";
+import { loadEnvConfig } from "@next/env";
 import { createClient } from "@supabase/supabase-js";
+
+loadEnvConfig(process.cwd());
 
 export const SUPABASE_URL =
   process.env.SUPABASE_URL ?? "https://bqylxmsifagnztxhixyl.supabase.co";
@@ -32,11 +35,7 @@ export const ADMIN_PASSWORD = process.env.E2E_TEST_ADMIN_PASSWORD ?? "password";
 // Seeded volunteer test account (core.profiles.role = 'volunteer').
 export const VOLUNTEER_EMAIL = process.env.E2E_TEST_VOLUNTEER_EMAIL ?? "test-volunteer@ssl.dev";
 export const VOLUNTEER_PASSWORD = process.env.E2E_TEST_VOLUNTEER_PASSWORD ?? "password";
-// Seeded viewer test account. No dedicated "test-viewer@ssl.dev" account exists yet
-// (unlike admin/technician/volunteer) — this is the one pre-existing active viewer
-// profile in the shared dev project. Consider seeding a proper test-viewer@ssl.dev
-// account for consistency with test-accounts.md.
-export const VIEWER_EMAIL = process.env.E2E_TEST_VIEWER_EMAIL ?? "m@sample.com";
+export const VIEWER_EMAIL = process.env.E2E_TEST_VIEWER_EMAIL ?? "test-viewer@ssl.dev";
 export const VIEWER_PASSWORD = process.env.E2E_TEST_VIEWER_PASSWORD ?? "password";
 // Public anon/publishable key — safe to default here the same way SUPABASE_URL is above.
 export const PUBLISHABLE_KEY =
@@ -149,6 +148,38 @@ export function anonRoleClient() {
     db: { schema: "core" },
     auth: { persistSession: false },
   });
+}
+
+export function collectBrowserFailures(page: Page): string[] {
+  const failures: string[] = [];
+  page.on("console", (message) => {
+    if (message.type() === "error") {
+      failures.push(`console: ${message.text()}`);
+    }
+  });
+  page.on("pageerror", (error) => failures.push(`pageerror: ${error.message}`));
+  page.on("requestfailed", (request) => {
+    const errorText = request.failure()?.errorText ?? "unknown";
+    const url = new URL(request.url());
+    if (
+      errorText === "net::ERR_ABORTED" &&
+      url.origin === "http://localhost:3000" &&
+      url.searchParams.has("_rsc")
+    ) {
+      return;
+    }
+    failures.push(
+      `requestfailed: ${request.method()} ${request.url()} (${errorText})`,
+    );
+  });
+  page.on("response", (response) => {
+    if (response.status() >= 400) {
+      failures.push(
+        `response: ${response.status()} ${response.request().method()} ${response.url()}`,
+      );
+    }
+  });
+  return failures;
 }
 
 // A fixed clock time, chosen to be unambiguously different from "now" whenever this

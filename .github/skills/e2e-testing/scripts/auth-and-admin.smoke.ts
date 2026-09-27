@@ -5,7 +5,15 @@
  * changes; see ../SKILL.md for the full procedure.
  */
 import { test, expect, type Page } from "@playwright/test";
-import { db, dbQuery, loginAs, RUN_TAG, ADMIN_EMAIL, ADMIN_PASSWORD } from "./helpers";
+import {
+  ADMIN_EMAIL,
+  ADMIN_PASSWORD,
+  collectBrowserFailures,
+  db,
+  dbQuery,
+  loginAs,
+  RUN_TAG,
+} from "./helpers";
 import {
   getExpectedAuthRole,
   getRoleClaimAction,
@@ -259,6 +267,7 @@ test.describe("admin user management", () => {
   test("admin sees the sidebar hamburger toggle, Admin link, and the admin table", async ({
     page,
   }) => {
+    const browserFailures = collectBrowserFailures(page);
     await loginAs(page, ADMIN_EMAIL, ADMIN_PASSWORD);
 
     const collapseBtn = page.getByRole("button", { name: /collapse sidebar/i });
@@ -276,6 +285,7 @@ test.describe("admin user management", () => {
     await expect(page).toHaveURL(/\/protected\/admin/);
     await expect(page.getByText(/not authorized/i)).toHaveCount(0);
     await expect(page.getByText("Users", { exact: true })).toBeVisible();
+    expect(browserFailures, browserFailures.join("\n")).toEqual([]);
   });
 
   test("sign-up lands pending, admin approves it as viewer, and the DB row matches", async ({

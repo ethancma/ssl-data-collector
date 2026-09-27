@@ -6,7 +6,9 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
-    "test:unit": "tsx --test components/**/*.test.ts"
+    "test:unit": "tsx --test components/**/*.test.ts .github/skills/e2e-testing/tests/*.test.ts",
+    "test:e2e:plan": "tsx .github/skills/e2e-testing/scripts/select-smoke-sections.ts",
+    "test:e2e:full": "playwright test"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.9.1",

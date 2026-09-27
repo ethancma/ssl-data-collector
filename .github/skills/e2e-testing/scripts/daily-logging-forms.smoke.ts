@@ -16,6 +16,7 @@ import {
   login,
   loginAs,
   signInRoleClient,
+  TECH_EMAIL,
   TECH_PASSWORD,
   RUN_TAG,
   todayDateString,
@@ -223,7 +224,7 @@ test.describe("e2e smoke", () => {
     await expect(page.getByLabel("Nitrate")).toBeVisible();
     await expect(page.getByLabel("Nitrite")).toBeVisible();
     await page.getByRole("button", { name: "Apex probe" }).click();
-    await page.getByLabel("pH", { exact: true }).fill("8.1");
+    await page.getByLabel("pH (unitless)", { exact: true }).fill("8.1");
     await page.getByLabel("Magnesium").fill("1300");
     await page.getByLabel("Ammonia").fill("0");
     await page.getByLabel("Alkalinity").fill("9");
@@ -504,7 +505,7 @@ test.describe("e2e smoke", () => {
     await expectDefaultDateAndTime(page);
     await page.getByLabel("Time").fill(PICKED_TIME);
     await page.getByRole("button", { name: "Apex probe" }).click();
-    await page.getByLabel("pH", { exact: true }).fill("8.1");
+    await page.getByLabel("pH (unitless)", { exact: true }).fill("8.1");
     await page.getByLabel("Salinity").fill("32");
     await page.getByLabel("Notes").fill(`${RUN_TAG} water quality picked time`);
     await page.getByRole("button", { name: "Save reading" }).click();
@@ -880,7 +881,7 @@ test.describe("P1 water-quality targets", () => {
     await page.goto(
       `/protected/daily-operations?type=water-quality&system=${grahamSystemId}`,
     );
-    await page.getByLabel("pH", { exact: true }).fill("8.3");
+    await page.getByLabel("pH (unitless)", { exact: true }).fill("8.3");
     await expect(page.getByRole("status")).toContainText("Outside target");
     await page.getByRole("button", { name: "Save reading" }).click();
     await expect(

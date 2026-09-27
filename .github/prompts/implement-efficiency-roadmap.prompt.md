@@ -92,8 +92,9 @@ permission, but keep P1 changes local and compatible with the pending P0 migrati
   event snapshots, and the approved default units for Chemical additions and Star
   treatments while preserving editable units and free-text entry.
 
-Schema/RLS portions are Tier 3. UI adoption against the completed contract is Tier 2 and
-still requires the complete e2e skill.
+Schema/RLS portions are Tier 3 and require the complete e2e skill. UI adoption against the
+completed contract is Tier 2: pass the files touched in that slice to the e2e selector and
+run its selected sections, escalating to the complete suite when directed.
 
 ## P1 - UI consistency and duplication reduction
 
@@ -107,8 +108,9 @@ still requires the complete e2e skill.
 4. Conform typography, semantic colors, numeric formatting, keyboard behavior, and chart
    accessibility to [docs/style-guide.md](../../docs/style-guide.md).
 
-This is Tier 2. Run focused checks after each small edit and the complete e2e skill before
-a PR.
+This is Tier 2. Run focused checks after each small edit, then pass only that slice's touched
+files to the e2e selector and run the selected sections before a PR. Run the complete suite
+when the selector escalates a broad/shared change.
 
 ## P2 - Dead code and maintainability
 
