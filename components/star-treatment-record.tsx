@@ -6,6 +6,15 @@ import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 
+import { formatPacificDateTime } from "@/components/daily-operations/pacific-date-time";
+import {
+  attachedCatalogId,
+  getStarTreatmentMeasurementErrors,
+  normalizeSnapshot,
+  resolveStarTreatmentCatalogItem,
+  selectStarTreatmentCatalogItem,
+  type StarTreatmentCatalogItem,
+} from "@/components/daily-operations/quick-pick-catalogs";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -17,6 +26,7 @@ export type StarTreatmentRecordData = {
   animalId: number;
   animalName: string;
   tankId: number;
+  catalogId: number | null;
   tankName: string;
   systemName: string;
   treatmentType: string;
@@ -39,8 +49,13 @@ const optionalPositiveNumber = z.string().refine((value) => {
 
 const editSchema = z
   .object({
-    treatmentChoice: z.enum(["probiotics", "reef_dip", "other"]),
-    customTreatment: z.string().max(100, "Keep the treatment name under 100 characters"),
+    catalogId: z
+      .string()
+      .refine((value) => value === "" || /^\d+$/.test(value), "Select a quick pick"),
+    treatmentName: z
+      .string()
+      .refine((value) => normalizeSnapshot(value) !== "", "Enter the treatment name")
+      .max(100, "Keep the treatment name under 100 characters"),
     amount: optionalPositiveNumber,
     unit: z.string().max(50, "Keep the unit under 50 characters"),
     concentration: optionalPositiveNumber,
@@ -50,35 +65,33 @@ const editSchema = z
     notes: z.string().max(5000, "Keep notes under 5000 characters"),
   })
   .superRefine((values, context) => {
-    const hasAmount = values.amount.trim() !== "";
-    const hasConcentration = values.concentration.trim() !== "";
+    const measurementErrors = getStarTreatmentMeasurementErrors({
+      treatmentName: values.treatmentName,
+      amount: values.amount,
+      amountUnit: values.unit,
+      concentration: values.concentration,
+      concentrationUnit: values.concentrationUnit,
+    });
 
-    if (!hasAmount && !hasConcentration) {
+    if (measurementErrors.amount) {
       context.addIssue({
         code: "custom",
         path: ["amount"],
-        message: "Enter an amount or concentration",
+        message: measurementErrors.amount,
       });
     }
-    if (hasAmount && !values.unit.trim()) {
+    if (measurementErrors.amountUnit) {
       context.addIssue({
         code: "custom",
         path: ["unit"],
-        message: "Enter an amount unit",
+        message: measurementErrors.amountUnit,
       });
     }
-    if (hasConcentration && !values.concentrationUnit.trim()) {
+    if (measurementErrors.concentrationUnit) {
       context.addIssue({
         code: "custom",
         path: ["concentrationUnit"],
-        message: "Enter a concentration unit",
-      });
-    }
-    if (values.treatmentChoice === "other" && !values.customTreatment.trim()) {
-      context.addIssue({
-        code: "custom",
-        path: ["customTreatment"],
-        message: "Enter the treatment name",
+        message: measurementErrors.concentrationUnit,
       });
     }
   });
@@ -92,31 +105,31 @@ function displayTreatmentType(value: string) {
   return value;
 }
 
-function formatLabDateTime(value: string) {
-  return new Intl.DateTimeFormat("en-US", {
-    timeZone: "America/Los_Angeles",
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(new Date(value));
-}
-
 function nullableNumber(value: string) {
   return value.trim() === "" ? null : Number(value);
 }
 
 export function StarTreatmentRecord({
   treatment,
+  canEdit,
   canDelete,
+  catalogs,
 }: {
   treatment: StarTreatmentRecordData;
+  canEdit: boolean;
   canDelete: boolean;
+  catalogs: StarTreatmentCatalogItem[];
 }) {
   const router = useRouter();
-  const defaultTreatmentChoice: EditInput["treatmentChoice"] =
-    treatment.treatmentType === "probiotics" || treatment.treatmentType === "reef_dip"
-      ? treatment.treatmentType
-      : "other";
-  const isCanonical = defaultTreatmentChoice !== "other";
+  const currentCatalog = resolveStarTreatmentCatalogItem(
+    treatment.catalogId,
+    treatment.treatmentType,
+    catalogs,
+  );
+  const defaultTreatment = selectStarTreatmentCatalogItem(
+    currentCatalog,
+    treatment.treatmentType,
+  );
   const [updateMessage, setUpdateMessage] = useState("");
   const [deleteError, setDeleteError] = useState("");
   const [isDeleting, setIsDeleting] = useState(false);
@@ -133,8 +146,9 @@ export function StarTreatmentRecord({
   } = useForm<EditInput, unknown, EditValues>({
     resolver: zodResolver(editSchema),
     defaultValues: {
-      treatmentChoice: defaultTreatmentChoice,
-      customTreatment: isCanonical ? "" : treatment.treatmentType,
+      catalogId:
+        defaultTreatment.catalogId === null ? "" : String(defaultTreatment.catalogId),
+      treatmentName: defaultTreatment.name,
       amount: treatment.amount ?? "",
       unit: treatment.unit ?? "",
       concentration: treatment.concentration ?? "",
@@ -143,16 +157,37 @@ export function StarTreatmentRecord({
     },
   });
 
-  const treatmentChoice = watch("treatmentChoice");
+  const catalogId = watch("catalogId");
+
+  const onTreatmentCatalogChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const selectedCatalog = catalogs.find(
+      (catalog) => String(catalog.id) === event.target.value,
+    );
+    const selection = selectStarTreatmentCatalogItem(selectedCatalog ?? null);
+    setValue(
+      "catalogId",
+      selection.catalogId === null ? "" : String(selection.catalogId),
+      { shouldValidate: true },
+    );
+    setValue("treatmentName", selection.name, { shouldValidate: true });
+    setValue("unit", selection.amountUnit, { shouldValidate: true });
+    setValue("concentrationUnit", selection.concentrationUnit, {
+      shouldValidate: true,
+    });
+  };
 
   const onUpdate = async (values: EditValues) => {
     setUpdateMessage("");
     const amount = nullableNumber(values.amount);
     const concentration = nullableNumber(values.concentration);
-    const treatmentType =
-      values.treatmentChoice === "other"
-        ? values.customTreatment.trim().replace(/\s+/g, " ")
-        : values.treatmentChoice;
+    const treatmentType = normalizeSnapshot(values.treatmentName);
+    const catalogId = attachedCatalogId(
+      {
+        catalogId: values.catalogId === "" ? null : Number(values.catalogId),
+        name: values.treatmentName,
+      },
+      catalogs,
+    );
     const supabase = createClient();
     const { error } = await supabase.rpc("update_star_treatment", {
       p_treatment_id: treatment.id,
@@ -163,6 +198,7 @@ export function StarTreatmentRecord({
       p_concentration_unit:
         concentration === null ? null : values.concentrationUnit.trim(),
       p_notes: values.notes.trim() || null,
+      p_catalog_id: catalogId,
     });
 
     if (error) {
@@ -195,14 +231,17 @@ export function StarTreatmentRecord({
   if (deleted) return null;
 
   return (
-    <article className="rounded-md border bg-card p-4 text-card-foreground">
+    <article
+      data-treatment-id={treatment.id}
+      className="rounded-md border bg-card p-4 text-card-foreground"
+    >
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h2 className="text-base font-semibold">
             {treatment.animalName}: {displayTreatmentType(treatment.treatmentType)}
           </h2>
           <p className="text-sm text-muted-foreground">
-            {formatLabDateTime(treatment.administeredAt)} · {treatment.systemName} ·{" "}
+            {formatPacificDateTime(treatment.administeredAt)} · {treatment.systemName} ·{" "}
             {treatment.tankName}
           </p>
         </div>
@@ -216,7 +255,7 @@ export function StarTreatmentRecord({
 
       <details className="mt-4 border-t pt-4">
         <summary className="flex min-h-11 cursor-pointer items-center text-sm font-medium">
-          View details and correct
+          {canEdit ? "View details and correct" : "View details"}
         </summary>
 
         <div className="grid gap-6 pt-4">
@@ -233,7 +272,7 @@ export function StarTreatmentRecord({
             </div>
             <div>
               <dt className="text-muted-foreground">Administered</dt>
-              <dd>{formatLabDateTime(treatment.administeredAt)}</dd>
+              <dd>{formatPacificDateTime(treatment.administeredAt)}</dd>
             </div>
             <div>
               <dt className="text-muted-foreground">Recorded by profile</dt>
@@ -245,31 +284,40 @@ export function StarTreatmentRecord({
             </div>
             <div>
               <dt className="text-muted-foreground">Entered</dt>
-              <dd>{formatLabDateTime(treatment.enteredAt)}</dd>
+              <dd>{formatPacificDateTime(treatment.enteredAt)}</dd>
             </div>
           </dl>
 
-          <form onSubmit={handleSubmit(onUpdate)} className="grid gap-5" noValidate>
+          {canEdit && (
+            <form onSubmit={handleSubmit(onUpdate)} className="grid gap-5" noValidate>
             <fieldset className="grid gap-3">
               <legend className="text-sm font-medium">Treatment type</legend>
               <div className="grid gap-2 sm:grid-cols-3">
-                {[
-                  ["probiotics", "Probiotics"],
-                  ["reef_dip", "Reef dip"],
-                  ["other", "Other"],
-                ].map(([value, label]) => (
+                {catalogs.map((item) => (
                   <label
-                    key={value}
+                    key={item.id}
                     className="flex min-h-11 cursor-pointer items-center gap-3 rounded-md border border-input px-3 py-2 text-sm has-[:checked]:border-foreground has-[:checked]:bg-muted"
                   >
-                    <input type="radio" value={value} {...register("treatmentChoice")} />
-                    {label}
+                    <input
+                      type="radio"
+                      value={item.id}
+                      {...register("catalogId", { onChange: onTreatmentCatalogChange })}
+                    />
+                    {item.name}
                   </label>
                 ))}
+                <label className="flex min-h-11 cursor-pointer items-center gap-3 rounded-md border border-input px-3 py-2 text-sm has-[:checked]:border-foreground has-[:checked]:bg-muted">
+                  <input
+                    type="radio"
+                    value=""
+                    {...register("catalogId", { onChange: onTreatmentCatalogChange })}
+                  />
+                  Other
+                </label>
               </div>
             </fieldset>
 
-            {treatmentChoice === "other" && (
+            {catalogId === "" && (
               <div className="grid gap-2">
                 <Label htmlFor={fieldId("custom-treatment")}>Treatment name</Label>
                 <Input
@@ -277,14 +325,14 @@ export function StarTreatmentRecord({
                   className="min-h-11"
                   maxLength={100}
                   aria-describedby={
-                    errors.customTreatment ? fieldId("custom-treatment-error") : undefined
+                    errors.treatmentName ? fieldId("custom-treatment-error") : undefined
                   }
-                  aria-invalid={Boolean(errors.customTreatment)}
-                  {...register("customTreatment")}
+                  aria-invalid={Boolean(errors.treatmentName)}
+                  {...register("treatmentName")}
                 />
-                {errors.customTreatment && (
+                {errors.treatmentName && (
                   <p id={fieldId("custom-treatment-error")} className="text-sm text-red-500">
-                    {errors.customTreatment.message}
+                    {errors.treatmentName.message}
                   </p>
                 )}
               </div>
@@ -424,7 +472,8 @@ export function StarTreatmentRecord({
             <Button type="submit" className="min-h-11 w-fit" disabled={isSubmitting}>
               {isSubmitting ? "Saving…" : "Save correction"}
             </Button>
-          </form>
+            </form>
+          )}
 
           {canDelete && (
             <details className="border-t border-destructive/40 pt-4">
@@ -434,7 +483,7 @@ export function StarTreatmentRecord({
               <div className="grid max-w-2xl gap-3 pt-3">
                 <p className="text-sm">
                   Permanently delete {displayTreatmentType(treatment.treatmentType)} for{" "}
-                  {treatment.animalName} at {formatLabDateTime(treatment.administeredAt)}? This
+                  {treatment.animalName} at {formatPacificDateTime(treatment.administeredAt)}? This
                   cannot be undone.
                 </p>
                 {deleteError && (

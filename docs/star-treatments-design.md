@@ -89,8 +89,9 @@ Recommended indexes:
 
 Recommended invariants:
 
-- At least one of amount or concentration must be present; any supplied value must be
-  positive. Do not invent an amount when only a concentration is known.
+- At least one of amount or concentration must be present unless the treatment type is
+  Reef Dip, which may be saved with neither. Any supplied value must be positive. Do not
+  invent an amount when only a concentration is known.
 - Amount/unit and concentration/concentration-unit are nullable pairs: when a value is
   absent its unit is stored as null, and when a value is present its unit is required and
   nonblank.
@@ -107,13 +108,13 @@ not only client validation.
 Defaults alone do not make provenance immutable. The migration must prevent clients from
 overriding `recorded_by`, `data_source`, or `entered_at` on live entry, tie `recorded_by`
 to the authenticated profile, and prevent ordinary updates from rewriting attribution or
-provenance. A general activity audit is deferred as project-wide work; the Star treatment
-feature does not maintain a feature-specific audit log.
+provenance. The project-wide operational audit records Star treatment updates and deletes;
+the feature does not maintain a separate audit table.
 
-After creation, `animal_id`, `tank_id`, `administered_at`, `recorded_by`, `data_source`,
-and `entered_at` are immutable. Corrections may change treatment details and notes. If the
-wrong star, tank, or event time was recorded, Admin or Technician hard-deletes the
-incorrect row and creates a replacement.
+After creation, `animal_id`, `tank_id`, `recorded_by`, `data_source`, and `entered_at` are
+immutable. Authorized corrections may change `administered_at`, treatment details, and
+notes, with the previous values retained in the audit. If the wrong star or tank was
+recorded, Admin or Technician hard-deletes the incorrect row and creates a replacement.
 
 ## 6. Eligibility
 
@@ -162,7 +163,7 @@ not rely only on older prose documentation.
 |---|---:|---:|---:|---:|
 | Admin | Yes | Yes | Yes | Hard delete |
 | Technician | Yes | Yes | Yes | Hard delete |
-| Volunteer | Yes | Yes | Yes | No |
+| Volunteer | Yes | Yes | Own entries only | No |
 | Viewer | No | No | No | No |
 | Unauthenticated | No | No | No | No |
 
@@ -170,10 +171,9 @@ Blocked users, including Viewers and unauthenticated users, must not be able to 
 Star treatment navigation, form, or data. RLS must independently enforce the same rule.
 
 Admin and Technician can hard-delete treatments; Volunteer cannot delete. All creates and
-updates operate on the current treatment row, while deletes remove it. A future general
-activity audit is deferred as a project-wide capability rather than implemented as a
-Star-treatment-specific table. Animal deletion must not cascade into treatment-history
-deletion.
+updates operate on the current treatment row, while deletes remove it. The project-wide
+operational audit records every update and delete with actor and before/after snapshots.
+Animal deletion must not cascade into treatment-history deletion.
 
 Treatment create, update, and delete operations must go through narrowly granted database
 functions/RPCs. Those functions validate role, active status, star eligibility, current
@@ -181,9 +181,9 @@ tank, and immutable provenance. Direct table writes from the browser should be r
 this table.
 
 This table is an explicit exception to the repository's generic operational-log policy:
-Admin and Technician get full mutation functions, Volunteer gets create/update functions,
-and Viewer gets no grant or RLS path. UI hiding is supplemental; `core` is Data API-exposed,
-so grants, RLS, and function permissions are the actual boundary.
+Admin and Technician get full mutation functions, Volunteer gets create plus own-entry
+update functions, and Viewer gets no grant or RLS path. UI hiding is supplemental; `core`
+is Data API-exposed, so grants, RLS, and function permissions are the actual boundary.
 
 Every mutation function must use a fixed safe `search_path`, revoke default `PUBLIC`
 execute, and grant `EXECUTE` only to the intended native roles. Update accepts treatment
@@ -239,8 +239,10 @@ server/database and must not be editable or client-overridable for live entry.
 
 ### Validation and feedback
 
-- Require date/time, location, star, treatment type, unit, and concentration unit.
-- Require at least one value: amount or concentration.
+- Require date/time, location, star, and treatment type.
+- Require at least one value (amount or concentration) except for Reef Dip, which may be
+  saved with neither.
+- Require the corresponding unit whenever an amount or concentration is supplied.
 - Require nonblank custom treatment text when **Other** is selected.
 - Require positive numeric values when amount or concentration is supplied.
 - Focus the first invalid field and preserve entered values after any failure.
@@ -400,11 +402,12 @@ the result against the source CSVs.
   a required custom text box.
 - Unit fields are free text, defaulting to `mL` and `ppm`.
 - Probiotics are always Star treatments, never System chemical additions.
-- Admin, Technician, and Volunteer can read, create, and update treatments. Volunteer
-  cannot delete. Viewer, unauthenticated, and other blocked users cannot view the feature
-  or its data.
-- Admin and Technician can hard-delete treatments. A future general activity audit is
-  deferred as project-wide work.
+- Admin, Technician, and Volunteer can read and create treatments. Admin and Technician
+  can update any treatment; Volunteer can update only treatments they recorded and cannot
+  delete. Viewer, unauthenticated, and other blocked users cannot view the feature or its
+  data.
+- Admin and Technician can hard-delete treatments. All updates and deletes are retained in
+  the project-wide append-only operational audit.
 - Reanalysis recommends storing treatment-time `tank_id`. Omitting it would move historical
   treatments whenever `animals.tank_id` changes.
 - Historical Probiotics rows without a known treated star are unresolved. After exact
@@ -423,9 +426,8 @@ the result against the source CSVs.
 
 ## 16. Additional Repository Concerns
 
-- **Role test drift:** native grants allow Volunteer create/update on operational logs,
-  while the current RBAC smoke test still expects Volunteer inserts to fail. Update the
-  test and role documentation before relying on it for this feature.
+- **Role contract:** the RBAC smoke suite covers Volunteer create, own-row update, denied
+  other-row update, and denied delete across ordinary operational logs.
 - **Role fixtures:** local seed now includes Admin, Technician, Volunteer, and Viewer. Keep
   the test-account documentation and role matrix aligned with those fixtures.
 - **Reference data in migrations:** systems/species, Graham tanks, and SSL25 are also

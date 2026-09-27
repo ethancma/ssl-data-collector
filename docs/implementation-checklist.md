@@ -1,6 +1,6 @@
 # Implementation Status And Backlog
 
-> Current as of 2026-09-24. This is the single source of truth for delivery status and
+> Current as of 2026-09-26. This is the single source of truth for delivery status and
 > remaining work. Product context lives in
 > [platform-architecture.md](platform-architecture.md), lab requirements and staff
 > decisions live in [lab-operations-plan.md](lab-operations-plan.md), and verification
@@ -31,6 +31,12 @@
       summaries.
 - [x] Systems dashboard with system selection, chemistry charts, comparisons, status, and
       an operational highlights feed.
+- [x] Authenticated system/species consumers query database-owned reference data; systems
+      sort alphabetically by database-owned name with an ID tie-breaker. The static public
+      landing-page list remains an intentional non-operational exception.
+- [x] Shared `America/Los_Angeles` date/time conversion and display across operational
+      forms, corrections, dashboards, and charts, including spring-gap rejection and
+      earlier-occurrence fall-back handling.
 - [x] Star treatment table, RPC-only create/update/delete lifecycle, role-gated form,
       treatment-time location snapshot, filtered correction surface, and focused smoke tests.
 - [x] Reviewed Graham import bundle prepared with 270 water-quality rows and 242 CBalance
@@ -41,27 +47,30 @@
 
 These are the highest-priority open items because they affect data ownership or history.
 
-- [ ] Establish one authoritative generic role contract and align migrations, UI, tests,
-      and docs. Effective native grants currently give Admin/Technician full mutation,
-      Volunteer read/create/update without delete, and Viewer read-only; some UI and RBAC
-      tests still assume different behavior. Star treatments intentionally hide all access
-      from Viewer.
-- [ ] Protect `recorded_by`, `data_source`, `entered_at`, and event time on ordinary logs.
-      Current native-role policies permit direct clients to override provenance; Star
-      treatment RPCs already demonstrate the intended pattern.
-- [ ] Scope later Storage policies explicitly to the private `attachments` bucket.
-- [ ] Replace destructive reference-data cascades with a retirement/restriction policy so
-      deleting systems, tanks, or animals cannot erase operational history.
-- [ ] Enforce the System chemical addition boundary in the database: reject Probiotics,
+- [x] Establish one authoritative generic role contract and align migrations, UI, tests,
+      and docs. Admin/Technician have full mutation, Volunteer has read/create plus update
+      of their own entries without delete, and Viewer is read-only. Star treatments
+      intentionally hide all access from Viewer.
+- [x] Protect `recorded_by`, `data_source`, and `entered_at` on ordinary logs. Live writes
+      derive provenance from the active profile and server time; provenance remains
+      immutable while authorized event-time corrections are retained in the audit trail.
+- [x] Add an append-only, trigger-written operational audit for updates and deletes with
+      Admin/Technician read access and immutable actor/before/after history.
+- [x] Scope Storage policies explicitly to the private `attachments` bucket and restrict
+      Volunteer object updates to objects they own.
+- [x] Replace destructive reference-data cascades into operational logs with restrictive
+      foreign keys so deleting systems, tanks, or animals cannot erase operational history.
+- [x] Enforce the System chemical addition boundary in the database: reject Probiotics,
       require positive amounts and nonblank names/units, and repair the currently skipped
-      Star treatment boundary test.
+      Star treatment boundary behavior locally.
 - [ ] Make required health photos atomic with observation creation; an upload failure can
       currently leave an observation without its required attachment.
-- [ ] Reconcile smoke-test drift: old `/protected/today` URLs, outdated control labels,
-      the stale Volunteer-insert expectation, and the nonexistent migration reference in
-      the RBAC suite.
-- [ ] Decide how quickly denial or role changes must revoke an already-issued native-role
-      JWT, then enforce and test that behavior.
+- [ ] Complete hosted smoke-test reconciliation. The Volunteer contract and migration
+      reference are corrected locally; old URLs/control labels still require the full
+      post-migration hosted e2e pass.
+- [x] Refresh native-role JWT claims on the user's next application request after a role or
+      status change; persistent mismatches fail closed and inactive/invalid profiles fall
+      back to the non-privileged `authenticated` claim.
 
 ## Foundations And Reference Data
 
@@ -85,10 +94,14 @@ These are the highest-priority open items because they affect data ownership or 
       and lesion. `Low|Medium|High` currently exists as a provisional implementation.
 - [ ] **BLOCKED:** encode feeding due-today logic after staff confirms cadence by system,
       species, and life stage.
-- [ ] **BLOCKED:** add nonblocking water-quality range warnings after staff confirms target
-      ranges and whether they vary by system or species.
-- [ ] Confirm salinity as an official ninth weekly water-quality parameter and update the
-      requirements and analytics schema consistently.
+- [x] Add optional Admin/Technician-managed lab-wide water-quality ranges with per-system
+      overrides. Ship with no seeded values; out-of-range entries require the existing
+      Notes field, and range changes do not rewrite historical readings.
+- [x] Add Admin-managed database quick picks for Chemical additions and Star treatments,
+      preserving free-text entry and immutable event snapshots. Reef Dip may be recorded
+      without amount or concentration.
+- [x] Confirm salinity as the official ninth weekly water-quality parameter. Its fixed unit
+      is `ppt`; analytics alignment remains deferred until that schema is populated.
 - [ ] Build the Micro-Algae production log.
 - [ ] Extend last-used-system defaults, field-linked errors, live announcements, and
       44-pixel touch targets from Star treatments to the older forms.
@@ -118,11 +131,12 @@ These are the highest-priority open items because they affect data ownership or 
 ## Star Treatment Closure
 
 - [x] Core schema, eligibility rules, provenance, treatment-time tank snapshot, and indexes.
-- [x] Admin/Technician/Volunteer create and update; Admin/Technician hard delete; Viewer and
-      unauthenticated access blocked.
+- [x] Admin/Technician update any treatment; Volunteer updates only treatments they
+      recorded; Admin/Technician hard delete; Viewer and unauthenticated access are blocked.
 - [x] URL-backed form and filtered correction/history surface.
-- [ ] Complete the System chemical addition database guard and rerun the full Star treatment
-      smoke suite without schema-gated skips.
+- [x] Complete the System chemical addition database guard locally.
+- [ ] Rerun the full Star treatment smoke suite without schema-gated skips after the P0/P1
+      migrations are available to the test application environment.
 - [ ] Confirm hosted migration state and complete the separate human-run Tier 4 Graham
       cleanup/import after a fresh backup and source-row spot checks.
 - [ ] Deferred: general History, Home/Systems activity, export/timeline integration,
@@ -134,12 +148,14 @@ The full context for these questions is in
 [lab-operations-plan.md](lab-operations-plan.md#8-open-questions--further-considerations).
 
 - [ ] Feeding cadence by system/species/life stage.
-- [ ] Water-quality target ranges and whether they vary by system/species.
+- [x] Water-quality target-range model: optional lab-wide values with per-system overrides,
+      configured later by Admins or Technicians with no seeded defaults.
 - [ ] Health severity criteria and additional photo-required thresholds.
 - [ ] Whether empty health observations are valid.
-- [ ] Whether salinity is part of the official weekly panel.
+- [x] Salinity is part of the official weekly panel and uses `ppt`.
 - [ ] Animal nickname reuse after death or transfer.
-- [ ] Whether the current Volunteer permissions are the intended product contract.
+- [x] Volunteer permissions: lab-wide read/create, update any entry attributed to their
+      profile with no time or provenance-source limit, and no delete.
 - [ ] Remaining Apex probe coverage.
 - [ ] Historical data coverage and paper-backfill ownership/deadline.
 

@@ -13,6 +13,11 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import {
+  getPacificDateString,
+  getPacificTimeString,
+  pacificWallTimeToIso,
+} from "@/components/daily-operations/pacific-date-time";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -28,21 +33,6 @@ import {
 type SystemOption = { id: number; name: string };
 type PendingFeedingLog = { id: number; animalName: string; systemId: number };
 type ConsumptionStatus = (typeof CONSUMPTION_STATUSES)[number];
-
-function getTodayDateString(): string {
-  const now = new Date();
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
-}
-
-function getCurrentTimeString(): string {
-  const now = new Date();
-  return `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
-}
-
-// Combines the user-picked date and time-of-day into a single timestamp.
-function combineDateAndTime(dateStr: string, timeStr: string): string {
-  return new Date(`${dateStr}T${timeStr}:00`).toISOString();
-}
 
 const CONSUMPTION_LABELS: Record<ConsumptionStatus, string> = {
   full: "Full",
@@ -75,13 +65,14 @@ export function DailyCheckForm({
     handleSubmit,
     control,
     watch,
+    setError,
     setValue,
     formState: { errors, isSubmitting },
   } = useForm<DailyCheckFormInput, unknown, DailyCheckFormValues>({
     resolver: zodResolver(dailyCheckSchema),
     defaultValues: {
-      date: getTodayDateString(),
-      time: getCurrentTimeString(),
+      date: getPacificDateString(),
+      time: getPacificTimeString(),
       systemId: defaultSystemId ?? "",
       checkType: defaultCheckType ?? "AM",
       waterRunning: true,
@@ -98,9 +89,19 @@ export function DailyCheckForm({
 
   const onSubmit = async (values: DailyCheckFormValues) => {
     setServerError(null);
+    let checkedAt: string;
+    try {
+      checkedAt = pacificWallTimeToIso(values.date, values.time);
+    } catch (error) {
+      setError("time", {
+        message: error instanceof Error ? error.message : "Enter a valid Pacific time",
+      });
+      return;
+    }
+
     const supabase = createClient();
     const { error } = await supabase.from("daily_checks").insert({
-      checked_at: combineDateAndTime(values.date, values.time),
+      checked_at: checkedAt,
       system_id: values.systemId, // already coerced to a positive int by dailyCheckSchema
       check_type: values.checkType,
       water_running: values.waterRunning,

@@ -5,11 +5,15 @@ import {
   StarTreatmentRecord,
   type StarTreatmentRecordData,
 } from "@/components/star-treatment-record";
+import {
+  addPacificCalendarDays,
+  getPacificDateString,
+  pacificDayBoundaryToIso,
+} from "@/components/daily-operations/pacific-date-time";
+import type { StarTreatmentCatalogItem } from "@/components/daily-operations/quick-pick-catalogs";
 import { Button } from "@/components/ui/button";
 import { getCurrentProfile } from "@/lib/supabase/current-profile";
 import { createClient } from "@/lib/supabase/server";
-
-const LAB_TIME_ZONE = "America/Los_Angeles";
 
 type SearchParams = Promise<{
   from?: string | string[];
@@ -33,58 +37,6 @@ function isDate(value: string | undefined): value is string {
   );
 }
 
-function labDateString(date = new Date()) {
-  const parts = new Intl.DateTimeFormat("en-US", {
-    timeZone: LAB_TIME_ZONE,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).formatToParts(date);
-  const part = (type: Intl.DateTimeFormatPartTypes) =>
-    parts.find((item) => item.type === type)?.value ?? "";
-  return `${part("year")}-${part("month")}-${part("day")}`;
-}
-
-function addDays(date: string, days: number) {
-  const [year, month, day] = date.split("-").map(Number);
-  const value = new Date(Date.UTC(year, month - 1, day + days));
-  return `${value.getUTCFullYear()}-${String(value.getUTCMonth() + 1).padStart(2, "0")}-${String(value.getUTCDate()).padStart(2, "0")}`;
-}
-
-function getTimeZoneOffset(date: Date) {
-  const parts = new Intl.DateTimeFormat("en-US", {
-    timeZone: LAB_TIME_ZONE,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hourCycle: "h23",
-  }).formatToParts(date);
-  const value = (type: Intl.DateTimeFormatPartTypes) =>
-    Number(parts.find((part) => part.type === type)?.value);
-  return (
-    Date.UTC(
-      value("year"),
-      value("month") - 1,
-      value("day"),
-      value("hour"),
-      value("minute"),
-      value("second"),
-    ) - date.getTime()
-  );
-}
-
-function labDayBoundary(date: string) {
-  const [year, month, day] = date.split("-").map(Number);
-  const wallTime = Date.UTC(year, month - 1, day);
-  let instant = new Date(wallTime);
-  instant = new Date(wallTime - getTimeZoneOffset(instant));
-  instant = new Date(wallTime - getTimeZoneOffset(instant));
-  return instant.toISOString();
-}
-
 function oneRelation<T>(value: T | T[] | null): T | null {
   return Array.isArray(value) ? (value[0] ?? null) : value;
 }
@@ -98,36 +50,61 @@ export default async function StarTreatmentsPage({ searchParams }: { searchParam
   if (!canView) notFound();
 
   const params = await searchParams;
-  const today = labDateString();
+  const today = getPacificDateString();
   const requestedFrom = firstValue(params.from);
   const requestedTo = firstValue(params.to);
-  const from = isDate(requestedFrom) ? requestedFrom : addDays(today, -29);
+  const from = isDate(requestedFrom)
+    ? requestedFrom
+    : addPacificCalendarDays(today, -29);
   const to = isDate(requestedTo) ? requestedTo : today;
   const animalFilter = firstValue(params.animal) ?? "";
   const treatmentFilter = firstValue(params.treatment) ?? "";
   const supabase = await createClient();
 
-  const { data: starSpecies } = await supabase
-    .from("species")
-    .select("id")
-    .eq("category", "star");
+  const [starSpeciesResult, catalogResult] = await Promise.all([
+    supabase
+      .from("species")
+      .select("id")
+      .eq("category", "star")
+      .order("common_name")
+      .order("id"),
+    supabase
+      .from("star_treatment_catalog")
+      .select("id, name, default_amount_unit, default_concentration_unit")
+      .order("id"),
+  ]);
+  const { data: starSpecies, error: starSpeciesError } = starSpeciesResult;
+  const catalog: StarTreatmentCatalogItem[] = (catalogResult.data ?? []).map((item) => ({
+    id: item.id,
+    name: item.name,
+    defaultAmountUnit: item.default_amount_unit,
+    defaultConcentrationUnit: item.default_concentration_unit,
+  }));
   const starSpeciesIds = (starSpecies ?? []).map((species) => species.id);
-  const { data: stars } = starSpeciesIds.length
+  const starsResult = starSpeciesIds.length
     ? await supabase
         .from("animals")
         .select("id, name")
         .eq("tracking_type", "individual")
         .in("species_id", starSpeciesIds)
         .order("name")
-    : { data: [] };
+    : { data: [], error: null };
+  const stars = starsResult.data;
+  const starChoicesError =
+    starSpeciesError?.message ??
+    starsResult.error?.message ??
+    (starSpeciesIds.length === 0 ? "No star species are configured." : undefined);
 
   let treatmentQuery = supabase
     .from("star_treatments")
     .select(
-      "id, animal_id, tank_id, treatment_type, amount, unit, concentration, concentration_unit, notes, administered_at, recorded_by, data_source, entered_at, animal:animals!star_treatments_animal_id_fkey(id, name), tank:tanks!star_treatments_tank_id_fkey(id, name, system:systems!tanks_system_id_fkey(id, name))",
+      "id, animal_id, tank_id, catalog_id, treatment_type, amount, unit, concentration, concentration_unit, notes, administered_at, recorded_by, data_source, entered_at, animal:animals!star_treatments_animal_id_fkey(id, name), tank:tanks!star_treatments_tank_id_fkey(id, name, system:systems!tanks_system_id_fkey(id, name))",
     )
-    .gte("administered_at", labDayBoundary(from))
-    .lt("administered_at", labDayBoundary(addDays(to, 1)))
+    .gte("administered_at", pacificDayBoundaryToIso(from))
+    .lt(
+      "administered_at",
+      pacificDayBoundaryToIso(addPacificCalendarDays(to, 1)),
+    )
     .order("administered_at", { ascending: false });
 
   if (/^\d+$/.test(animalFilter)) {
@@ -149,6 +126,7 @@ export default async function StarTreatmentsPage({ searchParams }: { searchParam
       animalId: treatment.animal_id,
       animalName: animal?.name ?? `Star ${treatment.animal_id}`,
       tankId: treatment.tank_id,
+      catalogId: treatment.catalog_id,
       tankName: tank?.name ?? `Tank ${treatment.tank_id}`,
       systemName: system?.name ?? "Unknown system",
       treatmentType: treatment.treatment_type,
@@ -178,6 +156,19 @@ export default async function StarTreatmentsPage({ searchParams }: { searchParam
           </Link>
         </Button>
       </header>
+
+      {starChoicesError && (
+        <p className="text-sm text-red-500" role="alert">
+          Star choices could not be loaded: {starChoicesError}
+        </p>
+      )}
+
+      {catalogResult.error && (
+        <p className="text-sm text-red-500" role="alert">
+          Treatment quick picks could not be loaded. Existing snapshots remain editable
+          as Other.
+        </p>
+      )}
 
       <form method="get" className="grid gap-4 rounded-md border p-4 sm:grid-cols-2 lg:grid-cols-4">
         <div className="grid gap-2">
@@ -262,7 +253,13 @@ export default async function StarTreatmentsPage({ searchParams }: { searchParam
             <StarTreatmentRecord
               key={record.id}
               treatment={record}
+              canEdit={
+                profile.role === "admin" ||
+                profile.role === "technician" ||
+                record.recordedBy === profile.id
+              }
               canDelete={profile.role === "admin" || profile.role === "technician"}
+              catalogs={catalog}
             />
           ))}
         </div>

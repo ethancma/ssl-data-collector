@@ -54,11 +54,29 @@ if (!SERVICE_ROLE_KEY) {
 // the row just written instead of guessing "most recent". Shared across section files
 // so cross-referencing tags (e.g. auth-and-admin's pending-user email) stay consistent.
 export const RUN_TAG = `e2e-${Date.now()}`;
+const LAB_TIME_ZONE = "America/Los_Angeles";
 
-// Mirrors the forms' own getTodayDateString()/date-input format (local YYYY-MM-DD),
-// so the event-timestamp assertions below compare like for like.
+function pacificDateTimeParts(value: Date) {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: LAB_TIME_ZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(value);
+  const part = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((item) => item.type === type)?.value ?? "";
+  return {
+    date: `${part("year")}-${part("month")}-${part("day")}`,
+    time: `${part("hour")}:${part("minute")}`,
+  };
+}
+
+// Retains the existing helper name while matching the forms' Pacific date contract.
 export function localDateString(d: Date): string {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  return pacificDateTimeParts(d).date;
 }
 
 export function todayDateString(): string {
@@ -67,24 +85,23 @@ export function todayDateString(): string {
 
 // Same offset used by the picked-date-in-the-past test below.
 export function daysAgoDateString(days: number): string {
-  const d = new Date();
-  d.setDate(d.getDate() - days);
-  return localDateString(d);
+  const [year, month, day] = todayDateString().split("-").map(Number);
+  const shifted = new Date(Date.UTC(year, month - 1, day - days));
+  return `${shifted.getUTCFullYear()}-${String(shifted.getUTCMonth() + 1).padStart(2, "0")}-${String(shifted.getUTCDate()).padStart(2, "0")}`;
 }
 
-// Converts a timestamptz value read back from the DB to the local YYYY-MM-DD it
+// Converts a timestamptz value read back from the DB to the Pacific YYYY-MM-DD it
 // represents, so it can be compared against the date string typed into the form.
 export function localDateOf(timestamp: string | null | undefined): string | null {
   if (!timestamp) return null;
   return localDateString(new Date(timestamp));
 }
 
-// Converts a timestamptz value read back from the DB to the local HH:mm it
+// Converts a timestamptz value read back from the DB to the Pacific HH:mm it
 // represents, so it can be compared against the time string typed into the form.
 export function localTimeOf(timestamp: string | null | undefined): string | null {
   if (!timestamp) return null;
-  const d = new Date(timestamp);
-  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+  return pacificDateTimeParts(new Date(timestamp)).time;
 }
 
 export const db = SERVICE_ROLE_KEY
@@ -146,10 +163,13 @@ export async function expectDefaultDateAndTime(page: Page) {
   const timeValue = await page.getByLabel("Time").inputValue();
   expect(timeValue).toMatch(/^\d{2}:\d{2}$/);
   const [h, m] = timeValue.split(":").map(Number);
-  const now = new Date();
+  const [nowHour, nowMinute] = pacificDateTimeParts(new Date()).time
+    .split(":")
+    .map(Number);
   const valueMinutes = h * 60 + m;
-  const nowMinutes = now.getHours() * 60 + now.getMinutes();
-  expect(Math.abs(valueMinutes - nowMinutes)).toBeLessThanOrEqual(5);
+  const nowMinutes = nowHour * 60 + nowMinute;
+  const difference = Math.abs(valueMinutes - nowMinutes);
+  expect(Math.min(difference, 24 * 60 - difference)).toBeLessThanOrEqual(5);
 }
 
 // Runs verification SQL directly against the linked hosted project via the Supabase CLI

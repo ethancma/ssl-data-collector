@@ -6,6 +6,137 @@
  */
 import { test, expect, type Page } from "@playwright/test";
 import { db, dbQuery, loginAs, RUN_TAG, ADMIN_EMAIL, ADMIN_PASSWORD } from "./helpers";
+import {
+  getExpectedAuthRole,
+  getRoleClaimAction,
+  isPublicPath,
+} from "../../../../lib/supabase/proxy";
+
+function sqlLiteral(value: string) {
+  return `'${value.replaceAll("'", "''")}'`;
+}
+
+test.describe("proxy role claim refresh policy", () => {
+  test("uses only active valid profile roles for JWT claims", () => {
+    for (const role of ["admin", "technician", "volunteer", "viewer"] as const) {
+      expect(getExpectedAuthRole({ role, status: "active" })).toBe(role);
+    }
+
+    expect(getExpectedAuthRole({ role: "admin", status: "pending" })).toBe(
+      "authenticated",
+    );
+    expect(getExpectedAuthRole({ role: "admin", status: "denied" })).toBe(
+      "authenticated",
+    );
+    expect(getExpectedAuthRole({ role: null, status: "active" })).toBe(
+      "authenticated",
+    );
+    expect(getExpectedAuthRole({ role: "owner", status: "active" })).toBe(
+      "authenticated",
+    );
+    expect(getExpectedAuthRole(null)).toBe("authenticated");
+  });
+
+  test("refreshes one mismatch and signs out if the refreshed claim still differs", () => {
+    expect(getRoleClaimAction("viewer", "admin")).toBe("refresh");
+    expect(getRoleClaimAction("admin", "admin", true)).toBe("continue");
+    expect(getRoleClaimAction("viewer", "admin", true)).toBe("sign-out");
+  });
+
+  test("keeps only the root and auth route tree public", () => {
+    expect(isPublicPath("/")).toBe(true);
+    expect(isPublicPath("/auth/login")).toBe(true);
+    expect(isPublicPath("/authenticated-preview")).toBe(false);
+    expect(isPublicPath("/protected")).toBe(false);
+  });
+});
+
+// Opt in only after the P0 auth-hook migration has been applied to the target project.
+// The disposable account avoids changing any seeded role account during these scenarios.
+test.describe("hosted proxy refreshes already-issued privileged sessions", () => {
+  test.describe.configure({ mode: "serial" });
+  test.skip(
+    process.env.E2E_RUN_HOSTED_P0_PROXY_REFRESH !== "1",
+    "set E2E_RUN_HOSTED_P0_PROXY_REFRESH=1 after the P0 migration is applied",
+  );
+  test.skip(!db, "SUPABASE_SERVICE_ROLE_KEY not set");
+
+  const REFRESH_EMAIL = `e2e-proxy-refresh-${RUN_TAG}@ssl.dev`;
+  const REFRESH_PASSWORD = "Test-password-123!";
+  let refreshUserId: string;
+
+  function setRefreshProfile(role: "admin" | "viewer" | null, status: string) {
+    if (!refreshUserId) return;
+
+    const rows = dbQuery(`update core.profiles
+      set role = ${role ? `'${role}'` : "null"}, status = ${sqlLiteral(status)}
+      where auth_user_id = ${sqlLiteral(refreshUserId)}
+      returning role, status`);
+    expect(rows).toHaveLength(1);
+  }
+
+  test.beforeAll(async () => {
+    const { data, error } = await db!.auth.admin.createUser({
+      email: REFRESH_EMAIL,
+      password: REFRESH_PASSWORD,
+      email_confirm: true,
+    });
+    expect(error).toBeNull();
+    expect(data.user).toBeTruthy();
+    refreshUserId = data.user!.id;
+    setRefreshProfile("admin", "active");
+  });
+
+  test.beforeEach(() => {
+    setRefreshProfile("admin", "active");
+  });
+
+  test.afterEach(() => {
+    setRefreshProfile("admin", "active");
+  });
+
+  test.afterAll(async () => {
+    if (!refreshUserId) return;
+
+    setRefreshProfile(null, "denied");
+    const { error } = await db!.auth.admin.deleteUser(refreshUserId);
+    expect(error).toBeNull();
+  });
+
+  test("an issued Admin session applies a Viewer downgrade on its next request", async ({
+    page,
+  }) => {
+    await loginAs(page, REFRESH_EMAIL, REFRESH_PASSWORD);
+    await expect(page.getByRole("link", { name: "Admin" })).toBeVisible();
+
+    setRefreshProfile("viewer", "active");
+    await page.goto("/protected/home");
+
+    await expect(page).toHaveURL(/\/protected\/home/);
+    await expect(page.getByRole("heading", { name: "Home" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Admin" })).toHaveCount(0);
+    await expect(page.getByRole("link", { name: "Daily Operations" })).toHaveCount(0);
+
+    await page.goto("/protected/admin");
+    await expect(page.getByText(/not authorized/i)).toBeVisible();
+  });
+
+  test("an issued Admin session applies denied status on its next request", async ({
+    page,
+  }) => {
+    await loginAs(page, REFRESH_EMAIL, REFRESH_PASSWORD);
+    await expect(page.getByRole("link", { name: "Admin" })).toBeVisible();
+
+    setRefreshProfile("admin", "denied");
+    await page.goto("/protected/home");
+
+    await expect(page).toHaveURL(/\/protected\/home/);
+    await expect(page.getByText(/account request was denied/i)).toBeVisible();
+    await expect(page.getByText(/pending admin approval/i)).toHaveCount(0);
+    await expect(page.getByRole("link", { name: "Admin" })).toHaveCount(0);
+    await expect(page.getByRole("link", { name: "Daily Operations" })).toHaveCount(0);
+  });
+});
 
 // Covers app/protected/layout.tsx's ApprovalGate: a brand-new sign-up should be blocked
 // behind an info message until an admin sets profiles.status = 'active', instead of the

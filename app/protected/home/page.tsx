@@ -1,20 +1,12 @@
 import { Suspense } from "react";
 
+import { pacificDateKey } from "@/components/daily-operations/pacific-date-time";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import type { HealthIssueType } from "@/lib/config/reference-data";
 import { createClient } from "@/lib/supabase/server";
 
 import { SegmentedTabs } from "./segmented-tabs";
-
-// Same Pacific-day rule as the old Today dashboard: look back 36h/14d, then
-// bucket rows by their Pacific calendar day for "today"/weekly/trend logic.
-const PACIFIC_DAY = new Intl.DateTimeFormat("en-CA", {
-  timeZone: "America/Los_Angeles",
-  year: "numeric",
-  month: "2-digit",
-  day: "2-digit",
-});
 
 const ISSUE_LABELS: Record<HealthIssueType, string> = {
   arm_drop: "Arm drop",
@@ -137,17 +129,21 @@ async function HomeContent() {
   const since14d = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString();
 
   const [
-    { data: systems },
-    { data: checks },
-    { data: feedingLogs },
-    { data: waterQualityReadings },
-    { data: chemicalAdditions },
-    { data: recentHealthObservations },
-    { data: healthObservationsRecent36h },
-    { data: animals },
-    { count: totalTanks },
+    { data: systems, error: systemsError },
+    { data: checks, error: checksError },
+    { data: feedingLogs, error: feedingLogsError },
+    { data: waterQualityReadings, error: waterQualityError },
+    { data: chemicalAdditions, error: chemicalAdditionsError },
+    { data: recentHealthObservations, error: recentHealthError },
+    { data: healthObservationsRecent36h, error: recentHealthCountError },
+    { data: animals, error: animalsError },
+    { count: totalTanks, error: tanksError },
   ] = await Promise.all([
-    supabase.from("systems").select("id, name").order("name"),
+    supabase
+      .from("systems")
+      .select("id, name")
+      .order("name", { ascending: true })
+      .order("id", { ascending: true }),
     supabase
       .from("daily_checks")
       .select("system_id, check_type, checked_at")
@@ -177,8 +173,33 @@ async function HomeContent() {
     supabase.from("tanks").select("id", { count: "exact", head: true }),
   ]);
 
-  const todayKey = PACIFIC_DAY.format(new Date());
-  const isToday = (iso: string) => PACIFIC_DAY.format(new Date(iso)) === todayKey;
+  const loadError =
+    systemsError ??
+    checksError ??
+    feedingLogsError ??
+    waterQualityError ??
+    chemicalAdditionsError ??
+    recentHealthError ??
+    recentHealthCountError ??
+    animalsError ??
+    tanksError;
+  if (loadError) {
+    return (
+      <p className="text-sm text-red-500" role="alert">
+        Dashboard data could not be loaded: {loadError.message}
+      </p>
+    );
+  }
+  if (!systems || systems.length === 0) {
+    return (
+      <p className="rounded-md border p-6 text-sm text-muted-foreground">
+        No systems are configured.
+      </p>
+    );
+  }
+
+  const todayKey = pacificDateKey(new Date());
+  const isToday = (iso: string) => pacificDateKey(iso) === todayKey;
 
   // Agenda: per-system AM/PM/feeding/water-quality done-today status.
   const doneChecks = new Set<string>();
@@ -250,7 +271,7 @@ async function HomeContent() {
   const phByDay = new Map<string, number[]>();
   for (const w of waterQualityReadings ?? []) {
     if (w.ph == null) continue;
-    const key = PACIFIC_DAY.format(new Date(w.tested_at));
+    const key = pacificDateKey(w.tested_at);
     const list = phByDay.get(key) ?? [];
     list.push(w.ph);
     phByDay.set(key, list);

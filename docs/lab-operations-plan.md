@@ -65,9 +65,9 @@ timestamped and attributable like the other logs.
   confirmed with staff before it's encoded (see §7). Logged per individual named
   animal (food type/amount), plus a same-day follow-up on whether it was eaten,
   rolled into the PM check, also per individual animal.
-- **Water quality testing** — **weekly per system**, testing the sump: pH, salinity,
-  magnesium, ammonia, alkalinity, calcium, phosphate, nitrate, nitrite (nitrate in ppm, nitrite in
-  ppb — a different unit). Target/safe ranges per parameter exist but
+- **Water quality testing** — **weekly per system**, testing the sump: pH (unitless),
+  salinity (ppt), magnesium (ppm), ammonia (ppm), alkalinity (dKH), calcium (ppm),
+  phosphate (ppm), nitrate (ppm), and nitrite (ppb). Target/safe ranges per parameter exist but
   still need to be gathered from staff and encoded for inline validation (see §7).
 - **Chemical additions** — as-needed per system (C balance, buffers, etc.), logged
   whenever dosed.
@@ -135,9 +135,9 @@ tooling for data that doesn't actually exist.
 
 - **Lab techs** — day-to-day data entry (AM/PM checks, feeding, water quality, health
   observations), Technician role.
-- **Volunteers** — same lab-wide scope as Technicians, but a distinct **Volunteer** role
-   distinguishes volunteer entries. Current policies allow read/create/update without
-   delete; staff still needs to confirm that as the intended contract (see §8).
+- **Volunteers** — lab-wide read/create scope with a distinct **Volunteer** role that
+   distinguishes volunteer entries. Volunteers may update only entries they recorded and
+   cannot delete; Admins and Technicians handle corrections to other users' records.
 - **PI/researchers** — read-only Viewer access for trend charts and exports.
 - **Admin(s)** — lab manager/lead tech; approves new sign-ins, manages
   systems/tanks/species reference data, runs historical imports, receives
@@ -176,24 +176,24 @@ or grant at this time.
 1. **Feeding cadence matrix** — confirm the actual per-system/species/life-stage
    feeding schedule with staff so it can be encoded (currently known only as "roughly
    every other day, varies").
-2. **Water quality target ranges** — gather the actual per-parameter safe/target
-   ranges (and confirm whether they vary by system/species) needed for inline
-   validation.
+2. **Water quality target values** — Admins or Technicians will configure optional
+   lab-wide ranges with per-system overrides in the application. Initial numeric values
+   still need to be entered; no ranges are seeded by default.
 3. **Health observation severity scale** — define the exact 3-level scale (labels and
    criteria), and confirm which severity level(s) make a photo mandatory for issue
    types beyond arm drop/spine drop/lesion (which always require one).
 4. **Animal name reuse** — decide whether a nickname is ever reused after an animal
    dies or is transferred out, or retired permanently.
-5. **Volunteer role permissions** — decide what, if anything, differs between the new
-   Volunteer role and Technician (e.g., edit/delete rights, export access) — both get
-   lab-wide system access either way.
+5. **Volunteer role permissions** — resolved for operational records: lab-wide read/create,
+   update only entries the Volunteer recorded, and no delete. Export access can be decided
+   with the export feature and does not block the current RLS/UI contract.
 6. How far back does usable historical data go in Google Sheets vs. paper, and which
    systems/parameters are actually covered? Needed to scope the migration effort.
 7. Confirm remaining Apex pH probe coverage (Indoor/Outdoor Quarantine, Yum Yum,
    Snack Shack, Larval) with staff — Graham and Wholey are confirmed.
 8. Who owns/assigns the paper-backfill data entry work, and is there a target
    deadline (e.g., before a grant reporting cycle)?
-9. Confirm whether salinity is an official ninth weekly parameter. It exists in the
+9. **Resolved:** salinity is the official ninth weekly parameter and uses `ppt`. It exists in the
    current schema/form but was omitted from earlier requirements prose.
 10. Confirm whether a health observation with no selected issue is a valid general
     observation or should be rejected.

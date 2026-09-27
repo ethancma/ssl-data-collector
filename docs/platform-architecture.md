@@ -29,8 +29,9 @@ star health and SSWD symptom onset over time.
 - **Multiple simultaneous, mixed-experience users** (lab techs + volunteers, ~10-20
   accounts) entering data daily — forms must be fast, guided, and forgiving of typos
   (inline range validation), not just functionally correct.
-- **Water quality testing is weekly per system** (not daily) — pH, salinity, magnesium,
-  ammonia, alkalinity, calcium, phosphate, nitrate, nitrite — with pH additionally available
+- **Water quality testing is weekly per system** (not daily) — pH (unitless), salinity
+  (ppt), magnesium (ppm), ammonia (ppm), alkalinity (dKH), calcium (ppm), phosphate (ppm),
+  nitrate (ppm), and nitrite (ppb) — with pH additionally available
   continuously from Neptune Apex probes on systems that have them; the other eight
   parameters are always manually tested. Nitrate is measured in ppm, nitrite in ppb
   (not ppm — a different unit than the other parameters).
@@ -58,9 +59,10 @@ star health and SSWD symptom onset over time.
   live-entered data (see provenance fields in §4).
 - **Auth**: Google sign-in (~10-20 accounts), gated by admin approval (not strictly
   limited to a Workspace domain, to allow outside collaborators if needed).
-- **Roles**: Admin, Technician, Volunteer (lab-wide access like Technician, but a
-  distinct role so paid-staff vs. volunteer entries are distinguishable; exact
-  permission differences TBD), Viewer (read-only, e.g. PI/researcher).
+- **Roles**: Admin, Technician, Volunteer, and Viewer. Volunteer is distinct so
+  paid-staff vs. volunteer entries remain attributable; Volunteers have lab-wide
+  read/create access, may update entries attributed to their profile without a time or
+  provenance-source limit, and cannot delete. Viewer is read-only.
 - **Photo attachments** on health observations: always mandatory for arm drops, spine
   drops, and lesions; mandatory for other issue types only above a certain severity
   on a 3-level scale (exact thresholds TBD, see lab operations plan open questions).
@@ -129,7 +131,8 @@ erDiagram
 **Core tables:**
 - `profiles` — id (-> auth.users), email, display_name, role (admin|technician|volunteer|viewer), status (pending|active)
 - `systems` — id, name, description, has_animals (bool, false for e.g. the micro-algae
-  system — see lab operations plan for the full list of 8 systems)
+  system). Authenticated UI lists sort by name and then ID without separate ordering
+  metadata (see lab operations plan for the full list of 8 systems).
 - `tanks` — id, system_id, name/label, tank_type (shelf|cone_bottom|main), pair_group (nullable, for larval pairs — feeding/health/water-quality logs for larval tanks are recorded once per `pair_group`, not per individual cone-bottom tank)
 - `species` — id, common_name, scientific_name, category (star|urchin|abalone|other)
 - `animals` — id, tank_id (current), species_id, name (nickname, e.g. "Sitara"; unique lab-wide, not just per tank), life_stage/size_class, tracking_type (individual|cohort), quantity (default 1), status (active|deceased|transferred), date_added, notes
@@ -140,15 +143,25 @@ erDiagram
   `data_source` (live|import|
   paper_backfill), entered_at (defaults to now(), distinct from `tested_at` for
   backfilled rows)
-- `chemical_additions` — id, system_id, chemical_name, amount, unit, added_at, recorded_by, reason, data_source
+- `water_quality_target_ranges` — id, optional system_id, fixed parameter key, optional
+  inclusive min/max bounds. A system row overrides the lab-wide row; Admins and Technicians
+  manage ranges, and no numeric ranges are seeded.
+- `chemical_addition_catalog` — Admin-managed lab-wide quick picks with a name and suggested
+  unit. C-Balance, Mg, and DI-Trace are seeded with `mL` suggestions.
+- `star_treatment_catalog` — Admin-managed lab-wide quick picks with optional suggested
+  amount/concentration units. Probiotics and Reef Dip are seeded.
+- `chemical_additions` — id, system_id, optional catalog_id, chemical_name and unit
+  event-time snapshots, amount, added_at, recorded_by, reason, data_source
 - `daily_checks` — id, system_id, check_type (AM|PM), checked_at, water_running (bool), temperature, recorded_by, notes, flagged_health_observation_id (nullable, set when a check flags an issue and a follow-up health observation is opened but not yet completed), data_source
 - `microalgae_logs` — id, system_id (the Micro-Algae system), logged_at, density_reading, harvest_volume, condition_notes, recorded_by, data_source
 - `health_observations` — id, animal_id, tank_id, observed_at, issues (multi-select: arm_drop, spine_drop, lesion, arm_curling, flattening, other), severity (3-level scale, exact labels TBD), photo required at submit time for arm_drop/spine_drop/lesion always, and for other issue types above a severity threshold (TBD), notes, recorded_by, data_source
 - `feeding_logs` — id, tank_id, animal_id (required for tanks with named individuals; logged per animal even when multiple animals share a tank), food_type (krill|brine_shrimp|abalone|urchin_purple|urchin_white|microalgae|other), amount, fed_at, recorded_by, consumption_status (full|partial|none|unknown), consumption_checked_at, notes, data_source
-- `star_treatments` — id, animal_id, tank_id treatment-time snapshot, treatment_type,
-  optional amount/unit and concentration/unit pairs, notes, administered_at, recorded_by,
-  data_source, entered_at. See [star-treatments-design.md](star-treatments-design.md) for
-  the implemented feature contract and deferred integrations.
+- `star_treatments` — id, animal_id, tank_id treatment-time snapshot, optional catalog_id,
+  treatment_type and unit event-time snapshots, optional amount/unit and
+  concentration/unit pairs, notes, administered_at, recorded_by, data_source, entered_at.
+  Reef Dip may omit both numeric pairs. See
+  [star-treatments-design.md](star-treatments-design.md) for the implemented feature
+  contract and deferred integrations.
 - `maintenance_tasks` — id, system_id, task_type (filter_change|sump_flush|other), recurrence_days (configurable per system, not shared lab-wide per task type), last_performed_at, next_due_at (computed)
 - `maintenance_logs` — id, task_id, performed_at, performed_by, notes
 - `attachments` — id, parent_table, parent_id, storage_path, uploaded_by, uploaded_at (generic photo attachment, primarily used by `health_observations`, also usable to archive scanned paper logs)
@@ -160,25 +173,35 @@ fix for the usability/analysis risk of mixing live entry with manually-migrated
 Google Sheets and paper records — without it, trend charts can't distinguish real
 data gaps from migration lag, and a bad backfill can't be traced to its source.
 
+User-entered operational wall times are interpreted in `America/Los_Angeles` and stored as
+`timestamptz` instants. Nonexistent spring-forward times are rejected; ambiguous fall-back
+times resolve to their earlier occurrence. Operational timestamps are displayed in Pacific
+time independently of the browser or server host timezone.
+
 ## 5. Roles & Permissions
 
 The current native-role policy is enforced with Postgres grants, RLS, and RPCs:
 - **Admin** — full manage access: systems, tanks, species, animals, users/roles, all logs
-  (full CRUD on all operational log tables).
+  (full CRUD on all operational log tables), water-quality ranges, and quick-pick catalogs.
 - **Technician** — full CRUD on all log tables (water quality, feeding, health, daily
-  checks, chemical additions, maintenance, micro-algae). Lab-wide access, no
-  per-system restriction.
-- **Volunteer** — read, create, and update ordinary operational logs, but cannot delete.
+  checks, chemical additions, maintenance, micro-algae) plus water-quality range
+  management. Lab-wide access, no per-system restriction; quick-pick catalogs are read-only.
+- **Volunteer** — read and create ordinary operational logs, update only entries they
+  recorded (with no time or `data_source` restriction), and cannot delete.
 - **Viewer** — read-only across all tables (e.g., PI/researcher).
 - **Unauthenticated** — no access.
 
 Star treatments deliberately narrow this matrix: Viewer has no access, while Volunteer
-can read/create/update but not delete. The current generic matrix still needs explicit
-staff confirmation and test/UI alignment; that closure work is tracked in the
-[implementation checklist](implementation-checklist.md#data-integrity-and-access-control).
+can read/create, update only treatments they recorded, and cannot delete. Operational
+updates and deletes are captured in an append-only audit trail; provenance fields remain
+server-owned and immutable. Admins and Technicians can read the audit trail. Storage access
+is scoped to the private `attachments` bucket, and Volunteers may update only objects they
+own.
 
 New Google sign-ins land as `profiles.status = pending`; an Admin approves and assigns
-a role before the account gets any data access.
+a role before the account gets any data access. On the user's next application request
+after a role or status change, the proxy refreshes the access token; inactive or invalid
+profiles fall back to the non-privileged `authenticated` claim.
 
 ## 6. Delivery Status
 
@@ -208,7 +231,8 @@ duplicating status here.
 - Larval cone-bottoms tracked as cohorts (batch-level); other animals get individual IDs.
 - Google sign-in gated by admin approval rather than strict Workspace-domain
   enforcement, to allow non-Workspace collaborators.
-- Water quality testing corrected to weekly (not daily) per system; a `ph_source`
+- Water quality testing corrected to weekly (not daily) per system, with salinity confirmed
+  as the ninth panel parameter; a `ph_source`
   field distinguishes Apex-probe pH from manual readings, and direct Apex API
   integration is deferred rather than built into the MVP.
 - Live vs. migrated data kept in the same tables (not separate historical tables),
@@ -216,8 +240,8 @@ duplicating status here.
   simpler schema than a parallel "legacy" table set, at the cost of every log table
   needing that column.
 - Volunteers get their own role (distinct from Technician) to distinguish paid-staff
-  vs. volunteer entries. The current policies allow read/create/update without delete;
-  staff confirmation of that generic contract remains open.
+  vs. volunteer entries. They can read and create operational records, update only their
+  own entries, and cannot delete; Admins and Technicians retain full mutation access.
 - An AM/PM check that flags an issue auto-opens a linked health observation, but that
   observation can be saved as a follow-up rather than completed on the spot; it stays
   flagged on the check record (no separate dashboard-level nagging) until filled in.

@@ -8,7 +8,7 @@ import type { ChartRangeDays, SystemDetailData } from "@/components/systems/type
 
 // Owns "which system is selected" and "which trend chart range is selected"
 // as client state so switching either is an instant local re-render from
-// data already fetched for all 8 systems (60 days' worth), with no network
+// data already fetched for all configured systems (60 days' worth), with no network
 // round-trip. The URL (`?system=&range=`) is kept in sync via router.replace
 // for shareable/bookmarkable links, but that sync never blocks the state
 // update that drives the UI.
@@ -43,8 +43,8 @@ export function SystemsPageClient({
     syncUrl(slug, nextRange);
   };
 
-  // Shouldn't happen — dataBySlug is built from the same SYSTEMS config the
-  // page fell back to — but fail loud rather than render a blank page.
+  // The page chooses from the same database-backed keys, so this only guards
+  // against stale client state during navigation.
   if (!data) {
     throw new Error(`No data found for system "${slug}"`);
   }

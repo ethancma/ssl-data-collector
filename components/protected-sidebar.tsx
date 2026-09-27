@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import { useTheme } from "next-themes";
 import {
   ClipboardList,
+  FlaskConical,
   Home,
   Monitor,
   Moon,
@@ -13,6 +14,7 @@ import {
   PanelLeftOpen,
   Settings,
   ShieldCheck,
+  SlidersHorizontal,
   Sun,
   Waves,
   type LucideIcon,
@@ -61,16 +63,21 @@ type NavItem = {
   href: string;
   label: string;
   icon: LucideIcon;
+  exact?: boolean;
 };
 
 export function ProtectedSidebar({
   showAdmin,
+  showDailyOperations,
+  showWaterQualityTargets,
   authSlot,
   userEmail,
   collapsed,
   onToggleCollapsed,
 }: {
   showAdmin: boolean;
+  showDailyOperations: boolean;
+  showWaterQualityTargets: boolean;
   authSlot: React.ReactNode;
   userEmail?: string | null;
   collapsed: boolean;
@@ -80,12 +87,32 @@ export function ProtectedSidebar({
   const isHomeActive = pathname === "/protected/home";
 
   const items: NavItem[] = [
-    { href: "/protected/daily-operations", label: "Daily Operations", icon: ClipboardList },
     { href: "/protected/systems", label: "Systems", icon: Waves },
-    { href: "/protected/settings", label: "Settings", icon: Settings },
+    { href: "/protected/settings", label: "Settings", icon: Settings, exact: true },
   ];
+  if (showDailyOperations) {
+    items.unshift({
+      href: "/protected/daily-operations",
+      label: "Daily Operations",
+      icon: ClipboardList,
+    });
+  }
+  if (showWaterQualityTargets) {
+    items.splice(items.length - 1, 0, {
+      href: "/protected/settings/water-quality-targets",
+      label: "Water quality targets",
+      icon: SlidersHorizontal,
+    });
+  }
   if (showAdmin) {
-    items.push({ href: "/protected/admin", label: "Admin", icon: ShieldCheck });
+    items.push(
+      {
+        href: "/protected/admin/quick-picks",
+        label: "Quick-pick catalogs",
+        icon: FlaskConical,
+      },
+      { href: "/protected/admin", label: "Admin", icon: ShieldCheck, exact: true },
+    );
   }
 
   const initial = userEmail?.trim()?.[0]?.toUpperCase() ?? "?";
@@ -146,8 +173,9 @@ export function ProtectedSidebar({
         <ThemeToggleButton />
       </div>
       <nav className="flex-1 space-y-1 overflow-y-auto p-3">
-        {items.map(({ href, label, icon: Icon }) => {
-          const isActive = pathname === href || pathname.startsWith(`${href}/`);
+        {items.map(({ href, label, icon: Icon, exact }) => {
+          const isActive =
+            pathname === href || (!exact && pathname.startsWith(`${href}/`));
           return (
             <Link
               key={href}

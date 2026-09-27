@@ -13,6 +13,11 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import {
+  getPacificDateString,
+  getPacificTimeString,
+  pacificWallTimeToIso,
+} from "@/components/daily-operations/pacific-date-time";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -28,21 +33,6 @@ import {
 } from "@/lib/validation/maintenance-log";
 
 type SystemOption = { id: number; name: string };
-
-function getTodayDateString(): string {
-  const now = new Date();
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
-}
-
-function getCurrentTimeString(): string {
-  const now = new Date();
-  return `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
-}
-
-// Combines the user-picked date and time-of-day into a single timestamp.
-function combineDateAndTime(dateStr: string, timeStr: string): string {
-  return new Date(`${dateStr}T${timeStr}:00`).toISOString();
-}
 
 const TASK_TYPE_LABELS: Record<MaintenanceTaskType, string> = {
   filter_change: "Filter change",
@@ -63,12 +53,13 @@ export function MaintenanceLogForm({
   const {
     register,
     handleSubmit,
+    setError,
     formState: { errors, isSubmitting },
   } = useForm<MaintenanceLogFormInput, unknown, MaintenanceLogFormValues>({
     resolver: zodResolver(maintenanceLogSchema),
     defaultValues: {
-      date: getTodayDateString(),
-      time: getCurrentTimeString(),
+      date: getPacificDateString(),
+      time: getPacificTimeString(),
       systemId: defaultSystemId ?? "",
       taskType: "filter_change",
       notes: "",
@@ -77,10 +68,20 @@ export function MaintenanceLogForm({
 
   const onSubmit = async (values: MaintenanceLogFormValues) => {
     setServerError(null);
+    let performedAt: string;
+    try {
+      performedAt = pacificWallTimeToIso(values.date, values.time);
+    } catch (error) {
+      setError("time", {
+        message: error instanceof Error ? error.message : "Enter a valid Pacific time",
+      });
+      return;
+    }
+
     const supabase = createClient();
 
     const { error } = await supabase.from("maintenance_logs").insert({
-      performed_at: combineDateAndTime(values.date, values.time),
+      performed_at: performedAt,
       system_id: values.systemId,
       task_type: values.taskType,
       notes: values.notes?.trim() ? values.notes.trim() : null,

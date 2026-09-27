@@ -14,104 +14,108 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import {
+  getPacificDateString,
+  getPacificTimeString,
+  pacificWallTimeToIso,
+} from "@/components/daily-operations/pacific-date-time";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 import {
   chemicalAdditionSchema,
-  type ChemicalAdditionFormValues,
 } from "@/lib/validation/chemical-addition";
+import {
+  attachedCatalogId,
+  normalizeSnapshot,
+  selectChemicalCatalogItem,
+  type ChemicalAdditionCatalogItem,
+} from "@/components/daily-operations/quick-pick-catalogs";
 
 type SystemOption = { id: number; name: string };
 
-const CHEMICAL_OPTIONS = ["C-Balance", "DI-Trace", "Mg", "Other"] as const;
-
 const systemChemicalAdditionSchema = chemicalAdditionSchema
-  .omit({ chemicalName: true })
   .extend({
-    chemicalChoice: z.enum(CHEMICAL_OPTIONS),
-    customChemicalName: z
+    catalogId: z
       .string()
-      .max(200, "Keep the chemical name under 200 characters"),
+      .refine((value) => value === "" || /^\d+$/.test(value), "Select a quick pick"),
   })
-  .superRefine((values, context) => {
-    if (values.chemicalChoice === "Other" && values.customChemicalName.trim() === "") {
-      context.addIssue({
-        code: "custom",
-        path: ["customChemicalName"],
-        message: "Enter a chemical/product name",
-      });
-    }
-  })
-  .transform(
-    ({ chemicalChoice, customChemicalName, ...values }): ChemicalAdditionFormValues => ({
-      ...values,
-      chemicalName:
-        chemicalChoice === "Other"
-          ? customChemicalName.trim().replace(/\s+/g, " ")
-          : chemicalChoice,
-    }),
-  );
+  .transform(({ catalogId, ...values }) => ({
+    ...values,
+    catalogId: catalogId === "" ? null : Number(catalogId),
+  }));
 
 type SystemChemicalAdditionFormInput = z.input<typeof systemChemicalAdditionSchema>;
-
-function getTodayDateString(): string {
-  const now = new Date();
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
-}
-
-function getCurrentTimeString(): string {
-  const now = new Date();
-  return `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
-}
-
-// Combines the user-picked date and time-of-day into a single timestamp.
-function combineDateAndTime(dateStr: string, timeStr: string): string {
-  return new Date(`${dateStr}T${timeStr}:00`).toISOString();
-}
+type SystemChemicalAdditionFormValues = z.output<typeof systemChemicalAdditionSchema>;
 
 export function ChemicalAdditionForm({
   systems,
+  catalogs,
+  catalogLoadError,
   defaultSystemId,
 }: {
   systems: SystemOption[];
+  catalogs: ChemicalAdditionCatalogItem[];
+  catalogLoadError?: string;
   defaultSystemId?: string;
 }) {
   const router = useRouter();
   const [serverError, setServerError] = useState<string | null>(null);
+  const defaultCatalog = catalogs[0] ?? null;
+  const defaultSelection = defaultCatalog
+    ? selectChemicalCatalogItem(defaultCatalog)
+    : { catalogId: null, name: "", unit: "" };
 
   const {
     register,
     handleSubmit,
+    getValues,
     watch,
+    setError,
+    setValue,
     formState: { errors, isSubmitting },
   } = useForm<
     SystemChemicalAdditionFormInput,
     unknown,
-    ChemicalAdditionFormValues
+    SystemChemicalAdditionFormValues
   >({
     resolver: zodResolver(systemChemicalAdditionSchema),
     defaultValues: {
-      date: getTodayDateString(),
-      time: getCurrentTimeString(),
+      date: getPacificDateString(),
+      time: getPacificTimeString(),
       systemId: defaultSystemId ?? "",
-      chemicalChoice: "C-Balance",
-      customChemicalName: "",
+      catalogId:
+        defaultSelection.catalogId === null ? "" : String(defaultSelection.catalogId),
+      chemicalName: defaultSelection.name,
       amount: "",
-      unit: "",
+      unit: defaultSelection.unit,
       reason: "",
     },
   });
-  const chemicalChoice = watch("chemicalChoice");
+  const catalogId = watch("catalogId");
 
-  const onSubmit = async (values: ChemicalAdditionFormValues) => {
+  const onSubmit = async (values: SystemChemicalAdditionFormValues) => {
     setServerError(null);
+    let addedAt: string;
+    try {
+      addedAt = pacificWallTimeToIso(values.date, values.time);
+    } catch (error) {
+      setError("time", {
+        message: error instanceof Error ? error.message : "Enter a valid Pacific time",
+      });
+      return;
+    }
+
     const supabase = createClient();
     const { error } = await supabase.from("chemical_additions").insert({
-      added_at: combineDateAndTime(values.date, values.time),
+      added_at: addedAt,
       system_id: values.systemId,
-      chemical_name: values.chemicalName.trim(),
+      catalog_id: attachedCatalogId(
+        { catalogId: values.catalogId, name: values.chemicalName },
+        catalogs,
+      ),
+      chemical_name: normalizeSnapshot(values.chemicalName),
       amount: Number(values.amount),
       unit: values.unit.trim(),
       reason: values.reason?.trim() ? values.reason.trim() : null,
@@ -167,42 +171,71 @@ export function ChemicalAdditionForm({
           </div>
 
           <fieldset className="grid gap-3">
-            <legend className="text-sm font-medium">
-              Chemical/product added to system water
-            </legend>
+            <legend className="text-sm font-medium">Quick pick</legend>
             <div className="grid gap-2 sm:grid-cols-2">
-              {CHEMICAL_OPTIONS.map((option) => (
+              {catalogs.map((item) => (
                 <label
-                  key={option}
+                  key={item.id}
                   className="flex min-h-11 cursor-pointer items-center gap-3 rounded-md border border-input px-3 py-2 text-sm has-[:checked]:border-foreground has-[:checked]:bg-muted"
                 >
-                  <input type="radio" value={option} {...register("chemicalChoice")} />
-                  {option}
+                  <input
+                    type="radio"
+                    value={item.id}
+                    {...register("catalogId", {
+                      onChange: () => {
+                        const selection = selectChemicalCatalogItem(item);
+                        setValue("chemicalName", selection.name, { shouldValidate: true });
+                        setValue("unit", selection.unit, { shouldValidate: true });
+                      },
+                    })}
+                  />
+                  {item.name}
                 </label>
               ))}
+              <label className="flex min-h-11 cursor-pointer items-center gap-3 rounded-md border border-input px-3 py-2 text-sm has-[:checked]:border-foreground has-[:checked]:bg-muted">
+                <input type="radio" value="" {...register("catalogId")} />
+                Enter manually
+              </label>
             </div>
           </fieldset>
 
-          {chemicalChoice === "Other" && (
-            <div className="grid gap-2">
-              <Label htmlFor="customChemicalName">Chemical/product name</Label>
-              <Input
-                id="customChemicalName"
-                className="min-h-11"
-                maxLength={200}
-                aria-describedby={
-                  errors.customChemicalName ? "customChemicalName-error" : undefined
-                }
-                aria-invalid={Boolean(errors.customChemicalName)}
-                {...register("customChemicalName")}
-              />
-              {errors.customChemicalName && (
-                <p id="customChemicalName-error" className="text-sm text-red-500">
-                  {errors.customChemicalName.message}
-                </p>
-              )}
-            </div>
+          {catalogLoadError && (
+            <p className="text-sm text-red-500" role="alert">
+              Quick picks could not be loaded. Enter the chemical and unit manually.
+            </p>
           )}
+
+          <div className="grid gap-2">
+            <Label htmlFor="chemicalName">Chemical/product name</Label>
+            <Input
+              id="chemicalName"
+              className="min-h-11"
+              maxLength={200}
+              aria-describedby={errors.chemicalName ? "chemicalName-error" : undefined}
+              aria-invalid={Boolean(errors.chemicalName)}
+              {...register("chemicalName", {
+                onChange: (event) => {
+                  const selectedCatalog = catalogs.find(
+                    (item) => String(item.id) === getValues("catalogId"),
+                  );
+                  if (
+                    selectedCatalog &&
+                    normalizeSnapshot(event.target.value) !== selectedCatalog.name
+                  ) {
+                    setValue("catalogId", "", { shouldDirty: true });
+                  }
+                },
+              })}
+            />
+            {errors.chemicalName && (
+              <p id="chemicalName-error" className="text-sm text-red-500">
+                {errors.chemicalName.message}
+              </p>
+            )}
+            <p className="text-xs text-muted-foreground">
+              {catalogId ? "Editing the name switches this entry to free text." : "Free-text entry"}
+            </p>
+          </div>
 
           <div className="grid grid-cols-2 gap-4">
             <div className="grid gap-2">

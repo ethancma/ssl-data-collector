@@ -9,9 +9,13 @@
 import path from "node:path";
 import { test, expect } from "@playwright/test";
 import {
+  ADMIN_EMAIL,
+  ADMIN_PASSWORD,
   db,
   dbQuery,
   login,
+  loginAs,
+  signInRoleClient,
   TECH_PASSWORD,
   RUN_TAG,
   todayDateString,
@@ -22,12 +26,17 @@ import {
   expectDefaultDateAndTime,
 } from "./helpers";
 
+function sqlLiteral(value: string) {
+  return `'${value.replaceAll("'", "''")}'`;
+}
+
 test.describe("e2e smoke", () => {
   test.describe.configure({ mode: "serial" });
   test.skip(!TECH_PASSWORD, "E2E_TEST_TECH_PASSWORD not set");
 
   let grahamSystemId: number;
   let ssl25AnimalId: number;
+  let diTraceCatalogId: number;
 
   test.beforeAll(async () => {
     // Must use dbQuery (not db.from) here — schema `core` 403s "permission denied for
@@ -36,6 +45,10 @@ test.describe("e2e smoke", () => {
     grahamSystemId = Number(systemRows[0]?.id);
     const animalRows = dbQuery(`select id from core.animals where name = 'SSL25'`);
     ssl25AnimalId = Number(animalRows[0]?.id);
+    const catalogRows = dbQuery(
+      `select id from core.chemical_addition_catalog where name = 'DI-Trace'`,
+    );
+    diTraceCatalogId = Number(catalogRows[0]?.id);
   });
 
   test("technician can sign in", async ({ page }) => {
@@ -251,19 +264,16 @@ test.describe("e2e smoke", () => {
     await expect(page.getByRole("heading", { name: "Daily Operations" })).toBeVisible();
 
     const form = page.locator("form");
-    const chemicalChoices = form
-      .getByRole("group", { name: "Chemical/product added to system water" })
-      .getByRole("radio");
+    const chemicalChoices = form.getByRole("group", { name: "Quick pick" }).getByRole("radio");
     await expect(chemicalChoices).toHaveCount(4);
-    for (const choice of ["C-Balance", "DI-Trace", "Mg", "Other"]) {
+    for (const choice of ["C-Balance", "DI-Trace", "Mg", "Enter manually"]) {
       await expect(form.getByRole("radio", { name: choice, exact: true })).toBeVisible();
     }
     await expect(
       form.getByRole("link", { name: /star treatment/i }),
     ).toHaveCount(0);
 
-    await form.getByRole("radio", { name: "Other", exact: true }).click();
-    await expect(form.getByLabel("Chemical/product name")).toBeVisible();
+    await form.getByRole("radio", { name: "Enter manually", exact: true }).click();
     await form.getByLabel("Chemical/product name").fill("   ");
     await form.getByRole("button", { name: "Save system addition" }).click();
     await expect(form.getByText("Enter a chemical/product name")).toBeVisible();
@@ -271,21 +281,22 @@ test.describe("e2e smoke", () => {
 
     await form.getByLabel("System").selectOption(String(chemicalSystemId));
     await form.getByRole("radio", { name: "DI-Trace", exact: true }).click();
-    await expect(form.getByLabel("Chemical/product name")).toHaveCount(0);
+    await expect(form.getByLabel("Chemical/product name")).toHaveValue("DI-Trace");
+    await expect(form.getByLabel("Unit")).toHaveValue("mL");
     await page.getByLabel("Amount").fill("50");
-    await page.getByLabel("Unit").fill("mL");
     await page.getByLabel("Reason").fill(`${RUN_TAG} chemical addition`);
     await page.getByRole("button", { name: "Save system addition" }).click();
     await expect(page).toHaveURL(/\/protected\/home/);
 
     const rows = dbQuery(`
-      select system_id, chemical_name, amount, unit, reason, added_at
+      select system_id, catalog_id, chemical_name, amount, unit, reason, added_at
       from core.chemical_additions
       where reason = '${RUN_TAG} chemical addition'
     `);
     expect(rows).toHaveLength(1);
     const addition = rows[0];
     expect(Number(addition.system_id)).toBe(chemicalSystemId);
+    expect(Number(addition.catalog_id)).toBe(diTraceCatalogId);
     expect(addition.chemical_name).toBe("DI-Trace");
     expect(Number(addition.amount)).toBe(50);
     expect(addition.unit).toBe("mL");
@@ -423,17 +434,9 @@ test.describe("e2e smoke", () => {
     page,
   }) => {
     await login(page);
-    await page.goto("/protected/today");
-    await expect(page.getByText("AM done").first()).toBeVisible();
-    await expect(page.getByText("PM done").first()).toBeVisible();
-    await expect(page.getByText("Fed", { exact: true }).first()).toBeVisible();
-    await expect(page.getByText("Tested this week").first()).toBeVisible();
-    await expect(
-      page.getByRole("link", { name: "Log chemical addition" }).first(),
-    ).toBeVisible();
-    await expect(
-      page.getByRole("link", { name: "Log health observation" }).first(),
-    ).toBeVisible();
+    await page.goto("/protected/home");
+    await expect(page.getByRole("heading", { name: "Home", level: 1 })).toBeVisible();
+    await expect(page.getByText("All clear: Graham", { exact: true })).toBeVisible();
   });
 
   // Covers the date+time box added to all six daily-logging forms: default value
@@ -596,5 +599,368 @@ test.describe("e2e smoke", () => {
     expect(rows[0].task_type).toBe("filter_change");
     expect(localDateOf(String(rows[0].performed_at))).toBe(todayDateString());
     expect(localTimeOf(String(rows[0].performed_at))).toBe(PICKED_TIME);
+  });
+});
+
+test.describe("P1 database-owned systems and Chemical addition quick picks", () => {
+  test.describe.configure({ mode: "serial" });
+  test.skip(!TECH_PASSWORD, "E2E_TEST_TECH_PASSWORD not set");
+  test.skip(!ADMIN_PASSWORD, "E2E_TEST_ADMIN_PASSWORD not set");
+
+  const tag = `${RUN_TAG} P1 chemical`;
+  let systems: { id: number; name: string }[] = [];
+  let grahamSystemId: number;
+  let cBalanceCatalogId: number;
+  let referencedAdditionId: number;
+
+  test.beforeAll(() => {
+    systems = dbQuery(`select id, name from core.systems order by name, id`).map(
+      (row) => ({ id: Number(row.id), name: String(row.name) }),
+    );
+    grahamSystemId = systems.find((system) => system.name === "Graham")?.id ?? 0;
+    cBalanceCatalogId = Number(
+      dbQuery(`select id from core.chemical_addition_catalog where name = 'C-Balance'`)[0]
+        ?.id,
+    );
+    expect(systems.length).toBeGreaterThan(0);
+    expect(grahamSystemId).toBeGreaterThan(0);
+    expect(cBalanceCatalogId).toBeGreaterThan(0);
+  });
+
+  test.afterAll(() => {
+    dbQuery(`delete from core.chemical_additions where reason like ${sqlLiteral(`${tag}%`)}`);
+    dbQuery(`update core.chemical_addition_catalog
+      set name = 'C-Balance', default_unit = 'mL'
+      where id = ${cBalanceCatalogId}`);
+  });
+
+  test("authenticated System selectors match database name/ID order with no display_order column", async ({
+    page,
+  }) => {
+    expect(
+      dbQuery(`select column_name
+        from information_schema.columns
+        where table_schema = 'core'
+          and table_name = 'systems'
+          and column_name = 'display_order'`),
+    ).toHaveLength(0);
+
+    await login(page);
+    for (const type of [
+      "daily-check",
+      "water-quality",
+      "chemical-addition",
+      "maintenance-log",
+    ]) {
+      await page.goto(`/protected/daily-operations?type=${type}`);
+      const options = await page
+        .getByLabel("System", { exact: true })
+        .locator("option:not([value=''])")
+        .evaluateAll((items) =>
+          items.map((item) => ({
+            id: Number((item as HTMLOptionElement).value),
+            name: item.textContent?.trim() ?? "",
+          })),
+        );
+      expect(options).toEqual(systems);
+    }
+  });
+
+  test("daily forms reject a nonexistent Pacific spring-forward time before writing", async ({
+    page,
+  }) => {
+    const notes = `${tag} spring gap`;
+    await login(page);
+    await page.goto(
+      `/protected/daily-operations?type=daily-check&system=${grahamSystemId}&check=AM`,
+    );
+    await page.getByLabel("Date").fill("2026-03-08");
+    await page.getByLabel("Time").fill("02:30");
+    await page.getByLabel("Temperature (°C)").fill("12.5");
+    await page.getByLabel("Notes").fill(notes);
+    await page.getByRole("button", { name: "Save check" }).click();
+
+    await expect(page.getByText(/does not exist in Pacific time/)).toBeVisible();
+    expect(
+      dbQuery(`select id from core.daily_checks where notes = ${sqlLiteral(notes)}`),
+    ).toHaveLength(0);
+  });
+
+  test("exact Chemical seeds provide defaults and persist catalog plus snapshots", async ({
+    page,
+  }) => {
+    const catalog = dbQuery(`select id, name, default_unit
+      from core.chemical_addition_catalog
+      order by id`);
+    expect(catalog.map(({ name, default_unit }) => ({ name, default_unit }))).toEqual([
+      { name: "C-Balance", default_unit: "mL" },
+      { name: "Mg", default_unit: "mL" },
+      { name: "DI-Trace", default_unit: "mL" },
+    ]);
+
+    await login(page);
+    await page.goto(
+      `/protected/daily-operations?type=chemical-addition&system=${grahamSystemId}`,
+    );
+    await expect(page.getByRole("radio", { name: "C-Balance", exact: true })).toBeChecked();
+    await expect(page.getByLabel("Chemical/product name")).toHaveValue("C-Balance");
+    await expect(page.getByLabel("Unit")).toHaveValue("mL");
+    await page.getByLabel("Amount").fill("2.5");
+    await page.getByLabel("Unit").fill("drops");
+    await page.getByLabel("Reason").fill(`${tag} referenced`);
+    await page.getByRole("button", { name: "Save system addition" }).click();
+    await expect(page).toHaveURL(/\/protected\/home/);
+
+    const row = dbQuery(`select id, catalog_id, chemical_name, amount, unit
+      from core.chemical_additions
+      where reason = ${sqlLiteral(`${tag} referenced`)}`)[0];
+    referencedAdditionId = Number(row?.id);
+    expect(referencedAdditionId).toBeGreaterThan(0);
+    expect(Number(row.catalog_id)).toBe(cBalanceCatalogId);
+    expect(row.chemical_name).toBe("C-Balance");
+    expect(Number(row.amount)).toBe(2.5);
+    expect(row.unit).toBe("drops");
+  });
+
+  test("free-text Chemical addition persists a null catalog reference", async ({ page }) => {
+    await login(page);
+    await page.goto(
+      `/protected/daily-operations?type=chemical-addition&system=${grahamSystemId}`,
+    );
+    await page.getByRole("radio", { name: "Enter manually", exact: true }).click();
+    await page.getByLabel("Chemical/product name").fill("  Custom   Buffer  ");
+    await page.getByLabel("Amount").fill("3");
+    await page.getByLabel("Unit").fill(" g ");
+    await page.getByLabel("Reason").fill(`${tag} free text`);
+    await page.getByRole("button", { name: "Save system addition" }).click();
+    await expect(page).toHaveURL(/\/protected\/home/);
+
+    const row = dbQuery(`select catalog_id, chemical_name, unit
+      from core.chemical_additions
+      where reason = ${sqlLiteral(`${tag} free text`)}`)[0];
+    expect(row.catalog_id).toBeNull();
+    expect(row.chemical_name).toBe("Custom Buffer");
+    expect(row.unit).toBe("g");
+  });
+
+  test("renaming a referenced Chemical quick pick preserves history and deletion is blocked", async () => {
+    const adminClient = await signInRoleClient(ADMIN_EMAIL, ADMIN_PASSWORD);
+    const renamed = `${RUN_TAG} C-Balance renamed`;
+
+    try {
+      const { data: updated, error: updateError } = await adminClient
+        .from("chemical_addition_catalog")
+        .update({ name: renamed, default_unit: "L" })
+        .eq("id", cBalanceCatalogId)
+        .select("id, name, default_unit")
+        .single();
+      expect(updateError).toBeNull();
+      expect(updated).toMatchObject({
+        id: cBalanceCatalogId,
+        name: renamed,
+        default_unit: "L",
+      });
+
+      const historical = dbQuery(`select catalog_id, chemical_name, unit
+        from core.chemical_additions where id = ${referencedAdditionId}`)[0];
+      expect(Number(historical.catalog_id)).toBe(cBalanceCatalogId);
+      expect(historical.chemical_name).toBe("C-Balance");
+      expect(historical.unit).toBe("drops");
+
+      const { data: deleted, error: deleteError } = await adminClient
+        .from("chemical_addition_catalog")
+        .delete()
+        .eq("id", cBalanceCatalogId)
+        .select("id")
+        .maybeSingle();
+      expect(deleteError).not.toBeNull();
+      expect(deleted).toBeNull();
+      expect(
+        dbQuery(`select id from core.chemical_addition_catalog where id = ${cBalanceCatalogId}`),
+      ).toHaveLength(1);
+    } finally {
+      dbQuery(`update core.chemical_addition_catalog
+        set name = 'C-Balance', default_unit = 'mL'
+        where id = ${cBalanceCatalogId}`);
+    }
+  });
+});
+
+test.describe("P1 water-quality targets", () => {
+  test.describe.configure({ mode: "serial" });
+  test.skip(!TECH_PASSWORD, "E2E_TEST_TECH_PASSWORD not set");
+
+  const tag = `${RUN_TAG} P1 water target`;
+  let grahamSystemId: number;
+  let fallbackSystemId: number;
+  let labPhTargetId: number;
+  let systemPhTargetId: number;
+  let labSalinityTargetId: number;
+  const readingIds: number[] = [];
+
+  test.beforeAll(() => {
+    const systems = dbQuery(`select id, name from core.systems order by name, id`);
+    grahamSystemId = Number(systems.find((system) => system.name === "Graham")?.id);
+    fallbackSystemId = Number(
+      systems.find((system) => Number(system.id) !== grahamSystemId)?.id,
+    );
+    expect(grahamSystemId).toBeGreaterThan(0);
+    expect(fallbackSystemId).toBeGreaterThan(0);
+  });
+
+  test.afterAll(() => {
+    dbQuery(`delete from core.water_quality_readings
+      where notes like ${sqlLiteral(`${tag}%`)}
+        or id in (${readingIds.length > 0 ? readingIds.join(", ") : "0"})`);
+    const targetIds = [labPhTargetId, systemPhTargetId, labSalinityTargetId].filter(
+      (id) => Number.isInteger(id) && id > 0,
+    );
+    if (targetIds.length > 0) {
+      dbQuery(`delete from core.water_quality_target_ranges
+        where id in (${targetIds.join(", ")})`);
+    }
+  });
+
+  test("ships with no seeded target ranges", () => {
+    expect(dbQuery(`select id from core.water_quality_target_ranges`)).toHaveLength(0);
+  });
+
+  test("Technician creates lab-wide, system override, and one-sided targets in the UI", async ({
+    page,
+  }) => {
+    await login(page);
+    await page.goto("/protected/settings/water-quality-targets");
+    await expect(page.getByRole("heading", { name: "Target ranges" })).toBeVisible();
+
+    const labPh = page.getByRole("form", { name: "pH target for Lab-wide" });
+    await labPh.getByLabel("Minimum (unitless)").fill("7.8");
+    await labPh.getByLabel("Maximum (unitless)").fill("8.4");
+    await labPh.getByRole("button", { name: "Add" }).click();
+    await expect(page.getByRole("status")).toContainText("pH target saved for Lab-wide.");
+    labPhTargetId = Number(
+      dbQuery(`select id from core.water_quality_target_ranges
+        where system_id is null and parameter_key = 'ph'`)[0]?.id,
+    );
+
+    await page.getByLabel("Range scope").selectOption(String(grahamSystemId));
+    const systemPh = page.getByRole("form", { name: "pH target for Graham" });
+    await expect(systemPh).toContainText("Lab-wide fallback");
+    await systemPh.getByLabel("Minimum (unitless)").fill("8");
+    await systemPh.getByLabel("Maximum (unitless)").fill("8.2");
+    await systemPh.getByRole("button", { name: "Add" }).click();
+    await expect(page.getByRole("status")).toContainText("pH target saved for Graham.");
+    systemPhTargetId = Number(
+      dbQuery(`select id from core.water_quality_target_ranges
+        where system_id = ${grahamSystemId} and parameter_key = 'ph'`)[0]?.id,
+    );
+
+    await page.getByLabel("Range scope").selectOption("lab");
+    const labSalinity = page.getByRole("form", {
+      name: "Salinity target for Lab-wide",
+    });
+    await labSalinity.getByLabel("Minimum (ppt)").fill("30");
+    await labSalinity.getByRole("button", { name: "Add" }).click();
+    await expect(page.getByRole("status")).toContainText(
+      "Salinity target saved for Lab-wide.",
+    );
+    labSalinityTargetId = Number(
+      dbQuery(`select id from core.water_quality_target_ranges
+        where system_id is null and parameter_key = 'salinity'`)[0]?.id,
+    );
+
+    expect([labPhTargetId, systemPhTargetId, labSalinityTargetId]).toEqual(
+      expect.arrayContaining([expect.any(Number), expect.any(Number), expect.any(Number)]),
+    );
+  });
+
+  test("system override warns in the UI and both UI and DB require notes", async ({
+    page,
+  }) => {
+    await login(page);
+    await page.goto(
+      `/protected/daily-operations?type=water-quality&system=${grahamSystemId}`,
+    );
+    await page.getByLabel("pH", { exact: true }).fill("8.3");
+    await expect(page.getByRole("status")).toContainText("Outside target");
+    await page.getByRole("button", { name: "Save reading" }).click();
+    await expect(
+      page.getByText("Add notes for readings outside their target range"),
+    ).toBeVisible();
+    expect(
+      dbQuery(`select id from core.water_quality_readings
+        where system_id = ${grahamSystemId} and ph = 8.3
+          and notes = ${sqlLiteral(`${tag} override`)}`),
+    ).toHaveLength(0);
+
+    const technicianClient = await signInRoleClient(
+      TECH_EMAIL,
+      TECH_PASSWORD,
+    );
+    const { error: serverError } = await technicianClient
+      .from("water_quality_readings")
+      .insert({ system_id: grahamSystemId, ph_source: "manual", ph: 8.3 });
+    expect(serverError?.message).toContain("Notes are required when ph");
+
+    await page.getByLabel("Notes").fill(`${tag} override`);
+    await page.getByRole("button", { name: "Save reading" }).click();
+    await expect(page).toHaveURL(/\/protected\/home/);
+    const row = dbQuery(`select id, system_id, ph, notes
+      from core.water_quality_readings
+      where notes = ${sqlLiteral(`${tag} override`)}`)[0];
+    expect(Number(row.system_id)).toBe(grahamSystemId);
+    expect(Number(row.ph)).toBe(8.3);
+    readingIds.push(Number(row.id));
+  });
+
+  test("fallback, inclusive and one-sided bounds work while an untargeted value needs no notes", async () => {
+    const technicianClient = await signInRoleClient(TECH_EMAIL, TECH_PASSWORD);
+    const acceptedPayloads = [
+      { system_id: fallbackSystemId, ph_source: "manual", ph: 8.3 },
+      { system_id: grahamSystemId, ph_source: "manual", ph: 8 },
+      { system_id: grahamSystemId, ph_source: "manual", salinity: 30 },
+      { system_id: grahamSystemId, ph_source: "manual", phosphate: 999 },
+    ];
+
+    for (const payload of acceptedPayloads) {
+      const { data, error } = await technicianClient
+        .from("water_quality_readings")
+        .insert(payload)
+        .select("id")
+        .single();
+      expect(error).toBeNull();
+      readingIds.push(Number(data?.id));
+    }
+
+    const { data: rejected, error: oneSidedError } = await technicianClient
+      .from("water_quality_readings")
+      .insert({ system_id: grahamSystemId, ph_source: "manual", salinity: 29 })
+      .select("id")
+      .maybeSingle();
+    expect(oneSidedError?.message).toContain("Notes are required when salinity");
+    expect(rejected).toBeNull();
+  });
+
+  test("editing a target leaves the historical reading unchanged", async ({ page }) => {
+    const before = dbQuery(`select ph, notes, tested_at
+      from core.water_quality_readings
+      where id = ${readingIds[0]}`)[0];
+
+    await loginAs(page, TECH_EMAIL, TECH_PASSWORD);
+    await page.goto("/protected/settings/water-quality-targets");
+    await page.getByLabel("Range scope").selectOption(String(grahamSystemId));
+    const systemPh = page.getByRole("form", { name: "pH target for Graham" });
+    await systemPh.getByLabel("Minimum (unitless)").fill("8.1");
+    await systemPh.getByLabel("Maximum (unitless)").fill("8.4");
+    await systemPh.getByRole("button", { name: "Save" }).click();
+    await expect(page.getByRole("status")).toContainText("pH target saved for Graham.");
+
+    const target = dbQuery(`select min_value, max_value
+      from core.water_quality_target_ranges where id = ${systemPhTargetId}`)[0];
+    expect(Number(target.min_value)).toBe(8.1);
+    expect(Number(target.max_value)).toBe(8.4);
+    expect(
+      dbQuery(`select ph, notes, tested_at
+        from core.water_quality_readings where id = ${readingIds[0]}`)[0],
+    ).toEqual(before);
   });
 });

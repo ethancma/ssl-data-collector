@@ -11,10 +11,18 @@ export default async function ProtectedLayout({
 }) {
   const profile = await getCurrentProfile();
   const showAdmin = profile?.role === "admin" && profile?.status === "active";
+  const showDailyOperations =
+    profile?.status === "active" &&
+    ["admin", "technician", "volunteer"].includes(profile.role);
+  const showWaterQualityTargets =
+    profile?.status === "active" &&
+    ["admin", "technician"].includes(profile.role);
 
   return (
     <ProtectedShell
       showAdmin={showAdmin}
+      showDailyOperations={showDailyOperations}
+      showWaterQualityTargets={showWaterQualityTargets}
       userEmail={profile?.email}
       authSlot={
         <Suspense>

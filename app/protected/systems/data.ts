@@ -1,4 +1,3 @@
-import { SYSTEMS } from "@/lib/config/systems";
 import {
   WATER_QUALITY_PARAMETERS,
   type HealthIssueType,
@@ -6,6 +5,11 @@ import {
   type WaterQualityParameter,
 } from "@/lib/config/reference-data";
 import { createClient } from "@/lib/supabase/server";
+import {
+  addPacificCalendarDays,
+  pacificDateKey,
+  pacificDayBoundaryToIso,
+} from "@/components/daily-operations/pacific-date-time";
 import type {
   ChemicalAdditionPoint,
   DailyCheckPoint,
@@ -26,15 +30,6 @@ type WaterQualityRow = {
   ph_source: string | null;
 } & Record<WaterQualityParameter, number | null>;
 
-// Same Pacific-day rule used across the app (home page, checks/new) so "today"
-// means the lab's local calendar day, not the server's UTC day.
-const PACIFIC_DAY = new Intl.DateTimeFormat("en-CA", {
-  timeZone: "America/Los_Angeles",
-  year: "numeric",
-  month: "2-digit",
-  day: "2-digit",
-});
-
 const ISSUE_LABELS: Record<HealthIssueType, string> = {
   arm_drop: "Arm drop",
   spine_drop: "Spine drop",
@@ -50,7 +45,7 @@ const TASK_LABELS: Record<MaintenanceTaskType, string> = {
   other: "Other",
 };
 
-// Fetches everything the systems page needs for ALL 8 systems in one page
+// Fetches everything the systems page needs for all configured systems in one page
 // load: daily checks / water quality readings over a 60-day superset (so the
 // client-side 14d/30d/60d trend chart range toggle can slice locally with no
 // re-fetch), plus the last 14 days of chemical additions / health
@@ -60,14 +55,28 @@ const TASK_LABELS: Record<MaintenanceTaskType, string> = {
 // all-systems overview (used by the grid rail). Returns a map keyed by
 // system slug so the client can switch the selected system instantly
 // without re-fetching.
-export async function fetchAllSystemsDetailData(): Promise<Record<string, SystemDetailData>> {
+export async function fetchAllSystemsDetailData(): Promise<{
+  dataBySlug: Record<string, SystemDetailData>;
+  error?: string;
+}> {
   const supabase = await createClient();
   const now = Date.now();
   const since14d = new Date(now - 14 * 24 * 60 * 60 * 1000).toISOString();
   const since60d = new Date(now - 60 * 24 * 60 * 60 * 1000).toISOString();
   const since36h = new Date(now - 36 * 60 * 60 * 1000).toISOString();
 
-  const { data: systemRows } = await supabase.from("systems").select("id, slug, name").order("id");
+  const { data: systemRows, error: systemsError } = await supabase
+    .from("systems")
+    .select("id, slug, name, category, layout_notes")
+    .order("name", { ascending: true })
+    .order("id", { ascending: true });
+  if (systemsError) {
+    return { dataBySlug: {}, error: systemsError.message };
+  }
+  if (!systemRows || systemRows.length === 0) {
+    return { dataBySlug: {} };
+  }
+
   const systemIds = (systemRows ?? []).map((s) => s.id);
 
   // Widened to `string` (not a literal) so postgrest-js's select-string
@@ -75,12 +84,12 @@ export async function fetchAllSystemsDetailData(): Promise<Record<string, System
   const waterQualityColumns: string = `id, system_id, tested_at, ph_source, ${WATER_QUALITY_PARAMETERS.join(", ")}`;
 
   const [
-    { data: recentChecksAll },
-    { data: dailyChecksRaw },
-    { data: waterQualityRaw },
-    { data: chemicalAdditionsRaw },
-    { data: healthObsRaw },
-    { data: maintenanceRaw },
+    { data: recentChecksAll, error: recentChecksError },
+    { data: dailyChecksRaw, error: dailyChecksError },
+    { data: waterQualityRaw, error: waterQualityError },
+    { data: chemicalAdditionsRaw, error: chemicalAdditionsError },
+    { data: healthObsRaw, error: healthObservationsError },
+    { data: maintenanceRaw, error: maintenanceError },
   ] = await Promise.all([
     supabase
       .from("daily_checks")
@@ -119,8 +128,19 @@ export async function fetchAllSystemsDetailData(): Promise<Record<string, System
       .order("performed_at", { ascending: false }),
   ]);
 
-  const todayKey = PACIFIC_DAY.format(new Date());
-  const isToday = (iso: string) => PACIFIC_DAY.format(new Date(iso)) === todayKey;
+  const loadError =
+    recentChecksError ??
+    dailyChecksError ??
+    waterQualityError ??
+    chemicalAdditionsError ??
+    healthObservationsError ??
+    maintenanceError;
+  if (loadError) {
+    return { dataBySlug: {}, error: loadError.message };
+  }
+
+  const todayKey = pacificDateKey(new Date());
+  const isToday = (iso: string) => pacificDateKey(iso) === todayKey;
 
   const latestTempBySystem = new Map<number, number>();
   const amDoneBySystem = new Set<number>();
@@ -135,41 +155,18 @@ export async function fetchAllSystemsDetailData(): Promise<Record<string, System
     }
   }
 
-  const overview: SystemOverviewEntry[] = SYSTEMS.map((s) => {
-    const row = systemRows?.find((r) => r.slug === s.slug);
-    return {
-      slug: s.slug,
-      name: s.name,
-      latestTemperature: row ? (latestTempBySystem.get(row.id) ?? null) : null,
-      amDoneToday: row ? amDoneBySystem.has(row.id) : false,
-      pmDoneToday: row ? pmDoneBySystem.has(row.id) : false,
-    };
-  });
+  const overview: SystemOverviewEntry[] = systemRows.map((system) => ({
+    slug: system.slug,
+    name: system.name,
+    latestTemperature: latestTempBySystem.get(system.id) ?? null,
+    amDoneToday: amDoneBySystem.has(system.id),
+    pmDoneToday: pmDoneBySystem.has(system.id),
+  }));
 
   const result: Record<string, SystemDetailData> = {};
 
-  for (const s of SYSTEMS) {
-    const row = systemRows?.find((r) => r.slug === s.slug);
-    const systemId = row?.id;
-
-    if (!systemId) {
-      // System exists in config but has no matching DB row yet — render an
-      // empty-but-real entry instead of crashing.
-      result[s.slug] = {
-        slug: s.slug,
-        name: s.name,
-        category: s.category,
-        layoutNotes: s.layoutNotes,
-        overview,
-        dailyChecks: [],
-        waterQuality: [],
-        chemicalAdditions: [],
-        healthObservations: [],
-        maintenanceLogs: [],
-        highlights: [],
-      };
-      continue;
-    }
+  for (const system of systemRows) {
+    const systemId = system.id;
 
     const dailyChecks: DailyCheckPoint[] = (dailyChecksRaw ?? [])
       .filter((r) => r.system_id === systemId)
@@ -244,11 +241,11 @@ export async function fetchAllSystemsDetailData(): Promise<Record<string, System
       todayKey,
     });
 
-    result[s.slug] = {
-      slug: s.slug,
-      name: row?.name ?? s.name,
-      category: s.category,
-      layoutNotes: s.layoutNotes,
+    result[system.slug] = {
+      slug: system.slug,
+      name: system.name,
+      category: system.category,
+      layoutNotes: system.layout_notes ?? "",
       overview,
       dailyChecks,
       waterQuality,
@@ -259,7 +256,7 @@ export async function fetchAllSystemsDetailData(): Promise<Record<string, System
     };
   }
 
-  return result;
+  return { dataBySlug: result };
 }
 
 // Merges chemical additions, health observations, maintenance logs, and any
@@ -314,7 +311,7 @@ function buildHighlights({
 
   const doneByDay = new Map<string, Set<"AM" | "PM">>();
   for (const c of dailyChecks) {
-    const key = PACIFIC_DAY.format(new Date(c.checkedAt));
+    const key = pacificDateKey(c.checkedAt);
     const set = doneByDay.get(key) ?? new Set<"AM" | "PM">();
     set.add(c.checkType);
     doneByDay.set(key, set);
@@ -323,22 +320,22 @@ function buildHighlights({
   // Walk each calendar day in the window (excluding today, which isn't over
   // yet) and flag any AM/PM check that never landed. Capped at 20 iterations
   // as a safety net against timezone edge cases.
-  let cursor = new Date(since14d);
-  for (let i = 0; i < 20 && PACIFIC_DAY.format(cursor) !== todayKey; i++) {
-    const key = PACIFIC_DAY.format(cursor);
+  let cursorKey = pacificDateKey(since14d);
+  for (let i = 0; i < 20 && cursorKey !== todayKey; i++) {
+    const key = cursorKey;
     const done = doneByDay.get(key);
     for (const type of ["AM", "PM"] as const) {
       if (!done?.has(type)) {
         items.push({
           id: `missed-${key}-${type}`,
           kind: "missed_check",
-          at: cursor.toISOString(),
+          at: pacificDayBoundaryToIso(key),
           title: `Missed ${type} check`,
           detail: key,
         });
       }
     }
-    cursor = new Date(cursor.getTime() + 24 * 60 * 60 * 1000);
+    cursorKey = addPacificCalendarDays(cursorKey, 1);
   }
 
   return items.sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0));

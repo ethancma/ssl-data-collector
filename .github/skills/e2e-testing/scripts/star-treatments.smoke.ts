@@ -77,13 +77,23 @@ function labDateTime(timestamp: string) {
   };
 }
 
+function labDisplayDateTime(timestamp: string) {
+  return new Intl.DateTimeFormat("en-US", {
+    timeZone: LAB_TIME_ZONE,
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(new Date(timestamp));
+}
+
 function probeStarSchema(): SchemaStatus {
   let row: Record<string, unknown> | undefined;
   try {
     row = dbQuery(`select
       to_regclass('core.star_treatments')::text as star_treatments,
-      to_regprocedure('core.create_star_treatment(integer,integer,numeric,text,numeric,text,text,text,timestamp with time zone)')::text as create_rpc,
-      to_regprocedure('core.update_star_treatment(integer,text,numeric,text,numeric,text,text)')::text as update_rpc,
+      to_regclass('core.operational_log_audit')::text as operational_log_audit,
+      to_regclass('core.star_treatment_catalog')::text as star_treatment_catalog,
+      to_regprocedure('core.create_star_treatment(integer,integer,numeric,text,numeric,text,text,text,timestamp with time zone,integer)')::text as create_rpc,
+      to_regprocedure('core.update_star_treatment(integer,text,numeric,text,numeric,text,text,integer)')::text as update_rpc,
       to_regprocedure('core.hard_delete_star_treatment(integer)')::text as delete_rpc,
       exists (
         select 1 from pg_trigger
@@ -94,6 +104,8 @@ function probeStarSchema(): SchemaStatus {
   }
   const required = {
     star_treatments: row?.star_treatments,
+    operational_log_audit: row?.operational_log_audit,
+    star_treatment_catalog: row?.star_treatment_catalog,
     create_rpc: row?.create_rpc,
     update_rpc: row?.update_rpc,
     delete_rpc: row?.delete_rpc,
@@ -135,9 +147,7 @@ async function openStarTreatmentForm(
 }
 
 function treatmentArticle(page: Page, treatmentId: number) {
-  return page.locator("article").filter({
-    has: page.locator(`#treatment-${treatmentId}-notes`),
-  });
+  return page.locator(`article[data-treatment-id="${treatmentId}"]`);
 }
 
 test.describe("Star treatments: role visibility and no-access behavior", () => {
@@ -235,10 +245,15 @@ test.describe("Star treatments: URL controls and client validation", () => {
     await expect(page.getByText("Enter a positive number")).toBeVisible();
 
     await page.locator("#star-treatment-amount").fill("2.5");
-    await expect(page.locator("#star-treatment-unit")).toHaveValue("mL");
+    await expect(page.locator("#star-treatment-unit")).toHaveValue("");
+    await page.getByRole("button", { name: "Save star treatment" }).click();
+    await expect(page.getByText("Enter an amount unit")).toBeVisible();
+    await page.locator("#star-treatment-unit").fill("mL");
     await page.locator("#star-treatment-amount").fill("");
     await page.locator("#star-treatment-concentration").fill("10");
-    await expect(page.locator("#star-treatment-concentration-unit")).toHaveValue("ppm");
+    await expect(page.locator("#star-treatment-concentration-unit")).toHaveValue("");
+    await page.getByRole("button", { name: "Save star treatment" }).click();
+    await expect(page.getByText("Enter a concentration unit")).toBeVisible();
     expect(mutationAttempts).toEqual([]);
   });
 });
@@ -257,7 +272,7 @@ test.describe("Star treatments: Probiotics stays out of system chemical addition
     const systemId = await system.locator("option:not([value=''])").first().getAttribute("value");
     expect(systemId).toBeTruthy();
     await system.selectOption(systemId ?? "");
-    await page.getByLabel("Other", { exact: true }).check();
+    await page.getByLabel("Enter manually", { exact: true }).check();
     await page.getByLabel("Chemical/product name").fill("Probiotics");
     await page.getByLabel("Amount", { exact: true }).fill("10");
     await page.getByLabel("Unit", { exact: true }).fill("ppm");
@@ -285,8 +300,14 @@ test.describe("Star treatments: hosted schema, RPC, and lifecycle", () => {
   let star: EligibleStar;
   let technicianProfileId: number;
   let adminProfileId: number;
+  let volunteerProfileId: number;
+  let probioticsCatalogId: number;
+  let reefDipCatalogId: number;
   let probioticsId: number;
+  let probioticsAdministeredAt: string;
+  let reefDipId: number;
   let customTreatmentId: number;
+  let volunteerTreatmentId: number;
 
   test.beforeAll(() => {
     schemaStatus = probeStarSchema();
@@ -327,8 +348,22 @@ test.describe("Star treatments: hosted schema, RPC, and lifecycle", () => {
         `select id from core.profiles where email = ${sqlLiteral(ADMIN_EMAIL)}`,
       )[0]?.id,
     );
+    volunteerProfileId = Number(
+      dbQuery(
+        `select id from core.profiles where email = ${sqlLiteral(VOLUNTEER_EMAIL)}`,
+      )[0]?.id,
+    );
     expect(technicianProfileId).toBeGreaterThan(0);
     expect(adminProfileId).toBeGreaterThan(0);
+    expect(volunteerProfileId).toBeGreaterThan(0);
+    const catalog = dbQuery(`select id, name
+      from core.star_treatment_catalog order by id`);
+    probioticsCatalogId = Number(
+      catalog.find((item) => item.name === "Probiotics")?.id,
+    );
+    reefDipCatalogId = Number(catalog.find((item) => item.name === "Reef Dip")?.id);
+    expect(probioticsCatalogId).toBeGreaterThan(0);
+    expect(reefDipCatalogId).toBeGreaterThan(0);
   });
 
   test.beforeEach(() => {
@@ -340,6 +375,10 @@ test.describe("Star treatments: hosted schema, RPC, and lifecycle", () => {
 
   test.afterAll(async () => {
     if (!schemaStatus.available || !ADMIN_PASSWORD) return;
+    dbQuery(`update core.star_treatment_catalog
+      set name = 'Reef Dip', default_amount_unit = null,
+          default_concentration_unit = null
+      where id = ${reefDipCatalogId}`);
     const remaining = dbQuery(
       `select id from core.star_treatments where notes like ${sqlLiteral(`${TAG}%`)}`,
     );
@@ -352,6 +391,24 @@ test.describe("Star treatments: hosted schema, RPC, and lifecycle", () => {
       });
       if (error) throw error;
     }
+  });
+
+  test("exact Star Treatment seeds expose the approved defaults", () => {
+    const catalog = dbQuery(`select name, default_amount_unit,
+        default_concentration_unit
+      from core.star_treatment_catalog order by id`);
+    expect(catalog).toEqual([
+      {
+        name: "Probiotics",
+        default_amount_unit: "mL",
+        default_concentration_unit: "ppm",
+      },
+      {
+        name: "Reef Dip",
+        default_amount_unit: null,
+        default_concentration_unit: null,
+      },
+    ]);
   });
 
   test("Technician creates concentration-only Probiotics with provenance", async ({
@@ -379,7 +436,7 @@ test.describe("Star treatments: hosted schema, RPC, and lifecycle", () => {
     await expect(page.getByRole("heading", { name: "Star treatment saved" })).toBeVisible();
 
     const row = dbQuery(`select
-      id, animal_id, tank_id, treatment_type, amount, unit, concentration,
+      id, animal_id, tank_id, catalog_id, treatment_type, amount, unit, concentration,
       concentration_unit, notes, administered_at, recorded_by, data_source, entered_at
     from core.star_treatments
     where notes = ${sqlLiteral(notes)}`)[0];
@@ -387,6 +444,7 @@ test.describe("Star treatments: hosted schema, RPC, and lifecycle", () => {
     probioticsId = Number(row.id);
     expect(Number(row.animal_id)).toBe(star.id);
     expect(Number(row.tank_id)).toBe(star.tankId);
+    expect(Number(row.catalog_id)).toBe(probioticsCatalogId);
     expect(row.treatment_type).toBe("probiotics");
     expect(row.amount).toBeNull();
     expect(row.unit).toBeNull();
@@ -394,6 +452,7 @@ test.describe("Star treatments: hosted schema, RPC, and lifecycle", () => {
     expect(row.concentration_unit).toBe("ppm");
     expect(Number(row.recorded_by)).toBe(technicianProfileId);
     expect(row.data_source).toBe("live");
+    probioticsAdministeredAt = String(row.administered_at);
     expect(labDateTime(String(row.administered_at))).toEqual({
       date: today,
       time: PICKED_TIME,
@@ -401,6 +460,82 @@ test.describe("Star treatments: hosted schema, RPC, and lifecycle", () => {
     const enteredAt = Date.parse(String(row.entered_at));
     expect(enteredAt).toBeGreaterThanOrEqual(submittedAfter - 5_000);
     expect(enteredAt).toBeLessThanOrEqual(Date.now() + 5_000);
+  });
+
+  test("Technician creates Reef Dip with neither amount nor concentration through the UI RPC", async ({
+    page,
+  }) => {
+    const notes = `${TAG} Reef Dip empty measurements`;
+    await openStarTreatmentForm(page, TECH_EMAIL, TECH_PASSWORD, star);
+    await page.getByLabel("Reef Dip", { exact: true }).check();
+    await expect(page.locator("#star-treatment-unit")).toHaveValue("");
+    await expect(page.locator("#star-treatment-concentration-unit")).toHaveValue("");
+    await page.getByLabel("Notes").fill(notes);
+    await page.getByRole("button", { name: "Save star treatment" }).click();
+    await expect(page.getByRole("heading", { name: "Star treatment saved" })).toBeVisible();
+
+    const row = dbQuery(`select id, catalog_id, treatment_type, amount, unit,
+        concentration, concentration_unit
+      from core.star_treatments where notes = ${sqlLiteral(notes)}`)[0];
+    reefDipId = Number(row.id);
+    expect(reefDipId).toBeGreaterThan(0);
+    expect(Number(row.catalog_id)).toBe(reefDipCatalogId);
+    expect(row.treatment_type).toBe("reef_dip");
+    expect(row.amount).toBeNull();
+    expect(row.unit).toBeNull();
+    expect(row.concentration).toBeNull();
+    expect(row.concentration_unit).toBeNull();
+  });
+
+  test("RPC rejects empty non-Reef-Dip measurements and supplied values without units", async () => {
+    const technicianClient = await signInRoleClient(TECH_EMAIL, TECH_PASSWORD);
+    const base = {
+      p_animal_id: star.id,
+      p_tank_id: star.tankId,
+      p_administered_at: new Date().toISOString(),
+      p_catalog_id: null,
+    };
+    const invalidCases = [
+      {
+        ...base,
+        p_treatment_type: "Custom bath",
+        p_amount: null,
+        p_unit: null,
+        p_concentration: null,
+        p_concentration_unit: null,
+        p_notes: `${TAG} invalid empty custom`,
+        message: "Amount or concentration is required unless the treatment is Reef Dip.",
+      },
+      {
+        ...base,
+        p_treatment_type: "Reef Dip",
+        p_amount: 1,
+        p_unit: null,
+        p_concentration: null,
+        p_concentration_unit: null,
+        p_notes: `${TAG} invalid missing amount unit`,
+        message: "Amount unit is required when amount is provided.",
+      },
+      {
+        ...base,
+        p_treatment_type: "Reef Dip",
+        p_amount: null,
+        p_unit: null,
+        p_concentration: 2,
+        p_concentration_unit: null,
+        p_notes: `${TAG} invalid missing concentration unit`,
+        message: "Concentration unit is required when concentration is provided.",
+      },
+    ];
+
+    for (const { message, ...parameters } of invalidCases) {
+      const { error } = await technicianClient.rpc("create_star_treatment", parameters);
+      expect(error?.message).toContain(message);
+    }
+    expect(
+      dbQuery(`select id from core.star_treatments
+        where notes like ${sqlLiteral(`${TAG} invalid%`)}`),
+    ).toHaveLength(0);
   });
 
   test("Technician creates an amount-only custom treatment with normalized type", async ({
@@ -418,13 +553,14 @@ test.describe("Star treatments: hosted schema, RPC, and lifecycle", () => {
     await expect(page.getByRole("heading", { name: "Star treatment saved" })).toBeVisible();
 
     const row = dbQuery(`select
-      id, animal_id, tank_id, treatment_type, amount, unit, concentration,
+      id, animal_id, tank_id, catalog_id, treatment_type, amount, unit, concentration,
       concentration_unit, recorded_by, data_source, entered_at
     from core.star_treatments
     where notes = ${sqlLiteral(notes)}`)[0];
     customTreatmentId = Number(row.id);
     expect(Number(row.animal_id)).toBe(star.id);
     expect(Number(row.tank_id)).toBe(star.tankId);
+    expect(row.catalog_id).toBeNull();
     expect(row.treatment_type).toBe("E2E Recovery Bath");
     expect(Number(row.amount)).toBe(2.5);
     expect(row.unit).toBe("mL");
@@ -456,47 +592,159 @@ test.describe("Star treatments: hosted schema, RPC, and lifecycle", () => {
     await expect(probioticsArticle).toBeVisible();
     await expect(probioticsArticle).toContainText(`${star.name}: Probiotics`);
     await expect(probioticsArticle).toContainText("No amount · 10 ppm");
+    await expect(probioticsArticle).toContainText(
+      labDisplayDateTime(probioticsAdministeredAt),
+    );
     await expect(treatmentArticle(page, customTreatmentId)).toHaveCount(0);
   });
 
-  test("Volunteer corrects mutable fields without changing provenance and cannot delete", async ({
+  test("renaming a referenced Star quick pick preserves history and deletion is blocked", async () => {
+    const adminClient = await signInRoleClient(ADMIN_EMAIL, ADMIN_PASSWORD);
+    const renamed = `${TAG} Reef Dip renamed`;
+
+    try {
+      const { data: updated, error: updateError } = await adminClient
+        .from("star_treatment_catalog")
+        .update({
+          name: renamed,
+          default_amount_unit: "mL",
+          default_concentration_unit: "ppm",
+        })
+        .eq("id", reefDipCatalogId)
+        .select("id, name")
+        .single();
+      expect(updateError).toBeNull();
+      expect(updated).toMatchObject({ id: reefDipCatalogId, name: renamed });
+
+      const historical = dbQuery(`select catalog_id, treatment_type, amount,
+          unit, concentration, concentration_unit
+        from core.star_treatments where id = ${reefDipId}`)[0];
+      expect(Number(historical.catalog_id)).toBe(reefDipCatalogId);
+      expect(historical.treatment_type).toBe("reef_dip");
+      expect(historical.amount).toBeNull();
+      expect(historical.unit).toBeNull();
+      expect(historical.concentration).toBeNull();
+      expect(historical.concentration_unit).toBeNull();
+
+      const { data: deleted, error: deleteError } = await adminClient
+        .from("star_treatment_catalog")
+        .delete()
+        .eq("id", reefDipCatalogId)
+        .select("id")
+        .maybeSingle();
+      expect(deleteError).not.toBeNull();
+      expect(deleted).toBeNull();
+    } finally {
+      dbQuery(`update core.star_treatment_catalog
+        set name = 'Reef Dip', default_amount_unit = null,
+            default_concentration_unit = null
+        where id = ${reefDipCatalogId}`);
+    }
+  });
+
+  test("Volunteer corrects only their own treatment and cannot delete", async ({
     page,
   }) => {
-    const correctedNotes = `${TAG} probiotics corrected by volunteer`;
-    const beforeUpdate = dbQuery(`select
-      animal_id, tank_id, administered_at, recorded_by, data_source, entered_at
+    const ownNotes = `${TAG} volunteer owned`;
+    const correctedNotes = `${TAG} volunteer corrected own`;
+    const technicianTreatmentBefore = dbQuery(`select notes
       from core.star_treatments where id = ${probioticsId}`)[0];
-    await loginAs(page, VOLUNTEER_EMAIL, VOLUNTEER_PASSWORD);
+    await openStarTreatmentForm(
+      page,
+      VOLUNTEER_EMAIL,
+      VOLUNTEER_PASSWORD,
+      star,
+    );
+    await page.getByLabel("Time").fill("05:39");
+    await page.locator("#star-treatment-concentration").fill("11");
+    await page.getByLabel("Notes").fill(ownNotes);
+    await page.getByRole("button", { name: "Save star treatment" }).click();
+    await expect(page.getByRole("heading", { name: "Star treatment saved" })).toBeVisible();
+
+    const volunteerTreatment = dbQuery(`select
+      id, animal_id, tank_id, administered_at, recorded_by, data_source, entered_at
+      from core.star_treatments where notes = ${sqlLiteral(ownNotes)}`)[0];
+    volunteerTreatmentId = Number(volunteerTreatment.id);
+    expect(volunteerTreatmentId).toBeGreaterThan(0);
+    expect(Number(volunteerTreatment.recorded_by)).toBe(volunteerProfileId);
+
+    const volunteerClient = await signInRoleClient(
+      VOLUNTEER_EMAIL,
+      VOLUNTEER_PASSWORD,
+    );
+    const { error: otherUpdateError } = await volunteerClient.rpc(
+      "update_star_treatment",
+      {
+        p_treatment_id: probioticsId,
+        p_treatment_type: "probiotics",
+        p_amount: null,
+        p_unit: null,
+        p_concentration: 12,
+        p_concentration_unit: "ppm",
+        p_notes: `${TAG} forbidden other-row correction`,
+      },
+    );
+    expect(otherUpdateError).not.toBeNull();
+    expect(otherUpdateError?.message).toContain(
+      "Volunteers may update only their own operational rows.",
+    );
+    expect(
+      dbQuery(`select notes from core.star_treatments where id = ${probioticsId}`)[0]
+        ?.notes,
+    ).toBe(technicianTreatmentBefore.notes);
+
     await page.goto(
       `/protected/star-treatments?from=${labDateString()}&to=${labDateString()}&animal=${star.id}&treatment=probiotics`,
     );
-    const article = treatmentArticle(page, probioticsId);
+    const technicianArticle = treatmentArticle(page, probioticsId);
+    await expect(technicianArticle).toBeVisible();
+    await technicianArticle.getByText("View details", { exact: true }).click();
+    await expect(
+      technicianArticle.getByRole("button", { name: "Save correction" }),
+    ).toHaveCount(0);
+    await expect(
+      technicianArticle.getByText("Delete treatment", { exact: true }),
+    ).toHaveCount(0);
+
+    const article = treatmentArticle(page, volunteerTreatmentId);
     await article.getByText("View details and correct").click();
-    await article.locator(`#treatment-${probioticsId}-concentration`).fill("12");
-    await article.locator(`#treatment-${probioticsId}-notes`).fill(correctedNotes);
+    await article.locator(`#treatment-${volunteerTreatmentId}-concentration`).fill("12");
+    await article.locator(`#treatment-${volunteerTreatmentId}-notes`).fill(correctedNotes);
     await article.getByRole("button", { name: "Save correction" }).click();
     await expect(article.getByText("Correction saved.")).toBeVisible();
     await expect(article.getByText("Delete treatment", { exact: true })).toHaveCount(0);
 
     const row = dbQuery(`select
       animal_id, tank_id, concentration, notes, administered_at, recorded_by, data_source, entered_at
-      from core.star_treatments where id = ${probioticsId}`)[0];
+      from core.star_treatments where id = ${volunteerTreatmentId}`)[0];
     expect(Number(row.concentration)).toBe(12);
     expect(row.notes).toBe(correctedNotes);
-    expect(Number(row.animal_id)).toBe(Number(beforeUpdate.animal_id));
-    expect(Number(row.tank_id)).toBe(Number(beforeUpdate.tank_id));
-    expect(row.administered_at).toBe(beforeUpdate.administered_at);
-    expect(Number(row.recorded_by)).toBe(Number(beforeUpdate.recorded_by));
-    expect(row.data_source).toBe(beforeUpdate.data_source);
-    expect(row.entered_at).toBe(beforeUpdate.entered_at);
+    expect(Number(row.animal_id)).toBe(Number(volunteerTreatment.animal_id));
+    expect(Number(row.tank_id)).toBe(Number(volunteerTreatment.tank_id));
+    expect(row.administered_at).toBe(volunteerTreatment.administered_at);
+    expect(Number(row.recorded_by)).toBe(volunteerProfileId);
+    expect(row.data_source).toBe(volunteerTreatment.data_source);
+    expect(row.entered_at).toBe(volunteerTreatment.entered_at);
 
-    const volunteerClient = await signInRoleClient(VOLUNTEER_EMAIL, VOLUNTEER_PASSWORD);
+    const updateAudit = dbQuery(`select actor_profile_id,
+        old_values ->> 'notes' as old_notes,
+        new_values ->> 'notes' as new_notes
+      from core.operational_log_audit
+      where table_name = 'star_treatments'
+        and row_id = ${volunteerTreatmentId}
+        and action = 'UPDATE'
+      order by id desc
+      limit 1`)[0];
+    expect(Number(updateAudit.actor_profile_id)).toBe(volunteerProfileId);
+    expect(updateAudit.old_notes).toBe(ownNotes);
+    expect(updateAudit.new_notes).toBe(correctedNotes);
+
     const { error: deleteError } = await volunteerClient.rpc("hard_delete_star_treatment", {
-      p_treatment_id: probioticsId,
+      p_treatment_id: volunteerTreatmentId,
     });
     expect(deleteError).not.toBeNull();
     expect(
-      dbQuery(`select id from core.star_treatments where id = ${probioticsId}`),
+      dbQuery(`select id from core.star_treatments where id = ${volunteerTreatmentId}`),
     ).toHaveLength(1);
   });
 
@@ -514,6 +762,18 @@ test.describe("Star treatments: hosted schema, RPC, and lifecycle", () => {
     expect(
       dbQuery(`select id from core.star_treatments where id = ${customTreatmentId}`),
     ).toHaveLength(0);
+    const deleteAudit = dbQuery(`select actor_profile_id,
+        old_values ->> 'notes' as old_notes,
+        new_values
+      from core.operational_log_audit
+      where table_name = 'star_treatments'
+        and row_id = ${customTreatmentId}
+        and action = 'DELETE'
+      order by id desc
+      limit 1`)[0];
+    expect(Number(deleteAudit.actor_profile_id)).toBe(adminProfileId);
+    expect(deleteAudit.old_notes).toBe(`${TAG} custom amount-only`);
+    expect(deleteAudit.new_values).toBeNull();
   });
 
   test("direct table insert and Viewer SELECT are denied", async () => {

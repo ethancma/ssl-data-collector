@@ -16,6 +16,11 @@ import { HealthObservationForm } from "@/components/health-observation-form";
 import { MaintenanceLogForm } from "@/components/maintenance-log-form";
 import { StarTreatmentForm } from "@/components/star-treatment-form";
 import { WaterQualityForm } from "@/components/water-quality-form";
+import type {
+  ChemicalAdditionCatalogItem,
+  StarTreatmentCatalogItem,
+} from "@/components/daily-operations/quick-pick-catalogs";
+import type { WaterQualityTargetRange } from "@/components/daily-operations/water-quality-targets";
 import { CHECK_TYPES } from "@/lib/config/reference-data";
 
 export type LogTypeId =
@@ -45,6 +50,13 @@ export type SharedFormData = {
     animalName: string;
     systemId: number;
   }[];
+  chemicalCatalog: ChemicalAdditionCatalogItem[];
+  chemicalCatalogLoadError?: string;
+  starTreatmentCatalog: StarTreatmentCatalogItem[];
+  starTreatmentCatalogLoadError?: string;
+  waterQualityTargets: WaterQualityTargetRange[];
+  waterQualityTargetLoadError?: string;
+  referenceDataLoadError?: string;
   starTreatmentLoadError?: string;
 };
 
@@ -95,6 +107,14 @@ export function renderLogForm(
     checkType?: (typeof CHECK_TYPES)[number];
   },
 ) {
+  if (data.referenceDataLoadError) {
+    return (
+      <p className="text-sm text-red-500" role="alert">
+        Form choices could not be loaded: {data.referenceDataLoadError}
+      </p>
+    );
+  }
+
   switch (id) {
     case "daily-check":
       return (
@@ -108,9 +128,23 @@ export function renderLogForm(
     case "feeding":
       return <FeedingLogForm animals={data.animals} />;
     case "water-quality":
-      return <WaterQualityForm systems={data.systems} defaultSystemId={selected.systemId} />;
+      return (
+        <WaterQualityForm
+          systems={data.systems}
+          targets={data.waterQualityTargets}
+          targetLoadError={data.waterQualityTargetLoadError}
+          defaultSystemId={selected.systemId}
+        />
+      );
     case "chemical-addition":
-      return <ChemicalAdditionForm systems={data.systems} defaultSystemId={selected.systemId} />;
+      return (
+        <ChemicalAdditionForm
+          systems={data.systems}
+          catalogs={data.chemicalCatalog}
+          catalogLoadError={data.chemicalCatalogLoadError}
+          defaultSystemId={selected.systemId}
+        />
+      );
     case "star-treatment":
       if (!data.canManageStarTreatments) return null;
       if (data.starTreatmentLoadError) {
@@ -125,6 +159,8 @@ export function renderLogForm(
           systems={data.starSystems}
           tanks={data.starTanks}
           stars={data.stars}
+          catalogs={data.starTreatmentCatalog}
+          catalogLoadError={data.starTreatmentCatalogLoadError}
         />
       );
     case "health-observation":

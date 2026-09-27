@@ -7,6 +7,18 @@ import { useCallback, useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 
+import {
+  getPacificDateString,
+  getPacificTimeString,
+  pacificWallTimeToIso,
+} from "@/components/daily-operations/pacific-date-time";
+import {
+  attachedCatalogId,
+  getStarTreatmentMeasurementErrors,
+  normalizeSnapshot,
+  selectStarTreatmentCatalogItem,
+  type StarTreatmentCatalogItem,
+} from "@/components/daily-operations/quick-pick-catalogs";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -33,7 +45,6 @@ export type StarTreatmentAnimalOption = {
   speciesName: string;
 };
 
-const LAB_TIME_ZONE = "America/Los_Angeles";
 const LAST_SYSTEM_STORAGE_KEY = "ssl:last-star-treatment-system";
 
 const requiredId = (message: string) =>
@@ -55,15 +66,20 @@ const starTreatmentSchema = z
     date: z
       .string()
       .min(1, "Select a date")
-      .refine((value) => value === getLabDateString(), "Date must be today in the lab"),
+      .refine((value) => value === getPacificDateString(), "Date must be today in the lab"),
     time: z
       .string()
       .regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Enter a valid time"),
     systemId: requiredId("Select a system"),
     tankId: requiredId("Select a tank"),
     animalId: requiredId("Select a star"),
-    treatmentChoice: z.enum(["probiotics", "reef_dip", "other"]),
-    customTreatment: z.string().max(100, "Keep the treatment name under 100 characters"),
+    catalogId: z
+      .string()
+      .refine((value) => value === "" || /^\d+$/.test(value), "Select a quick pick"),
+    treatmentName: z
+      .string()
+      .refine((value) => normalizeSnapshot(value) !== "", "Enter the treatment name")
+      .max(100, "Keep the treatment name under 100 characters"),
     amount: optionalPositiveNumber,
     unit: z.string().max(50, "Keep the unit under 50 characters"),
     concentration: optionalPositiveNumber,
@@ -73,102 +89,39 @@ const starTreatmentSchema = z
     notes: z.string().max(5000, "Keep notes under 5000 characters"),
   })
   .superRefine((values, context) => {
-    const hasAmount = values.amount.trim() !== "";
-    const hasConcentration = values.concentration.trim() !== "";
+    const measurementErrors = getStarTreatmentMeasurementErrors({
+      treatmentName: values.treatmentName,
+      amount: values.amount,
+      amountUnit: values.unit,
+      concentration: values.concentration,
+      concentrationUnit: values.concentrationUnit,
+    });
 
-    if (!hasAmount && !hasConcentration) {
+    if (measurementErrors.amount) {
       context.addIssue({
         code: "custom",
         path: ["amount"],
-        message: "Enter an amount or concentration",
+        message: measurementErrors.amount,
       });
     }
-    if (hasAmount && values.unit.trim() === "") {
+    if (measurementErrors.amountUnit) {
       context.addIssue({
         code: "custom",
         path: ["unit"],
-        message: "Enter an amount unit",
+        message: measurementErrors.amountUnit,
       });
     }
-    if (hasConcentration && values.concentrationUnit.trim() === "") {
+    if (measurementErrors.concentrationUnit) {
       context.addIssue({
         code: "custom",
         path: ["concentrationUnit"],
-        message: "Enter a concentration unit",
-      });
-    }
-    if (values.treatmentChoice === "other" && values.customTreatment.trim() === "") {
-      context.addIssue({
-        code: "custom",
-        path: ["customTreatment"],
-        message: "Enter the treatment name",
+        message: measurementErrors.concentrationUnit,
       });
     }
   });
 
 type StarTreatmentFormInput = z.input<typeof starTreatmentSchema>;
 type StarTreatmentFormValues = z.output<typeof starTreatmentSchema>;
-
-function labDateTimeParts(date = new Date()) {
-  const parts = new Intl.DateTimeFormat("en-US", {
-    timeZone: LAB_TIME_ZONE,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    hourCycle: "h23",
-  }).formatToParts(date);
-  const part = (type: Intl.DateTimeFormatPartTypes) =>
-    parts.find((item) => item.type === type)?.value ?? "";
-
-  return {
-    date: `${part("year")}-${part("month")}-${part("day")}`,
-    time: `${part("hour")}:${part("minute")}`,
-  };
-}
-
-function getLabDateString() {
-  return labDateTimeParts().date;
-}
-
-function getLabTimeString() {
-  return labDateTimeParts().time;
-}
-
-function getTimeZoneOffset(date: Date) {
-  const parts = new Intl.DateTimeFormat("en-US", {
-    timeZone: LAB_TIME_ZONE,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hourCycle: "h23",
-  }).formatToParts(date);
-  const value = (type: Intl.DateTimeFormatPartTypes) =>
-    Number(parts.find((part) => part.type === type)?.value);
-  const representedAsUtc = Date.UTC(
-    value("year"),
-    value("month") - 1,
-    value("day"),
-    value("hour"),
-    value("minute"),
-    value("second"),
-  );
-  return representedAsUtc - date.getTime();
-}
-
-function labDateTimeToIso(date: string, time: string) {
-  const [year, month, day] = date.split("-").map(Number);
-  const [hour, minute] = time.split(":").map(Number);
-  const wallTime = Date.UTC(year, month - 1, day, hour, minute);
-  let instant = new Date(wallTime);
-  instant = new Date(wallTime - getTimeZoneOffset(instant));
-  instant = new Date(wallTime - getTimeZoneOffset(instant));
-  return instant.toISOString();
-}
 
 function nullableNumber(value: string) {
   return value.trim() === "" ? null : Number(value);
@@ -178,10 +131,14 @@ export function StarTreatmentForm({
   systems,
   tanks,
   stars,
+  catalogs,
+  catalogLoadError,
 }: {
   systems: StarTreatmentSystemOption[];
   tanks: StarTreatmentTankOption[];
   stars: StarTreatmentAnimalOption[];
+  catalogs: StarTreatmentCatalogItem[];
+  catalogLoadError?: string;
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -199,6 +156,8 @@ export function StarTreatmentForm({
   const validStar = stars.find(
     (star) => String(star.id) === rawAnimalId && star.tankId === validTank?.id,
   );
+  const defaultCatalog = catalogs[0] ?? null;
+  const defaultTreatment = selectStarTreatmentCatalogItem(defaultCatalog);
 
   const {
     register,
@@ -211,28 +170,25 @@ export function StarTreatmentForm({
   } = useForm<StarTreatmentFormInput, unknown, StarTreatmentFormValues>({
     resolver: zodResolver(starTreatmentSchema),
     defaultValues: {
-      date: getLabDateString(),
-      time: getLabTimeString(),
+      date: getPacificDateString(),
+      time: getPacificTimeString(),
       systemId: validSystem ? String(validSystem.id) : "",
       tankId: validTank ? String(validTank.id) : "",
       animalId: validStar ? String(validStar.id) : "",
-      treatmentChoice: "probiotics",
-      customTreatment: "",
+      catalogId:
+        defaultTreatment.catalogId === null ? "" : String(defaultTreatment.catalogId),
+      treatmentName: defaultTreatment.name,
       amount: "",
-      unit: "",
+      unit: defaultTreatment.amountUnit,
       concentration: "",
-      concentrationUnit: "",
+      concentrationUnit: defaultTreatment.concentrationUnit,
       notes: "",
     },
   });
 
   const systemId = watch("systemId");
   const tankId = watch("tankId");
-  const treatmentChoice = watch("treatmentChoice");
-  const amount = watch("amount");
-  const concentration = watch("concentration");
-  const unit = watch("unit");
-  const concentrationUnit = watch("concentrationUnit");
+  const catalogId = watch("catalogId");
 
   const filteredTanks = tanks.filter((tank) => String(tank.systemId) === systemId);
   const filteredStars = stars.filter((star) => String(star.tankId) === tankId);
@@ -301,20 +257,6 @@ export function StarTreatmentForm({
     validTank,
   ]);
 
-  useEffect(() => {
-    if (amount.trim() && !unit.trim()) setValue("unit", "mL");
-    if (!amount.trim() && unit === "mL") setValue("unit", "");
-  }, [amount, setValue, unit]);
-
-  useEffect(() => {
-    if (concentration.trim() && !concentrationUnit.trim()) {
-      setValue("concentrationUnit", "ppm");
-    }
-    if (!concentration.trim() && concentrationUnit === "ppm") {
-      setValue("concentrationUnit", "");
-    }
-  }, [concentration, concentrationUnit, setValue]);
-
   const onSystemChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
     const nextSystemId = event.target.value;
     setFilterMessage("");
@@ -342,6 +284,23 @@ export function StarTreatmentForm({
     replaceFilters({ animal: nextAnimalId || null });
   };
 
+  const onTreatmentCatalogChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const selectedCatalog = catalogs.find(
+      (catalog) => String(catalog.id) === event.target.value,
+    );
+    const selection = selectStarTreatmentCatalogItem(selectedCatalog ?? null);
+    setValue(
+      "catalogId",
+      selection.catalogId === null ? "" : String(selection.catalogId),
+      { shouldValidate: true },
+    );
+    setValue("treatmentName", selection.name, { shouldValidate: true });
+    setValue("unit", selection.amountUnit, { shouldValidate: true });
+    setValue("concentrationUnit", selection.concentrationUnit, {
+      shouldValidate: true,
+    });
+  };
+
   const onSubmit = async (values: StarTreatmentFormValues) => {
     setServerError(null);
     const selectedStar = stars.find((star) => star.id === values.animalId);
@@ -350,10 +309,24 @@ export function StarTreatmentForm({
       return;
     }
 
-    const treatmentType =
-      values.treatmentChoice === "other"
-        ? values.customTreatment.trim().replace(/\s+/g, " ")
-        : values.treatmentChoice;
+    let administeredAt: string;
+    try {
+      administeredAt = pacificWallTimeToIso(values.date, values.time);
+    } catch (error) {
+      setError("time", {
+        message: error instanceof Error ? error.message : "Enter a valid Pacific time",
+      });
+      return;
+    }
+
+    const treatmentType = normalizeSnapshot(values.treatmentName);
+    const catalogId = attachedCatalogId(
+      {
+        catalogId: values.catalogId === "" ? null : Number(values.catalogId),
+        name: values.treatmentName,
+      },
+      catalogs,
+    );
     const amountValue = nullableNumber(values.amount);
     const concentrationValue = nullableNumber(values.concentration);
     const supabase = createClient();
@@ -367,7 +340,8 @@ export function StarTreatmentForm({
         concentrationValue === null ? null : values.concentrationUnit.trim(),
       p_treatment_type: treatmentType,
       p_notes: values.notes.trim() || null,
-      p_administered_at: labDateTimeToIso(values.date, values.time),
+      p_administered_at: administeredAt,
+      p_catalog_id: catalogId,
     });
 
     if (error) {
@@ -389,17 +363,18 @@ export function StarTreatmentForm({
     const retainedSystemId = systemId;
     const retainedTankId = tankId;
     reset({
-      date: getLabDateString(),
-      time: getLabTimeString(),
+      date: getPacificDateString(),
+      time: getPacificTimeString(),
       systemId: retainedSystemId,
       tankId: retainedTankId,
       animalId: "",
-      treatmentChoice: "probiotics",
-      customTreatment: "",
+      catalogId:
+        defaultTreatment.catalogId === null ? "" : String(defaultTreatment.catalogId),
+      treatmentName: defaultTreatment.name,
       amount: "",
-      unit: "",
+      unit: defaultTreatment.amountUnit,
       concentration: "",
-      concentrationUnit: "",
+      concentrationUnit: defaultTreatment.concentrationUnit,
       notes: "",
     });
     setSavedStarName(null);
@@ -445,8 +420,8 @@ export function StarTreatmentForm({
                 id="star-treatment-date"
                 type="date"
                 className="min-h-11"
-                min={getLabDateString()}
-                max={getLabDateString()}
+                min={getPacificDateString()}
+                max={getPacificDateString()}
                 aria-describedby={errors.date ? "star-treatment-date-error" : undefined}
                 aria-invalid={Boolean(errors.date)}
                 {...register("date")}
@@ -555,23 +530,37 @@ export function StarTreatmentForm({
           <fieldset className="grid gap-3">
             <legend className="text-sm font-medium">Treatment type</legend>
             <div className="grid gap-2 sm:grid-cols-3">
-              {[
-                ["probiotics", "Probiotics"],
-                ["reef_dip", "Reef dip"],
-                ["other", "Other"],
-              ].map(([value, label]) => (
+              {catalogs.map((item) => (
                 <label
-                  key={value}
+                  key={item.id}
                   className="flex min-h-11 cursor-pointer items-center gap-3 rounded-md border border-input px-3 py-2 text-sm has-[:checked]:border-foreground has-[:checked]:bg-muted"
                 >
-                  <input type="radio" value={value} {...register("treatmentChoice")} />
-                  {label}
+                  <input
+                    type="radio"
+                    value={item.id}
+                    {...register("catalogId", { onChange: onTreatmentCatalogChange })}
+                  />
+                  {item.name}
                 </label>
               ))}
+              <label className="flex min-h-11 cursor-pointer items-center gap-3 rounded-md border border-input px-3 py-2 text-sm has-[:checked]:border-foreground has-[:checked]:bg-muted">
+                <input
+                  type="radio"
+                  value=""
+                  {...register("catalogId", { onChange: onTreatmentCatalogChange })}
+                />
+                Other
+              </label>
             </div>
           </fieldset>
 
-          {treatmentChoice === "other" && (
+          {catalogLoadError && (
+            <p className="text-sm text-red-500" role="alert">
+              Quick picks could not be loaded. Enter the treatment manually.
+            </p>
+          )}
+
+          {catalogId === "" && (
             <div className="grid gap-2">
               <Label htmlFor="star-treatment-custom">Treatment name</Label>
               <Input
@@ -579,14 +568,14 @@ export function StarTreatmentForm({
                 className="min-h-11"
                 maxLength={100}
                 aria-describedby={
-                  errors.customTreatment ? "star-treatment-custom-error" : undefined
+                  errors.treatmentName ? "star-treatment-custom-error" : undefined
                 }
-                aria-invalid={Boolean(errors.customTreatment)}
-                {...register("customTreatment")}
+                aria-invalid={Boolean(errors.treatmentName)}
+                {...register("treatmentName")}
               />
-              {errors.customTreatment && (
+              {errors.treatmentName && (
                 <p id="star-treatment-custom-error" className="text-sm text-red-500">
-                  {errors.customTreatment.message}
+                  {errors.treatmentName.message}
                 </p>
               )}
             </div>

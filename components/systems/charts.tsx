@@ -7,6 +7,8 @@
 
 import { useRef, useState, type PointerEvent } from "react";
 
+import { formatPacificDateTime } from "@/components/daily-operations/pacific-date-time";
+
 export type ChartSeries = {
   key: string;
   label: string;
@@ -15,11 +17,13 @@ export type ChartSeries = {
 };
 
 const CHART_WIDTH = 600;
-const chartDateFormatter = new Intl.DateTimeFormat("en-US", {
-  month: "short",
-  day: "numeric",
-  timeZone: "UTC",
-});
+
+function formatChartDate(value: number) {
+  return formatPacificDateTime(new Date(value), {
+    month: "short",
+    day: "numeric",
+  });
+}
 
 // Shared formatting for numeric axis tick labels (also used by DualAxisLineChart).
 function formatTick(v: number) {
@@ -99,7 +103,7 @@ function HoverIndicator({
 }) {
   if (hoverTime == null) return null;
   const hx = x(hoverTime);
-  const label = chartDateFormatter.format(hoverTime);
+  const label = formatChartDate(hoverTime);
   const labelWidth = Math.ceil(estimateTextWidth(label, 12)) + 12;
   const boxHeight = 16;
   const boxY = Math.max(2, padY - boxHeight / 2);
@@ -187,8 +191,8 @@ export function MultiLineChart({
   const x = (t: number) => padX + ((t - minT) / timeRange) * plotWidth;
   const y = (v: number) => height - padY - ((v - minV) / valueRange) * (height - padY * 2);
 
-  const firstLabel = chartDateFormatter.format(minT);
-  const lastLabel = chartDateFormatter.format(maxT);
+  const firstLabel = formatChartDate(minT);
+  const lastLabel = formatChartDate(maxT);
 
   const handlePointerMove = createPointerMoveHandler(
     svgRef,
@@ -402,8 +406,8 @@ export function DualAxisLineChart({
     ));
   };
 
-  const firstLabel = chartDateFormatter.format(minT);
-  const lastLabel = chartDateFormatter.format(maxT);
+  const firstLabel = formatChartDate(minT);
+  const lastLabel = formatChartDate(maxT);
 
   const handlePointerMove = createPointerMoveHandler(
     svgRef,

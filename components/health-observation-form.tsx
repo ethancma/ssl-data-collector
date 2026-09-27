@@ -13,6 +13,11 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import {
+  getPacificDateString,
+  getPacificTimeString,
+  pacificWallTimeToIso,
+} from "@/components/daily-operations/pacific-date-time";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -30,21 +35,6 @@ import {
 } from "@/lib/validation/health-observation";
 
 type AnimalOption = { id: number; name: string; tankId: number };
-
-function getTodayDateString(): string {
-  const now = new Date();
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
-}
-
-function getCurrentTimeString(): string {
-  const now = new Date();
-  return `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
-}
-
-// Combines the user-picked date and time-of-day into a single timestamp.
-function combineDateAndTime(dateStr: string, timeStr: string): string {
-  return new Date(`${dateStr}T${timeStr}:00`).toISOString();
-}
 
 const ISSUE_LABELS: Record<HealthIssueType, string> = {
   arm_drop: "Arm drop",
@@ -74,13 +64,14 @@ export function HealthObservationForm({
     handleSubmit,
     control,
     watch,
+    setError,
     setValue,
     formState: { errors, isSubmitting },
   } = useForm<HealthObservationFormInput, unknown, HealthObservationFormValues>({
     resolver: zodResolver(healthObservationSchema),
     defaultValues: {
-      date: getTodayDateString(),
-      time: getCurrentTimeString(),
+      date: getPacificDateString(),
+      time: getPacificTimeString(),
       animalId: "",
       tankId: "",
       severity: undefined,
@@ -101,12 +92,22 @@ export function HealthObservationForm({
 
   const onSubmit = async (values: HealthObservationFormValues) => {
     setServerError(null);
+    let observedAt: string;
+    try {
+      observedAt = pacificWallTimeToIso(values.date, values.time);
+    } catch (error) {
+      setError("time", {
+        message: error instanceof Error ? error.message : "Enter a valid Pacific time",
+      });
+      return;
+    }
+
     const supabase = createClient();
 
     const { data: observation, error } = await supabase
       .from("health_observations")
       .insert({
-        observed_at: combineDateAndTime(values.date, values.time),
+        observed_at: observedAt,
         animal_id: values.animalId,
         tank_id: values.tankId,
         severity: values.severity,
