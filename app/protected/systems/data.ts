@@ -17,9 +17,10 @@ import type {
   HighlightItem,
   MaintenanceLogPoint,
   SystemDetailData,
-  SystemOverviewEntry,
   WaterQualityPoint,
 } from "@/components/systems/types";
+
+import { deriveSystemOverview } from "./derivations";
 
 // Explicit shape for the water_quality_readings row, since its select string
 // is built dynamically (see waterQualityColumns below) and can't be inferred.
@@ -84,18 +85,12 @@ export async function fetchAllSystemsDetailData(): Promise<{
   const waterQualityColumns: string = `id, system_id, tested_at, ph_source, ${WATER_QUALITY_PARAMETERS.join(", ")}`;
 
   const [
-    { data: recentChecksAll, error: recentChecksError },
     { data: dailyChecksRaw, error: dailyChecksError },
     { data: waterQualityRaw, error: waterQualityError },
     { data: chemicalAdditionsRaw, error: chemicalAdditionsError },
     { data: healthObsRaw, error: healthObservationsError },
     { data: maintenanceRaw, error: maintenanceError },
   ] = await Promise.all([
-    supabase
-      .from("daily_checks")
-      .select("system_id, check_type, temperature, checked_at")
-      .gte("checked_at", since36h)
-      .order("checked_at", { ascending: false }),
     supabase
       .from("daily_checks")
       .select("id, system_id, check_type, water_running, temperature, checked_at")
@@ -129,7 +124,6 @@ export async function fetchAllSystemsDetailData(): Promise<{
   ]);
 
   const loadError =
-    recentChecksError ??
     dailyChecksError ??
     waterQualityError ??
     chemicalAdditionsError ??
@@ -140,28 +134,7 @@ export async function fetchAllSystemsDetailData(): Promise<{
   }
 
   const todayKey = pacificDateKey(new Date());
-  const isToday = (iso: string) => pacificDateKey(iso) === todayKey;
-
-  const latestTempBySystem = new Map<number, number>();
-  const amDoneBySystem = new Set<number>();
-  const pmDoneBySystem = new Set<number>();
-  for (const row of recentChecksAll ?? []) {
-    if (row.temperature != null && !latestTempBySystem.has(row.system_id)) {
-      latestTempBySystem.set(row.system_id, row.temperature);
-    }
-    if (isToday(row.checked_at)) {
-      if (row.check_type === "AM") amDoneBySystem.add(row.system_id);
-      if (row.check_type === "PM") pmDoneBySystem.add(row.system_id);
-    }
-  }
-
-  const overview: SystemOverviewEntry[] = systemRows.map((system) => ({
-    slug: system.slug,
-    name: system.name,
-    latestTemperature: latestTempBySystem.get(system.id) ?? null,
-    amDoneToday: amDoneBySystem.has(system.id),
-    pmDoneToday: pmDoneBySystem.has(system.id),
-  }));
+  const overview = deriveSystemOverview(systemRows, dailyChecksRaw ?? [], since36h, todayKey);
 
   const result: Record<string, SystemDetailData> = {};
 

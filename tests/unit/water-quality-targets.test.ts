@@ -6,7 +6,7 @@ import {
   resolveWaterQualityTarget,
   waterQualityValuesRequireNotes,
   type WaterQualityTargetRange,
-} from "./water-quality-targets";
+} from "@/components/daily-operations/water-quality-targets";
 
 const targets: WaterQualityTargetRange[] = [
   {

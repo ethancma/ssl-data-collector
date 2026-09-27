@@ -9,7 +9,7 @@ import {
   selectStarTreatmentCatalogItem,
   type ChemicalAdditionCatalogItem,
   type StarTreatmentCatalogItem,
-} from "./quick-pick-catalogs";
+} from "@/components/daily-operations/quick-pick-catalogs";
 
 const chemical: ChemicalAdditionCatalogItem = {
   id: 1,

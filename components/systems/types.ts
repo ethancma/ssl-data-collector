@@ -56,7 +56,7 @@ export type MaintenanceLogPoint = {
   taskType: string;
 };
 
-export type HighlightKind =
+type HighlightKind =
   | "chemical_addition"
   | "health_observation"
   | "maintenance_log"

@@ -3,7 +3,7 @@ import test from "node:test";
 import {
   selectSmokeSections,
   SMOKE_SECTIONS,
-} from "../scripts/select-smoke-sections";
+} from "@/.github/skills/e2e-testing/scripts/select-smoke-sections";
 
 function selectedIds(files: string[]) {
   return selectSmokeSections(files).sections.map(({ id }) => id);

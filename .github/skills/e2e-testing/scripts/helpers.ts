@@ -25,9 +25,9 @@ import { createClient } from "@supabase/supabase-js";
 
 loadEnvConfig(process.cwd());
 
-export const SUPABASE_URL =
+const SUPABASE_URL =
   process.env.SUPABASE_URL ?? "https://bqylxmsifagnztxhixyl.supabase.co";
-export const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 export const TECH_EMAIL = process.env.E2E_TEST_TECH_EMAIL ?? "test-tech@ssl.dev";
 export const TECH_PASSWORD = process.env.E2E_TEST_TECH_PASSWORD ?? "password";
 export const ADMIN_EMAIL = process.env.E2E_TEST_ADMIN_EMAIL ?? "test-admin@ssl.dev";
@@ -38,7 +38,7 @@ export const VOLUNTEER_PASSWORD = process.env.E2E_TEST_VOLUNTEER_PASSWORD ?? "pa
 export const VIEWER_EMAIL = process.env.E2E_TEST_VIEWER_EMAIL ?? "test-viewer@ssl.dev";
 export const VIEWER_PASSWORD = process.env.E2E_TEST_VIEWER_PASSWORD ?? "password";
 // Public anon/publishable key — safe to default here the same way SUPABASE_URL is above.
-export const PUBLISHABLE_KEY =
+const PUBLISHABLE_KEY =
   process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ??
   "sb_publishable_KTInkuFFvOLUgENAzAul1w_o0MfJmX3";
 
@@ -74,7 +74,7 @@ function pacificDateTimeParts(value: Date) {
 }
 
 // Retains the existing helper name while matching the forms' Pacific date contract.
-export function localDateString(d: Date): string {
+function localDateString(d: Date): string {
   return pacificDateTimeParts(d).date;
 }
 

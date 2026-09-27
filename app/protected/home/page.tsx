@@ -1,47 +1,11 @@
 import { Suspense } from "react";
 
-import { pacificDateKey } from "@/components/daily-operations/pacific-date-time";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
-import type { HealthIssueType } from "@/lib/config/reference-data";
-import { createClient } from "@/lib/supabase/server";
 
+import { loadHomeDashboardData } from "./data";
+import { deriveHomeDashboard, type HealthObservationEntry } from "./derivations";
 import { SegmentedTabs } from "./segmented-tabs";
-
-const ISSUE_LABELS: Record<HealthIssueType, string> = {
-  arm_drop: "Arm drop",
-  spine_drop: "Spine drop",
-  lesion: "Lesion",
-  arm_curling: "Arm curling",
-  flattening: "Flattening",
-  other: "Other",
-};
-
-type SystemAgendaStatus = {
-  id: number;
-  name: string;
-  amDone: boolean;
-  pmDone: boolean;
-  fedToday: boolean;
-  testedThisWeek: boolean;
-};
-
-function outstandingItems(s: SystemAgendaStatus) {
-  const items: string[] = [];
-  if (!s.amDone) items.push("AM check");
-  if (!s.pmDone) items.push("PM check");
-  if (!s.fedToday) items.push("Feeding");
-  if (!s.testedThisWeek) items.push("Water quality");
-  return items;
-}
-
-type HealthObservationEntry = {
-  id: number;
-  system: string;
-  issue: string;
-  severity: "low" | "medium" | "high";
-  observedAt: string;
-};
 
 function severityBadgeVariant(severity: HealthObservationEntry["severity"]) {
   if (severity === "high") return "destructive" as const;
@@ -123,74 +87,15 @@ export default function HomePage() {
 }
 
 async function HomeContent() {
-  const supabase = await createClient();
-
-  const since36h = new Date(Date.now() - 36 * 60 * 60 * 1000).toISOString();
-  const since14d = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString();
-
-  const [
-    { data: systems, error: systemsError },
-    { data: checks, error: checksError },
-    { data: feedingLogs, error: feedingLogsError },
-    { data: waterQualityReadings, error: waterQualityError },
-    { data: chemicalAdditions, error: chemicalAdditionsError },
-    { data: recentHealthObservations, error: recentHealthError },
-    { data: healthObservationsRecent36h, error: recentHealthCountError },
-    { data: animals, error: animalsError },
-    { count: totalTanks, error: tanksError },
-  ] = await Promise.all([
-    supabase
-      .from("systems")
-      .select("id, name")
-      .order("name", { ascending: true })
-      .order("id", { ascending: true }),
-    supabase
-      .from("daily_checks")
-      .select("system_id, check_type, checked_at")
-      .gte("checked_at", since36h),
-    supabase
-      .from("feeding_logs")
-      .select("fed_at, tanks!inner(system_id)")
-      .gte("fed_at", since36h),
-    supabase
-      .from("water_quality_readings")
-      .select("system_id, tested_at, ph")
-      .gte("tested_at", since14d),
-    supabase
-      .from("chemical_additions")
-      .select("added_at")
-      .gte("added_at", since36h),
-    supabase
-      .from("health_observations")
-      .select("id, observed_at, severity, issues, tanks(systems(name))")
-      .order("observed_at", { ascending: false })
-      .limit(5),
-    supabase
-      .from("health_observations")
-      .select("observed_at")
-      .gte("observed_at", since36h),
-    supabase.from("animals").select("quantity").eq("status", "active"),
-    supabase.from("tanks").select("id", { count: "exact", head: true }),
-  ]);
-
-  const loadError =
-    systemsError ??
-    checksError ??
-    feedingLogsError ??
-    waterQualityError ??
-    chemicalAdditionsError ??
-    recentHealthError ??
-    recentHealthCountError ??
-    animalsError ??
-    tanksError;
-  if (loadError) {
+  const result = await loadHomeDashboardData();
+  if (!result.ok) {
     return (
       <p className="text-sm text-red-500" role="alert">
-        Dashboard data could not be loaded: {loadError.message}
+        Dashboard data could not be loaded: {result.error}
       </p>
     );
   }
-  if (!systems || systems.length === 0) {
+  if (result.data.systems.length === 0) {
     return (
       <p className="rounded-md border p-6 text-sm text-muted-foreground">
         No systems are configured.
@@ -198,91 +103,23 @@ async function HomeContent() {
     );
   }
 
-  const todayKey = pacificDateKey(new Date());
-  const isToday = (iso: string) => pacificDateKey(iso) === todayKey;
-
-  // Agenda: per-system AM/PM/feeding/water-quality done-today status.
-  const doneChecks = new Set<string>();
-  for (const c of checks ?? []) {
-    if (isToday(c.checked_at)) doneChecks.add(`${c.system_id}:${c.check_type}`);
-  }
-
-  const fedTodaySystems = new Set<number>();
-  for (const f of feedingLogs ?? []) {
-    // `tanks!inner(...)` returns a single object at runtime, but Supabase's
-    // generic-less client types it as an array. Cast to the actual shape.
-    const tank = f.tanks as unknown as { system_id: number };
-    if (isToday(f.fed_at)) fedTodaySystems.add(tank.system_id);
-  }
-
-  const testedThisWeekSystems = new Set<number>();
-  for (const w of waterQualityReadings ?? []) {
-    testedThisWeekSystems.add(w.system_id);
-  }
-
-  const systemStatuses: SystemAgendaStatus[] = (systems ?? []).map((s) => ({
-    id: s.id,
-    name: s.name,
-    amDone: doneChecks.has(`${s.id}:AM`),
-    pmDone: doneChecks.has(`${s.id}:PM`),
-    fedToday: fedTodaySystems.has(s.id),
-    testedThisWeek: testedThisWeekSystems.has(s.id),
-  }));
-
-  const attentionSystems = systemStatuses
-    .map((s) => ({ ...s, outstanding: outstandingItems(s) }))
-    .filter((s) => s.outstanding.length > 0);
-  const allClearSystems = systemStatuses
-    .filter((s) => outstandingItems(s).length === 0)
-    .map((s) => s.name);
-
-  // Totals strip.
-  const totalAnimals = (animals ?? []).reduce((sum, a) => sum + a.quantity, 0);
-  const activeSystems = (systems ?? []).length;
-
-  // Today's logs.
-  const checksLogged = doneChecks.size;
+  const dashboard = deriveHomeDashboard(result.data);
+  const {
+    activeSystems,
+    allClearSystems,
+    attentionSystems,
+    chemicalAdditionsToday,
+    checksLogged,
+    delta,
+    feedingLogsToday,
+    healthObservationEntries,
+    healthObservationsToday,
+    lastReading,
+    totalAnimals,
+    totalTanks,
+    waterQualityTrend,
+  } = dashboard;
   const checksPossible = activeSystems * 2;
-  const feedingLogsToday = (feedingLogs ?? []).filter((f) => isToday(f.fed_at)).length;
-  const chemicalAdditionsToday = (chemicalAdditions ?? []).filter((c) => isToday(c.added_at)).length;
-  const healthObservationsToday = (healthObservationsRecent36h ?? []).filter((h) =>
-    isToday(h.observed_at),
-  ).length;
-
-  const healthObservationEntries: HealthObservationEntry[] = (recentHealthObservations ?? []).map(
-    (h) => {
-      // `tanks(systems(...))` returns single objects at runtime, but Supabase's
-      // generic-less client types both as arrays. Cast to the actual shape.
-      const tank = h.tanks as unknown as { systems: { name: string } } | null;
-      return {
-        id: h.id,
-        system: tank?.systems?.name ?? "Unknown system",
-        issue:
-          (h.issues as HealthIssueType[])
-            .map((issue) => ISSUE_LABELS[issue] ?? issue)
-            .join(", ") || "—",
-        severity: h.severity,
-        observedAt: h.observed_at,
-      };
-    },
-  );
-
-  // 2-week water quality trend: average pH per Pacific day, chronological.
-  const phByDay = new Map<string, number[]>();
-  for (const w of waterQualityReadings ?? []) {
-    if (w.ph == null) continue;
-    const key = pacificDateKey(w.tested_at);
-    const list = phByDay.get(key) ?? [];
-    list.push(w.ph);
-    phByDay.set(key, list);
-  }
-  const waterQualityTrend = Array.from(phByDay.entries())
-    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
-    .map(([, values]) => values.reduce((sum, v) => sum + v, 0) / values.length);
-
-  const lastReading = waterQualityTrend[waterQualityTrend.length - 1];
-  const firstReading = waterQualityTrend[0];
-  const delta = waterQualityTrend.length > 1 ? lastReading - firstReading : null;
 
   const agendaPanel = (
     <div className="flex flex-col divide-y rounded-xl border">
@@ -346,7 +183,7 @@ async function HomeContent() {
       <p className="mb-4 text-sm text-muted-foreground">
         Average pH across tested systems, last 14 days
       </p>
-      {waterQualityTrend.length > 0 ? (
+      {lastReading !== undefined ? (
         <>
           <div className="text-indigo-600 dark:text-indigo-400">
             <Sparkline data={waterQualityTrend} />
@@ -379,7 +216,7 @@ async function HomeContent() {
           <span className="text-muted-foreground">active systems</span>
         </span>
         <span>
-          <strong className="tabular-nums">{totalTanks ?? 0}</strong>{" "}
+          <strong className="tabular-nums">{totalTanks}</strong>{" "}
           <span className="text-muted-foreground">total tanks</span>
         </span>
       </div>

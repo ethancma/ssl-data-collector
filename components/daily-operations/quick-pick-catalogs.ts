@@ -37,7 +37,7 @@ export function normalizeSnapshot(value: string) {
   return value.trim().replace(/\s+/g, " ");
 }
 
-export function catalogNameKey(value: string) {
+function catalogNameKey(value: string) {
   return normalizeSnapshot(value).toLowerCase().replace(/[\s_-]+/g, "");
 }
 
@@ -95,7 +95,7 @@ export function resolveStarTreatmentCatalogItem(
     : null;
 }
 
-export function isReefDipName(value: string) {
+function isReefDipName(value: string) {
   return catalogNameKey(value) === "reefdip";
 }
 

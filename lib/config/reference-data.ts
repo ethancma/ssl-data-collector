@@ -2,9 +2,6 @@
 // Keep this file as the single source of truth for dropdown options and future
 // zod/DB-check-constraint validation, so the app and schema never drift apart.
 
-export const TANK_TYPES = ["shelf", "cone_bottom", "main"] as const;
-export type TankType = (typeof TANK_TYPES)[number];
-
 export const FOOD_TYPES = [
   "krill",
   "brine_shrimp",
@@ -17,7 +14,6 @@ export const FOOD_TYPES = [
 export type FoodType = (typeof FOOD_TYPES)[number];
 
 export const CONSUMPTION_STATUSES = ["full", "partial", "none", "unknown"] as const;
-export type ConsumptionStatus = (typeof CONSUMPTION_STATUSES)[number];
 
 export const HEALTH_ISSUE_TYPES = [
   "arm_drop",
@@ -41,16 +37,11 @@ export const SEVERITY_LEVELS = ["low", "medium", "high"] as const;
 export type SeverityLevel = (typeof SEVERITY_LEVELS)[number];
 
 export const CHECK_TYPES = ["AM", "PM"] as const;
-export type CheckType = (typeof CHECK_TYPES)[number];
 
 export const MAINTENANCE_TASK_TYPES = ["filter_change", "sump_flush", "other"] as const;
 export type MaintenanceTaskType = (typeof MAINTENANCE_TASK_TYPES)[number];
 
-export const DATA_SOURCES = ["live", "import", "paper_backfill"] as const;
-export type DataSource = (typeof DATA_SOURCES)[number];
-
 export const PH_SOURCES = ["manual", "apex_probe"] as const;
-export type PhSource = (typeof PH_SOURCES)[number];
 
 export const PROFILE_ROLES = ["admin", "technician", "volunteer", "viewer"] as const;
 export type ProfileRole = (typeof PROFILE_ROLES)[number];
