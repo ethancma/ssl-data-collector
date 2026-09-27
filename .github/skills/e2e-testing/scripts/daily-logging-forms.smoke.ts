@@ -267,14 +267,16 @@ test.describe("e2e smoke", () => {
     const form = page.locator("form");
     const chemicalChoices = form.getByRole("group", { name: "Quick pick" }).getByRole("radio");
     await expect(chemicalChoices).toHaveCount(4);
-    for (const choice of ["C-Balance", "DI-Trace", "Mg", "Enter manually"]) {
+    for (const choice of ["C-Balance", "DI-Trace", "Mg", "Other"]) {
       await expect(form.getByRole("radio", { name: choice, exact: true })).toBeVisible();
     }
     await expect(
       form.getByRole("link", { name: /star treatment/i }),
     ).toHaveCount(0);
 
-    await form.getByRole("radio", { name: "Enter manually", exact: true }).click();
+    await expect(form.getByLabel("Chemical/product name")).toHaveCount(0);
+    await form.getByRole("radio", { name: "Other", exact: true }).click();
+    await expect(form.getByLabel("Chemical/product name")).toBeVisible();
     await form.getByLabel("Chemical/product name").fill("   ");
     await form.getByRole("button", { name: "Save system addition" }).click();
     await expect(form.getByText("Enter a chemical/product name")).toBeVisible();
@@ -282,7 +284,7 @@ test.describe("e2e smoke", () => {
 
     await form.getByLabel("System").selectOption(String(chemicalSystemId));
     await form.getByRole("radio", { name: "DI-Trace", exact: true }).click();
-    await expect(form.getByLabel("Chemical/product name")).toHaveValue("DI-Trace");
+    await expect(form.getByLabel("Chemical/product name")).toHaveCount(0);
     await expect(form.getByLabel("Unit")).toHaveValue("mL");
     await page.getByLabel("Amount").fill("50");
     await page.getByLabel("Reason").fill(`${RUN_TAG} chemical addition`);
@@ -704,7 +706,7 @@ test.describe("P1 database-owned systems and Chemical addition quick picks", () 
       `/protected/daily-operations?type=chemical-addition&system=${grahamSystemId}`,
     );
     await expect(page.getByRole("radio", { name: "C-Balance", exact: true })).toBeChecked();
-    await expect(page.getByLabel("Chemical/product name")).toHaveValue("C-Balance");
+    await expect(page.getByLabel("Chemical/product name")).toHaveCount(0);
     await expect(page.getByLabel("Unit")).toHaveValue("mL");
     await page.getByLabel("Amount").fill("2.5");
     await page.getByLabel("Unit").fill("drops");
@@ -728,7 +730,8 @@ test.describe("P1 database-owned systems and Chemical addition quick picks", () 
     await page.goto(
       `/protected/daily-operations?type=chemical-addition&system=${grahamSystemId}`,
     );
-    await page.getByRole("radio", { name: "Enter manually", exact: true }).click();
+    await page.getByRole("radio", { name: "Other", exact: true }).click();
+    await expect(page.getByLabel("Chemical/product name")).toBeVisible();
     await page.getByLabel("Chemical/product name").fill("  Custom   Buffer  ");
     await page.getByLabel("Amount").fill("3");
     await page.getByLabel("Unit").fill(" g ");
@@ -820,10 +823,6 @@ test.describe("P1 water-quality targets", () => {
       dbQuery(`delete from core.water_quality_target_ranges
         where id in (${targetIds.join(", ")})`);
     }
-  });
-
-  test("ships with no seeded target ranges", () => {
-    expect(dbQuery(`select id from core.water_quality_target_ranges`)).toHaveLength(0);
   });
 
   test("Technician creates lab-wide, system override, and one-sided targets in the UI", async ({

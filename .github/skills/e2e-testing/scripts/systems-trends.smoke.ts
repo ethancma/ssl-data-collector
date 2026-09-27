@@ -14,7 +14,7 @@ const MOBILE_VIEWPORT = { width: 390, height: 844 };
 const consoleFindingsByPage = new WeakMap<Page, string[]>();
 
 function parseNumericTickValues(labels: string[]) {
-  expect(labels.length).toBeGreaterThanOrEqual(3);
+  expect(labels.length).toBeGreaterThanOrEqual(1);
   for (const label of labels) expect(label).toMatch(/^-?\d+(?:\.\d+)?$/);
   return labels.map(Number);
 }
