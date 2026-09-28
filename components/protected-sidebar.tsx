@@ -2,12 +2,13 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { useTheme } from "next-themes";
 import {
   ClipboardList,
   FlaskConical,
   Home,
+  LogOut,
   Monitor,
   Moon,
   PanelLeftClose,
@@ -21,13 +22,25 @@ import {
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { LogoutButton } from "@/components/logout-button";
 
-const iconButtonClassName =
-  "flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground";
+const focusRingClassName =
+  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring";
+
+const iconButtonClassName = cn(
+  "flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground",
+  focusRingClassName,
+);
+
+// Wider pill used for the expanded sidebar's Home/theme action row.
+const actionPillClassName = "w-12";
+
+const activeClassName =
+  "bg-primary/10 text-primary hover:bg-primary/15 hover:text-primary";
 
 const THEME_CYCLE = ["light", "dark", "system"] as const;
 
-function ThemeToggleButton() {
+function ThemeToggleButton({ className }: { className?: string }) {
   const { theme, setTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
 
@@ -36,7 +49,7 @@ function ThemeToggleButton() {
   }, []);
 
   if (!mounted) {
-    return <span className={iconButtonClassName} aria-hidden="true" />;
+    return <span className={cn(iconButtonClassName, className)} aria-hidden="true" />;
   }
 
   const current = THEME_CYCLE.includes(theme as (typeof THEME_CYCLE)[number])
@@ -52,10 +65,51 @@ function ThemeToggleButton() {
       onClick={() => setTheme(next)}
       title={label}
       aria-label={label}
-      className={iconButtonClassName}
+      className={cn(iconButtonClassName, className)}
     >
       <Icon size={18} strokeWidth={2} />
     </button>
+  );
+}
+
+function HomeButton({ active, className }: { active: boolean; className?: string }) {
+  return (
+    <Link
+      href="/protected/home"
+      title="Home"
+      aria-label="Home"
+      aria-current={active ? "page" : undefined}
+      className={cn(iconButtonClassName, className, active && activeClassName)}
+    >
+      <Home size={18} strokeWidth={2} />
+    </Link>
+  );
+}
+
+function SidebarLogoutButton() {
+  return (
+    <LogoutButton
+      variant="ghost"
+      size="icon"
+      title="Log out"
+      aria-label="Log out"
+      className={cn(iconButtonClassName, "[&_svg]:size-[18px]")}
+    >
+      <LogOut strokeWidth={2} />
+    </LogoutButton>
+  );
+}
+
+function Avatar({ initial, email }: { initial: string; email?: string | null }) {
+  return (
+    <div
+      role="img"
+      title={email ?? undefined}
+      aria-label={email ? `Signed in as ${email}` : "Account"}
+      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border text-xs font-semibold text-foreground"
+    >
+      {initial}
+    </div>
   );
 }
 
@@ -66,150 +120,280 @@ type NavItem = {
   exact?: boolean;
 };
 
+type NavSection = {
+  label: string;
+  items: NavItem[];
+};
+
+type SidebarViewProps = {
+  sections: NavSection[];
+  isActive: (item: NavItem) => boolean;
+  isHomeActive: boolean;
+  userEmail?: string | null;
+  userRole?: string | null;
+  initial: string;
+  onToggleCollapsed: () => void;
+};
+
+function ExpandedSidebar({
+  sections,
+  isActive,
+  isHomeActive,
+  userEmail,
+  userRole,
+  initial,
+  onToggleCollapsed,
+}: SidebarViewProps) {
+  return (
+    <div className="flex h-full w-60 flex-col">
+      <div className="flex h-14 shrink-0 items-center gap-2 px-3">
+        <Link
+          href="/protected/home"
+          className={cn(
+            "flex min-w-0 flex-1 items-center gap-2 rounded-lg px-1.5 py-1",
+            focusRingClassName,
+          )}
+        >
+          <Waves size={20} strokeWidth={2} className="shrink-0 text-primary" />
+          <span className="truncate text-sm font-semibold">SSL Data Collection</span>
+        </Link>
+        <button
+          type="button"
+          onClick={onToggleCollapsed}
+          title="Collapse sidebar"
+          aria-label="Collapse sidebar"
+          className={iconButtonClassName}
+        >
+          <PanelLeftClose size={18} strokeWidth={2} />
+        </button>
+      </div>
+
+      <div className="flex shrink-0 items-center justify-evenly px-3 pb-3">
+        <HomeButton active={isHomeActive} className={actionPillClassName} />
+        <ThemeToggleButton className={actionPillClassName} />
+      </div>
+      <div className="mx-4 shrink-0 border-t border-border" />
+
+      <nav
+        aria-label="Main"
+        className="min-h-0 flex-1 space-y-5 overflow-y-auto overflow-x-hidden overscroll-contain px-3 py-4"
+      >
+        {sections.map((section) => {
+          const headingId = `sidebar-section-${section.label.toLowerCase().replace(/\s+/g, "-")}`;
+          return (
+            <div key={section.label}>
+              <p id={headingId} className="px-3 pb-1.5 text-xs font-medium text-muted-foreground">
+                {section.label}
+              </p>
+              <ul aria-labelledby={headingId} className="space-y-0.5">
+                {section.items.map((item) => {
+                  const active = isActive(item);
+                  const Icon = item.icon;
+                  return (
+                    <li key={item.href}>
+                      <Link
+                        href={item.href}
+                        aria-current={active ? "page" : undefined}
+                        className={cn(
+                          "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground",
+                          focusRingClassName,
+                          active && activeClassName,
+                        )}
+                      >
+                        <Icon size={18} strokeWidth={2} className="shrink-0" />
+                        <span className="truncate">{item.label}</span>
+                      </Link>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          );
+        })}
+      </nav>
+
+      <div className="flex shrink-0 items-center gap-3 border-t border-border px-3 py-3">
+        <Avatar initial={initial} email={userEmail} />
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-medium" title={userEmail ?? undefined}>
+            {userEmail ?? "Account"}
+          </p>
+          {userRole ? (
+            <p className="truncate text-xs capitalize text-muted-foreground">{userRole}</p>
+          ) : null}
+        </div>
+        <div className="h-6 w-px shrink-0 bg-border" aria-hidden="true" />
+        <SidebarLogoutButton />
+      </div>
+    </div>
+  );
+}
+
+function CollapsedSidebar({
+  sections,
+  isActive,
+  isHomeActive,
+  userEmail,
+  initial,
+  onToggleCollapsed,
+}: SidebarViewProps) {
+  const divider = <div className="h-px w-8 shrink-0 bg-border" aria-hidden="true" />;
+
+  return (
+    <div className="flex h-full w-16 flex-col items-center">
+      <div className="flex shrink-0 flex-col items-center gap-1 pb-2 pt-3">
+        <Link
+          href="/protected/home"
+          title="SSL Data Collection"
+          aria-label="SSL Data Collection"
+          className={iconButtonClassName}
+        >
+          <Waves size={20} strokeWidth={2} className="text-primary" />
+        </Link>
+        {/* Below sm the sidebar is always collapsed, so expanding would do nothing. */}
+        <button
+          type="button"
+          onClick={onToggleCollapsed}
+          title="Expand sidebar"
+          aria-label="Expand sidebar"
+          className={cn(iconButtonClassName, "hidden sm:flex")}
+        >
+          <PanelLeftOpen size={18} strokeWidth={2} />
+        </button>
+      </div>
+      {divider}
+      <div className="flex shrink-0 flex-col items-center gap-1 py-2">
+        <HomeButton active={isHomeActive} />
+        <ThemeToggleButton />
+      </div>
+      {divider}
+
+      <nav
+        aria-label="Main"
+        className="flex min-h-0 w-full flex-1 flex-col items-center gap-1 overflow-y-auto overflow-x-hidden overscroll-contain py-2"
+      >
+        {sections.map((section, index) => (
+          <Fragment key={section.label}>
+            {index > 0 ? (
+              <div className="my-1.5 h-px w-6 shrink-0 bg-border" aria-hidden="true" />
+            ) : null}
+            {section.items.map((item) => {
+              const active = isActive(item);
+              const Icon = item.icon;
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  title={item.label}
+                  aria-label={item.label}
+                  aria-current={active ? "page" : undefined}
+                  className={cn(iconButtonClassName, active && activeClassName)}
+                >
+                  <Icon size={18} strokeWidth={2} />
+                </Link>
+              );
+            })}
+          </Fragment>
+        ))}
+      </nav>
+
+      <div className="flex shrink-0 flex-col items-center gap-2 pb-3 pt-2">
+        <SidebarLogoutButton />
+        <Avatar initial={initial} email={userEmail} />
+      </div>
+    </div>
+  );
+}
+
 export function ProtectedSidebar({
   showAdmin,
   showDailyOperations,
   showLabSettings,
-  authSlot,
   userEmail,
+  userRole,
   collapsed,
   onToggleCollapsed,
 }: {
   showAdmin: boolean;
   showDailyOperations: boolean;
   showLabSettings: boolean;
-  authSlot: React.ReactNode;
   userEmail?: string | null;
+  userRole?: string | null;
   collapsed: boolean;
   onToggleCollapsed: () => void;
 }) {
   const pathname = usePathname();
   const isHomeActive = pathname === "/protected/home";
 
-  const items: NavItem[] = [
-    { href: "/protected/systems", label: "Systems", icon: Waves },
-    { href: "/protected/settings", label: "Settings", icon: Settings, exact: true },
-  ];
-  if (showDailyOperations) {
-    items.unshift({
-      href: "/protected/daily-operations",
-      label: "Daily Operations",
-      icon: ClipboardList,
-    });
-  }
-  if (showLabSettings) {
-    items.splice(
-      items.length - 1,
-      0,
-      {
-        href: "/protected/settings/water-quality-targets",
-        label: "Water quality targets",
-        icon: SlidersHorizontal,
-      },
-      {
-        href: "/protected/settings/quick-picks",
-        label: "Quick-pick catalogs",
-        icon: FlaskConical,
-      },
-    );
-  }
-  if (showAdmin) {
-    items.push({ href: "/protected/admin", label: "Admin", icon: ShieldCheck, exact: true });
-  }
+  const sections: NavSection[] = [
+    {
+      label: "Operations",
+      items: [
+        ...(showDailyOperations
+          ? [
+              {
+                href: "/protected/daily-operations",
+                label: "Daily Operations",
+                icon: ClipboardList,
+              },
+            ]
+          : []),
+        { href: "/protected/systems", label: "Systems", icon: Waves },
+      ],
+    },
+    {
+      label: "Lab setup",
+      items: showLabSettings
+        ? [
+            {
+              href: "/protected/settings/water-quality-targets",
+              label: "Water quality targets",
+              icon: SlidersHorizontal,
+            },
+            {
+              href: "/protected/settings/quick-picks",
+              label: "Quick-pick catalogs",
+              icon: FlaskConical,
+            },
+          ]
+        : [],
+    },
+    {
+      label: "Manage",
+      items: [
+        { href: "/protected/settings", label: "Settings", icon: Settings, exact: true },
+        ...(showAdmin
+          ? [{ href: "/protected/admin", label: "Admin", icon: ShieldCheck, exact: true }]
+          : []),
+      ],
+    },
+  ].filter((section) => section.items.length > 0);
+
+  const isActive = ({ href, exact }: NavItem) =>
+    pathname === href || (!exact && pathname.startsWith(`${href}/`));
 
   const initial = userEmail?.trim()?.[0]?.toUpperCase() ?? "?";
 
+  const viewProps: SidebarViewProps = {
+    sections,
+    isActive,
+    isHomeActive,
+    userEmail,
+    userRole,
+    initial,
+    onToggleCollapsed,
+  };
+
   return (
-    <div className="flex h-full flex-col">
-      <div className="flex h-16 items-center gap-2 border-b border-border px-3">
-        <Link
-          href="/protected/home"
-          title="SSL Data Collection home"
-          aria-label="SSL Data Collection home"
-          className={cn(iconButtonClassName, "sm:hidden")}
-        >
-          <Waves size={18} strokeWidth={2} />
-        </Link>
-        <Link
-          href="/protected/home"
-          className={cn(
-            "hidden flex-1 truncate text-sm font-semibold sm:block",
-            collapsed && "hidden",
-          )}
-        >
-          SSL Data Collection
-        </Link>
-        <button
-          type="button"
-          onClick={onToggleCollapsed}
-          title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-          aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-          className={cn(iconButtonClassName, "hidden sm:flex", collapsed && "mx-auto")}
-        >
-          {collapsed ? (
-            <PanelLeftOpen size={18} strokeWidth={2} />
-          ) : (
-            <PanelLeftClose size={18} strokeWidth={2} />
-          )}
-        </button>
-      </div>
-      <div
-        className={cn(
-          "flex flex-col items-center justify-center gap-2 border-b border-border px-3 py-2 sm:flex-row sm:justify-between",
-          collapsed && "sm:flex-col sm:justify-center",
-        )}
-      >
-        <Link
-          href="/protected/home"
-          title="Home"
-          aria-label="Home"
-          className={cn(
-            iconButtonClassName,
-            isHomeActive
-              ? "bg-accent text-accent-foreground"
-              : "text-muted-foreground",
-          )}
-        >
-          <Home size={18} strokeWidth={2} />
-        </Link>
-        <ThemeToggleButton />
-      </div>
-      <nav className="flex-1 space-y-1 overflow-y-auto p-3">
-        {items.map(({ href, label, icon: Icon, exact }) => {
-          const isActive =
-            pathname === href || (!exact && pathname.startsWith(`${href}/`));
-          return (
-            <Link
-              key={href}
-              href={href}
-              title={label}
-              aria-label={label}
-              className={cn(
-                "flex items-center justify-center gap-3 rounded-md px-0 py-2 text-sm font-medium transition-colors sm:justify-start sm:px-3",
-                collapsed && "sm:justify-center sm:px-0",
-                isActive
-                  ? "bg-accent text-accent-foreground"
-                  : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
-              )}
-            >
-              <Icon size={16} strokeWidth={2} className="shrink-0" />
-              <span className={cn("hidden sm:inline", collapsed && "sm:hidden")}>{label}</span>
-            </Link>
-          );
-        })}
-      </nav>
-      <div className="border-t border-border p-3 text-sm">
-        <div
-          className={cn("flex items-center justify-center", !collapsed && "sm:hidden")}
-          title={userEmail ?? undefined}
-          aria-label={userEmail ? `Signed in as ${userEmail}` : "Account"}
-        >
-          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-accent text-xs font-semibold text-accent-foreground">
-            {initial}
-          </div>
+    <>
+      {collapsed ? null : (
+        <div className="hidden min-h-0 flex-1 sm:flex">
+          <ExpandedSidebar {...viewProps} />
         </div>
-        <div className={cn("hidden sm:block", collapsed && "sm:hidden")}>{authSlot}</div>
+      )}
+      <div className={cn("flex min-h-0 flex-1", !collapsed && "sm:hidden")}>
+        <CollapsedSidebar {...viewProps} />
       </div>
-    </div>
+    </>
   );
 }

@@ -1,4 +1,3 @@
-import { AuthButton } from "@/components/auth-button";
 import { ProtectedShell } from "@/components/protected-shell";
 import { getCurrentProfile } from "@/lib/supabase/current-profile";
 import { InfoIcon } from "lucide-react";
@@ -24,11 +23,7 @@ export default async function ProtectedLayout({
       showDailyOperations={showDailyOperations}
       showLabSettings={showLabSettings}
       userEmail={profile?.email}
-      authSlot={
-        <Suspense>
-          <AuthButton />
-        </Suspense>
-      }
+      userRole={profile?.role}
     >
       <Suspense
         fallback={

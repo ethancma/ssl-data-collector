@@ -11,15 +11,15 @@ export function ProtectedShell({
   showAdmin,
   showDailyOperations,
   showLabSettings,
-  authSlot,
   userEmail,
+  userRole,
   children,
 }: {
   showAdmin: boolean;
   showDailyOperations: boolean;
   showLabSettings: boolean;
-  authSlot: React.ReactNode;
   userEmail?: string | null;
+  userRole?: string | null;
   children: React.ReactNode;
 }) {
   // Default to expanded so SSR markup matches the first client render; the
@@ -42,24 +42,24 @@ export function ProtectedShell({
   };
 
   return (
-    <div className="flex min-h-screen">
+    <div className="flex h-dvh overflow-hidden">
       <aside
         className={cn(
-          "sticky top-0 flex h-screen shrink-0 flex-col overflow-hidden border-r border-border transition-[width] duration-200 ease-in-out",
-          collapsed ? "w-16" : "w-16 sm:w-56",
+          "flex h-full shrink-0 flex-col overflow-hidden border-r border-border transition-[width] duration-200 ease-in-out",
+          collapsed ? "w-16" : "w-16 sm:w-60",
         )}
       >
         <ProtectedSidebar
           showAdmin={showAdmin}
           showDailyOperations={showDailyOperations}
           showLabSettings={showLabSettings}
-          authSlot={authSlot}
           userEmail={userEmail}
+          userRole={userRole}
           collapsed={collapsed}
           onToggleCollapsed={toggleCollapsed}
         />
       </aside>
-      <main className="min-w-0 flex-1 overflow-x-auto p-5 sm:p-8">
+      <main className="min-w-0 flex-1 overflow-y-auto overflow-x-auto p-5 sm:p-8">
         {children}
       </main>
     </div>

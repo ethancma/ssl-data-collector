@@ -221,8 +221,8 @@ test.describe("pending approval gate", () => {
   }) => {
     await loginPending(page);
     await expect(page.getByText("SSL Data Collection")).toBeVisible();
-    await expect(page.getByText(`Hey, ${PENDING_EMAIL}!`)).toBeVisible();
-    await page.getByRole("button", { name: "Logout" }).click();
+    await expect(page.getByText(PENDING_EMAIL, { exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Log out" }).click();
     await expect(page).toHaveURL(/\/auth\/login/);
   });
 
