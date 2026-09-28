@@ -1,9 +1,22 @@
 "use client";
 
-import { Pencil, Plus, Save, Trash2, X } from "lucide-react";
+import { Archive, ArchiveRestore, Pencil, Plus, Save, Trash2, X } from "lucide-react";
 import { useState } from "react";
 
-import { normalizeSnapshot } from "@/components/daily-operations/quick-pick-catalogs";
+import {
+  catalogNameKey,
+  normalizeSnapshot,
+  sortCatalogByName,
+} from "@/components/daily-operations/quick-pick-catalogs";
+import {
+  QUICK_PICK_CATALOGS,
+  quickPickSelectColumns,
+  toQuickPickCatalogRow,
+  type QuickPickCatalogConfig,
+  type QuickPickCatalogKey,
+  type QuickPickCatalogRow,
+} from "@/components/quick-pick-catalog-config";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -12,463 +25,268 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { UnitSelect } from "@/components/unit-select";
 import { createClient } from "@/lib/supabase/client";
+import { cn } from "@/lib/utils";
 
-type ChemicalCatalogRow = {
-  id: number;
-  name: string;
-  defaultUnit: string;
-  updatedAt: string;
-};
-
-type StarCatalogRow = {
-  id: number;
-  name: string;
-  defaultAmountUnit: string | null;
-  defaultConcentrationUnit: string | null;
-  updatedAt: string;
-};
+export type QuickPickCatalogInitialData = Partial<
+  Record<QuickPickCatalogKey, { items: QuickPickCatalogRow[]; loadError: string | null }>
+>;
 
 type DatabaseError = { code?: string; message: string };
+type UnitValues = Record<string, string>;
+type FieldErrors = Partial<Record<string, string>>;
 
-function catalogError(error: DatabaseError, action: "save" | "delete") {
-  if (error.code === "23503" && action === "delete") {
-    return "This quick pick is used by saved records and cannot be deleted.";
+const UNIT_MAX_LENGTH = 50;
+
+function isBuiltIn(config: QuickPickCatalogConfig, name: string) {
+  return config.builtInNameKeys.includes(catalogNameKey(name));
+}
+
+function catalogError(config: QuickPickCatalogConfig, error: DatabaseError, name: string) {
+  if (error.code === "23503") {
+    return `${name} is used by saved ${config.usedBy}, so it cannot be deleted. Retire it instead.`;
   }
-  if (error.code === "23505") {
-    return "A quick pick with this name already exists.";
+  if (error.code === "23505") return `A ${config.itemNoun} with this name already exists.`;
+  // Trigger-raised 23514s carry readable messages; raw CHECK violations do not.
+  if (error.code === "23514" && /violates check constraint/i.test(error.message)) {
+    return `Names must be 1-${config.nameMaxLength} characters and units ${UNIT_MAX_LENGTH} or fewer.`;
   }
   return error.message;
 }
 
-function sortByName<T extends { name: string }>(items: T[]) {
-  return [...items].sort((left, right) => left.name.localeCompare(right.name));
+function validateEntry(config: QuickPickCatalogConfig, name: string, units: UnitValues) {
+  const errors: FieldErrors = {};
+  const normalizedName = normalizeSnapshot(name);
+  if (!normalizedName) {
+    errors.name = "Name is required.";
+  } else if (normalizedName.length > config.nameMaxLength) {
+    errors.name = `Name must be ${config.nameMaxLength} characters or fewer.`;
+  } else if (config.reservedNameKeys.includes(catalogNameKey(normalizedName))) {
+    errors.name = `${normalizedName} is reserved. Enter a different name.`;
+  }
+  for (const field of config.unitFields) {
+    const unit = normalizeSnapshot(units[field.column] ?? "");
+    if (field.required && !unit) {
+      errors[field.column] = `${field.label} is required.`;
+    } else if (unit.length > UNIT_MAX_LENGTH) {
+      errors[field.column] = `${field.label} must be ${UNIT_MAX_LENGTH} characters or fewer.`;
+    }
+  }
+  return errors;
 }
 
-function requiredValue(value: string, label: string, maximum: number) {
-  const normalized = normalizeSnapshot(value);
-  if (!normalized) return `${label} is required.`;
-  if (normalized.length > maximum) return `${label} must be ${maximum} characters or fewer.`;
-  return null;
+function hasErrors(errors: FieldErrors) {
+  return Object.keys(errors).length > 0;
 }
 
-function optionalValue(value: string, label: string) {
-  const normalized = normalizeSnapshot(value);
-  if (normalized.length > 50) return `${label} must be 50 characters or fewer.`;
-  return null;
+function initialUnitValues(config: QuickPickCatalogConfig): UnitValues {
+  return Object.fromEntries(
+    config.unitFields.map((field) => [field.column, field.initialValue ?? ""]),
+  );
+}
+
+function itemUnitValues(config: QuickPickCatalogConfig, item: QuickPickCatalogRow): UnitValues {
+  return Object.fromEntries(
+    config.unitFields.map((field) => [field.column, item.units[field.column] ?? ""]),
+  );
+}
+
+function unitPayload(config: QuickPickCatalogConfig, units: UnitValues) {
+  return Object.fromEntries(
+    config.unitFields.map((field) => [
+      field.column,
+      normalizeSnapshot(units[field.column] ?? "") || null,
+    ]),
+  );
+}
+
+function unitSummary(config: QuickPickCatalogConfig, item: QuickPickCatalogRow) {
+  return config.unitFields
+    .map((field) => `${field.label}: ${item.units[field.column] ?? "No default"}`)
+    .join("; ");
+}
+
+function describedBy(...ids: (string | false | undefined)[]) {
+  return ids.filter(Boolean).join(" ") || undefined;
+}
+
+function fieldGridClassName(config: QuickPickCatalogConfig) {
+  return config.unitFields.length > 1 ? "sm:grid-cols-3" : "sm:grid-cols-2";
 }
 
 export function QuickPickCatalogManager({
-  initialChemicalCatalog,
-  initialStarCatalog,
-  loadError,
+  initialCatalogs,
 }: {
-  initialChemicalCatalog: ChemicalCatalogRow[];
-  initialStarCatalog: StarCatalogRow[];
-  loadError?: string | null;
+  initialCatalogs: QuickPickCatalogInitialData;
 }) {
   return (
     <div className="grid gap-6 lg:grid-cols-2 lg:items-start">
-      <ChemicalCatalogManager
-        initialCatalog={initialChemicalCatalog}
-        loadError={loadError}
-      />
-      <StarCatalogManager initialCatalog={initialStarCatalog} loadError={loadError} />
+      {QUICK_PICK_CATALOGS.map((config) => (
+        <QuickPickCatalogSection
+          key={config.key}
+          config={config}
+          initialItems={initialCatalogs[config.key]?.items ?? []}
+          loadError={initialCatalogs[config.key]?.loadError ?? null}
+        />
+      ))}
     </div>
   );
 }
 
-function ChemicalCatalogManager({
-  initialCatalog,
+function QuickPickCatalogSection({
+  config,
+  initialItems,
   loadError,
 }: {
-  initialCatalog: ChemicalCatalogRow[];
-  loadError?: string | null;
+  config: QuickPickCatalogConfig;
+  initialItems: QuickPickCatalogRow[];
+  loadError: string | null;
 }) {
-  const [catalog, setCatalog] = useState(initialCatalog);
+  const [catalog, setCatalog] = useState(() => sortCatalogByName(initialItems));
   const [newName, setNewName] = useState("");
-  const [newUnit, setNewUnit] = useState("");
+  const [newUnits, setNewUnits] = useState(() => initialUnitValues(config));
+  const [newErrors, setNewErrors] = useState<FieldErrors>({});
   const [pending, setPending] = useState<string | null>(null);
   const [error, setError] = useState(loadError ?? "");
   const [success, setSuccess] = useState("");
+  const disabled = pending !== null || Boolean(loadError);
+  const createKey = `${config.key}-create`;
+  const newNameId = `new-${config.key}-name`;
+  const newNameErrorId = `${newNameId}-error`;
+
+  const showError = (message: string) => {
+    setError(message);
+    setSuccess("");
+  };
+  const showSuccess = (message: string) => {
+    setError("");
+    setSuccess(message);
+  };
 
   const addItem = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    const validationError =
-      requiredValue(newName, "Name", 200) ?? requiredValue(newUnit, "Default unit", 50);
-    if (validationError) {
-      setError(validationError);
-      setSuccess("");
+    const errors = validateEntry(config, newName, newUnits);
+    setNewErrors(errors);
+    if (hasErrors(errors)) {
+      showError("Check the highlighted fields.");
       return;
     }
 
-    setPending("create");
+    const name = normalizeSnapshot(newName);
+    setPending(createKey);
     setError("");
     setSuccess("");
     const supabase = createClient();
     const { data, error: insertError } = await supabase
-      .from("chemical_addition_catalog")
-      .insert({ name: normalizeSnapshot(newName), default_unit: normalizeSnapshot(newUnit) })
-      .select("id, name, default_unit, updated_at")
+      .from(config.table)
+      .insert({ name, ...unitPayload(config, newUnits) })
+      .select<string, Record<string, unknown>>(quickPickSelectColumns(config))
       .single();
     setPending(null);
 
     if (insertError || !data) {
-      setError(
-        insertError ? catalogError(insertError, "save") : "Quick pick could not be added.",
+      showError(
+        insertError
+          ? catalogError(config, insertError, name)
+          : `The ${config.itemNoun} could not be added.`,
       );
       return;
     }
 
-    setCatalog((current) =>
-      sortByName([
-        ...current,
-        {
-          id: data.id,
-          name: data.name,
-          defaultUnit: data.default_unit,
-          updatedAt: data.updated_at,
-        },
-      ]),
-    );
+    const created = toQuickPickCatalogRow(config, data);
+    setCatalog((current) => sortCatalogByName([...current, created]));
     setNewName("");
-    setNewUnit("");
-    setSuccess(`${data.name} added.`);
+    setNewUnits(initialUnitValues(config));
+    showSuccess(`${created.name} added.`);
   };
 
   return (
     <Card className="w-full rounded-md shadow-none">
       <CardHeader>
-        <CardTitle className="text-xl">Chemical Addition</CardTitle>
-        <CardDescription>Name and suggested unit shown in the daily form.</CardDescription>
-      </CardHeader>
-      <CardContent className="grid gap-5">
-        <CatalogMessages error={error} success={success} />
-        {!loadError && catalog.length === 0 && (
-          <p className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
-            No Chemical Addition quick picks are configured.
-          </p>
-        )}
-        <div className="divide-y rounded-md border">
-          {catalog.map((item) => (
-            <ChemicalCatalogEditor
-              key={item.id}
-              item={item}
-              disabled={pending !== null || Boolean(loadError)}
-              pendingAction={pending}
-              onPending={setPending}
-              onError={(message) => {
-                setError(message);
-                setSuccess("");
-              }}
-              onSuccess={(message) => {
-                setError("");
-                setSuccess(message);
-              }}
-              onSaved={(saved) =>
-                setCatalog((current) =>
-                  sortByName(current.map((candidate) => candidate.id === saved.id ? saved : candidate)),
-                )
-              }
-              onDeleted={(id) =>
-                setCatalog((current) => current.filter((candidate) => candidate.id !== id))
-              }
-            />
-          ))}
-        </div>
-
-        <form className="grid gap-3 border-t pt-5" onSubmit={addItem} noValidate>
-          <h3 className="text-sm font-semibold">Add Chemical Addition quick pick</h3>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div className="grid gap-2">
-              <Label htmlFor="new-chemical-name">Name</Label>
-              <Input
-                id="new-chemical-name"
-                className="min-h-11"
-                maxLength={200}
-                value={newName}
-                disabled={pending !== null || Boolean(loadError)}
-                onChange={(event) => setNewName(event.target.value)}
-              />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="new-chemical-unit">Default unit</Label>
-              <Input
-                id="new-chemical-unit"
-                className="min-h-11"
-                maxLength={50}
-                value={newUnit}
-                disabled={pending !== null || Boolean(loadError)}
-                onChange={(event) => setNewUnit(event.target.value)}
-              />
-            </div>
-          </div>
-          <Button type="submit" className="min-h-11 w-fit" disabled={pending !== null || Boolean(loadError)}>
-            <Plus aria-hidden="true" />
-            {pending === "create" ? "Adding…" : "Add quick pick"}
-          </Button>
-        </form>
-      </CardContent>
-    </Card>
-  );
-}
-
-function ChemicalCatalogEditor({
-  item,
-  disabled,
-  pendingAction,
-  onPending,
-  onError,
-  onSuccess,
-  onSaved,
-  onDeleted,
-}: {
-  item: ChemicalCatalogRow;
-  disabled: boolean;
-  pendingAction: string | null;
-  onPending: (value: string | null) => void;
-  onError: (message: string) => void;
-  onSuccess: (message: string) => void;
-  onSaved: (item: ChemicalCatalogRow) => void;
-  onDeleted: (id: number) => void;
-}) {
-  const [editing, setEditing] = useState(false);
-  const [name, setName] = useState(item.name);
-  const [unit, setUnit] = useState(item.defaultUnit);
-  const isSaving = pendingAction === `chemical-save-${item.id}`;
-  const isDeleting = pendingAction === `chemical-delete-${item.id}`;
-
-  const save = async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const validationError =
-      requiredValue(name, "Name", 200) ?? requiredValue(unit, "Default unit", 50);
-    if (validationError) {
-      onError(validationError);
-      return;
-    }
-
-    onPending(`chemical-save-${item.id}`);
-    const supabase = createClient();
-    const { data, error } = await supabase
-      .from("chemical_addition_catalog")
-      .update({ name: normalizeSnapshot(name), default_unit: normalizeSnapshot(unit) })
-      .eq("id", item.id)
-      .eq("updated_at", item.updatedAt)
-      .select("id, name, default_unit, updated_at")
-      .maybeSingle();
-    onPending(null);
-
-    if (error || !data) {
-      onError(
-        error
-          ? catalogError(error, "save")
-          : "This quick pick changed elsewhere. Refresh before saving again.",
-      );
-      return;
-    }
-
-    const saved = {
-      id: data.id,
-      name: data.name,
-      defaultUnit: data.default_unit,
-      updatedAt: data.updated_at,
-    };
-    setName(saved.name);
-    setUnit(saved.defaultUnit);
-    setEditing(false);
-    onSaved(saved);
-    onSuccess(`${saved.name} saved.`);
-  };
-
-  const remove = async () => {
-    if (!window.confirm(`Delete the ${item.name} quick pick?`)) return;
-
-    onPending(`chemical-delete-${item.id}`);
-    const supabase = createClient();
-    const { data, error } = await supabase
-      .from("chemical_addition_catalog")
-      .delete()
-      .eq("id", item.id)
-      .eq("updated_at", item.updatedAt)
-      .select("id")
-      .maybeSingle();
-    onPending(null);
-
-    if (error || !data) {
-      onError(
-        error
-          ? catalogError(error, "delete")
-          : "This quick pick changed elsewhere. Refresh before deleting it.",
-      );
-      return;
-    }
-
-    onDeleted(item.id);
-    onSuccess(`${item.name} deleted.`);
-  };
-
-  if (!editing) {
-    return (
-      <div className="flex flex-wrap items-center justify-between gap-3 p-4">
-        <div>
-          <p className="text-sm font-medium">{item.name}</p>
-          <p className="text-xs text-muted-foreground">Default unit: {item.defaultUnit}</p>
-        </div>
-        <div className="flex gap-2">
-          <Button type="button" variant="outline" className="min-h-11" disabled={disabled} onClick={() => setEditing(true)}>
-            <Pencil aria-hidden="true" /> Edit
-          </Button>
-          <Button type="button" variant="outline" className="min-h-11" disabled={disabled} onClick={remove}>
-            <Trash2 aria-hidden="true" /> {isDeleting ? "Deleting…" : "Delete"}
-          </Button>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <form className="grid gap-3 p-4" onSubmit={save} noValidate aria-busy={isSaving}>
-      <div className="grid gap-3 sm:grid-cols-2">
-        <div className="grid gap-2">
-          <Label htmlFor={`chemical-${item.id}-name`}>Name</Label>
-          <Input id={`chemical-${item.id}-name`} className="min-h-11" maxLength={200} value={name} disabled={disabled} onChange={(event) => setName(event.target.value)} />
-        </div>
-        <div className="grid gap-2">
-          <Label htmlFor={`chemical-${item.id}-unit`}>Default unit</Label>
-          <Input id={`chemical-${item.id}-unit`} className="min-h-11" maxLength={50} value={unit} disabled={disabled} onChange={(event) => setUnit(event.target.value)} />
-        </div>
-      </div>
-      <div className="flex gap-2">
-        <Button type="submit" className="min-h-11" disabled={disabled}><Save aria-hidden="true" /> {isSaving ? "Saving…" : "Save"}</Button>
-        <Button type="button" variant="ghost" className="min-h-11" disabled={disabled} onClick={() => { setName(item.name); setUnit(item.defaultUnit); setEditing(false); }}><X aria-hidden="true" /> Cancel</Button>
-      </div>
-    </form>
-  );
-}
-
-function StarCatalogManager({
-  initialCatalog,
-  loadError,
-}: {
-  initialCatalog: StarCatalogRow[];
-  loadError?: string | null;
-}) {
-  const [catalog, setCatalog] = useState(initialCatalog);
-  const [newName, setNewName] = useState("");
-  const [newAmountUnit, setNewAmountUnit] = useState("");
-  const [newConcentrationUnit, setNewConcentrationUnit] = useState("");
-  const [pending, setPending] = useState<string | null>(null);
-  const [error, setError] = useState(loadError ?? "");
-  const [success, setSuccess] = useState("");
-
-  const addItem = async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const validationError =
-      requiredValue(newName, "Name", 100) ??
-      optionalValue(newAmountUnit, "Default amount unit") ??
-      optionalValue(newConcentrationUnit, "Default concentration unit");
-    if (validationError) {
-      setError(validationError);
-      setSuccess("");
-      return;
-    }
-
-    setPending("create");
-    setError("");
-    setSuccess("");
-    const supabase = createClient();
-    const { data, error: insertError } = await supabase
-      .from("star_treatment_catalog")
-      .insert({
-        name: normalizeSnapshot(newName),
-        default_amount_unit: normalizeSnapshot(newAmountUnit) || null,
-        default_concentration_unit: normalizeSnapshot(newConcentrationUnit) || null,
-      })
-      .select("id, name, default_amount_unit, default_concentration_unit, updated_at")
-      .single();
-    setPending(null);
-
-    if (insertError || !data) {
-      setError(
-        insertError ? catalogError(insertError, "save") : "Quick pick could not be added.",
-      );
-      return;
-    }
-
-    setCatalog((current) =>
-      sortByName([
-        ...current,
-        {
-          id: data.id,
-          name: data.name,
-          defaultAmountUnit: data.default_amount_unit,
-          defaultConcentrationUnit: data.default_concentration_unit,
-          updatedAt: data.updated_at,
-        },
-      ]),
-    );
-    setNewName("");
-    setNewAmountUnit("");
-    setNewConcentrationUnit("");
-    setSuccess(`${data.name} added.`);
-  };
-
-  return (
-    <Card className="w-full rounded-md shadow-none">
-      <CardHeader>
-        <CardTitle className="text-xl">Star Treatment</CardTitle>
+        <CardTitle className="text-xl">{config.title}</CardTitle>
         <CardDescription>
-          Name and optional amount and concentration unit suggestions.
+          {config.description} Retired items stay on saved records but are hidden from
+          the {config.formName}.
         </CardDescription>
       </CardHeader>
       <CardContent className="grid gap-5">
         <CatalogMessages error={error} success={success} />
         {!loadError && catalog.length === 0 && (
           <p className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
-            No Star Treatment quick picks are configured.
+            No {config.title} quick picks are configured.
           </p>
         )}
-        <div className="divide-y rounded-md border">
-          {catalog.map((item) => (
-            <StarCatalogEditor
-              key={item.id}
-              item={item}
-              disabled={pending !== null || Boolean(loadError)}
-              pendingAction={pending}
-              onPending={setPending}
-              onError={(message) => { setError(message); setSuccess(""); }}
-              onSuccess={(message) => { setError(""); setSuccess(message); }}
-              onSaved={(saved) =>
-                setCatalog((current) =>
-                  sortByName(current.map((candidate) => candidate.id === saved.id ? saved : candidate)),
-                )
-              }
-              onDeleted={(id) => setCatalog((current) => current.filter((candidate) => candidate.id !== id))}
-            />
-          ))}
-        </div>
+        {catalog.length > 0 && (
+          <div className="divide-y rounded-md border">
+            {catalog.map((item) => (
+              <QuickPickCatalogItem
+                key={item.id}
+                config={config}
+                item={item}
+                disabled={disabled}
+                pendingAction={pending}
+                onPending={setPending}
+                onError={showError}
+                onSuccess={showSuccess}
+                onSaved={(saved) =>
+                  setCatalog((current) =>
+                    sortCatalogByName(
+                      current.map((candidate) => (candidate.id === saved.id ? saved : candidate)),
+                    ),
+                  )
+                }
+                onDeleted={(id) =>
+                  setCatalog((current) => current.filter((candidate) => candidate.id !== id))
+                }
+              />
+            ))}
+          </div>
+        )}
 
         <form className="grid gap-3 border-t pt-5" onSubmit={addItem} noValidate>
-          <h3 className="text-sm font-semibold">Add Star Treatment quick pick</h3>
-          <div className="grid gap-3 sm:grid-cols-3">
+          <h3 className="text-sm font-semibold">Add {config.title} quick pick</h3>
+          <div className={cn("grid gap-3", fieldGridClassName(config))}>
             <div className="grid gap-2">
-              <Label htmlFor="new-star-name">Name</Label>
-              <Input id="new-star-name" className="min-h-11" maxLength={100} value={newName} disabled={pending !== null || Boolean(loadError)} onChange={(event) => setNewName(event.target.value)} />
+              <Label htmlFor={newNameId}>Name</Label>
+              <Input
+                id={newNameId}
+                className="min-h-11"
+                maxLength={config.nameMaxLength}
+                value={newName}
+                disabled={disabled}
+                aria-invalid={Boolean(newErrors.name)}
+                aria-describedby={newErrors.name ? newNameErrorId : undefined}
+                onChange={(event) => setNewName(event.target.value)}
+              />
+              {newErrors.name && (
+                <p id={newNameErrorId} className="text-sm text-red-500">
+                  {newErrors.name}
+                </p>
+              )}
             </div>
-            <div className="grid gap-2">
-              <Label htmlFor="new-star-amount-unit">Amount unit</Label>
-              <Input id="new-star-amount-unit" className="min-h-11" maxLength={50} placeholder="Optional" value={newAmountUnit} disabled={pending !== null || Boolean(loadError)} onChange={(event) => setNewAmountUnit(event.target.value)} />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="new-star-concentration-unit">Concentration unit</Label>
-              <Input id="new-star-concentration-unit" className="min-h-11" maxLength={50} placeholder="Optional" value={newConcentrationUnit} disabled={pending !== null || Boolean(loadError)} onChange={(event) => setNewConcentrationUnit(event.target.value)} />
-            </div>
+            {config.unitFields.map((field) => (
+              <UnitSelect
+                key={field.column}
+                id={`new-${config.key}-${field.column}`}
+                label={field.label}
+                options={field.options}
+                value={newUnits[field.column] ?? ""}
+                placeholder={field.required ? "Select a unit…" : "No default"}
+                error={newErrors[field.column]}
+                disabled={disabled}
+                onChange={(value) =>
+                  setNewUnits((current) => ({ ...current, [field.column]: value }))
+                }
+              />
+            ))}
           </div>
-          <Button type="submit" className="min-h-11 w-fit" disabled={pending !== null || Boolean(loadError)}>
+          <Button type="submit" className="min-h-11 w-fit" disabled={disabled}>
             <Plus aria-hidden="true" />
-            {pending === "create" ? "Adding…" : "Add quick pick"}
+            {pending === createKey ? "Adding…" : `Add ${config.itemNoun}`}
           </Button>
         </form>
       </CardContent>
@@ -476,7 +294,8 @@ function StarCatalogManager({
   );
 }
 
-function StarCatalogEditor({
+function QuickPickCatalogItem({
+  config,
   item,
   disabled,
   pendingAction,
@@ -486,79 +305,110 @@ function StarCatalogEditor({
   onSaved,
   onDeleted,
 }: {
-  item: StarCatalogRow;
+  config: QuickPickCatalogConfig;
+  item: QuickPickCatalogRow;
   disabled: boolean;
   pendingAction: string | null;
   onPending: (value: string | null) => void;
   onError: (message: string) => void;
   onSuccess: (message: string) => void;
-  onSaved: (item: StarCatalogRow) => void;
+  onSaved: (item: QuickPickCatalogRow) => void;
   onDeleted: (id: number) => void;
 }) {
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(item.name);
-  const [amountUnit, setAmountUnit] = useState(item.defaultAmountUnit ?? "");
-  const [concentrationUnit, setConcentrationUnit] = useState(item.defaultConcentrationUnit ?? "");
-  const isSaving = pendingAction === `star-save-${item.id}`;
-  const isDeleting = pendingAction === `star-delete-${item.id}`;
+  const [units, setUnits] = useState(() => itemUnitValues(config, item));
+  const [isActive, setIsActive] = useState(item.isActive);
+  const [errors, setErrors] = useState<FieldErrors>({});
+  const builtIn = isBuiltIn(config, item.name);
+  const idPrefix = `${config.key}-${item.id}`;
+  const nameErrorId = `${idPrefix}-name-error`;
+  const builtInNoteId = `${idPrefix}-built-in-note`;
+  const saveKey = `${idPrefix}-save`;
+  const toggleKey = `${idPrefix}-toggle`;
+  const deleteKey = `${idPrefix}-delete`;
 
-  const save = async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const validationError =
-      requiredValue(name, "Name", 100) ??
-      optionalValue(amountUnit, "Default amount unit") ??
-      optionalValue(concentrationUnit, "Default concentration unit");
-    if (validationError) {
-      onError(validationError);
-      return;
-    }
+  const builtInNote = builtIn && (
+    <p id={builtInNoteId} className="basis-full text-xs text-muted-foreground">
+      Built-in quick pick: it can&apos;t be renamed or deleted. Retire it to hide it from
+      the {config.formName}.
+    </p>
+  );
 
-    onPending(`star-save-${item.id}`);
+  const startEditing = () => {
+    setName(item.name);
+    setUnits(itemUnitValues(config, item));
+    setIsActive(item.isActive);
+    setErrors({});
+    setEditing(true);
+  };
+
+  const update = async (values: Record<string, unknown>, pendingKey: string) => {
+    onPending(pendingKey);
     const supabase = createClient();
     const { data, error } = await supabase
-      .from("star_treatment_catalog")
-      .update({
-        name: normalizeSnapshot(name),
-        default_amount_unit: normalizeSnapshot(amountUnit) || null,
-        default_concentration_unit: normalizeSnapshot(concentrationUnit) || null,
-      })
+      .from(config.table)
+      .update(values)
       .eq("id", item.id)
       .eq("updated_at", item.updatedAt)
-      .select("id, name, default_amount_unit, default_concentration_unit, updated_at")
+      .select<string, Record<string, unknown>>(quickPickSelectColumns(config))
       .maybeSingle();
     onPending(null);
 
     if (error || !data) {
       onError(
         error
-          ? catalogError(error, "save")
-          : "This quick pick changed elsewhere. Refresh before saving again.",
+          ? catalogError(config, error, item.name)
+          : `${item.name} changed elsewhere. Refresh before trying again.`,
       );
+      return null;
+    }
+
+    const saved = toQuickPickCatalogRow(config, data);
+    onSaved(saved);
+    return saved;
+  };
+
+  const save = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const nextErrors = validateEntry(config, name, units);
+    setErrors(nextErrors);
+    if (hasErrors(nextErrors)) {
+      onError("Check the highlighted fields.");
       return;
     }
 
-    const saved = {
-      id: data.id,
-      name: data.name,
-      defaultAmountUnit: data.default_amount_unit,
-      defaultConcentrationUnit: data.default_concentration_unit,
-      updatedAt: data.updated_at,
-    };
-    setName(saved.name);
-    setAmountUnit(saved.defaultAmountUnit ?? "");
-    setConcentrationUnit(saved.defaultConcentrationUnit ?? "");
+    const saved = await update(
+      {
+        ...(builtIn ? {} : { name: normalizeSnapshot(name) }),
+        ...unitPayload(config, units),
+        is_active: isActive,
+      },
+      saveKey,
+    );
+    if (!saved) return;
     setEditing(false);
-    onSaved(saved);
     onSuccess(`${saved.name} saved.`);
   };
 
-  const remove = async () => {
-    if (!window.confirm(`Delete the ${item.name} quick pick?`)) return;
+  const toggleActive = async () => {
+    const saved = await update({ is_active: !item.isActive }, toggleKey);
+    if (saved) onSuccess(saved.isActive ? `${saved.name} reactivated.` : `${saved.name} retired.`);
+  };
 
-    onPending(`star-delete-${item.id}`);
+  const remove = async () => {
+    if (
+      !window.confirm(
+        `Delete ${item.name}? Items used by saved ${config.usedBy} can only be retired.`,
+      )
+    ) {
+      return;
+    }
+
+    onPending(deleteKey);
     const supabase = createClient();
     const { data, error } = await supabase
-      .from("star_treatment_catalog")
+      .from(config.table)
       .delete()
       .eq("id", item.id)
       .eq("updated_at", item.updatedAt)
@@ -569,8 +419,8 @@ function StarCatalogEditor({
     if (error || !data) {
       onError(
         error
-          ? catalogError(error, "delete")
-          : "This quick pick changed elsewhere. Refresh before deleting it.",
+          ? catalogError(config, error, item.name)
+          : `${item.name} changed elsewhere. Refresh before deleting it.`,
       );
       return;
     }
@@ -580,41 +430,132 @@ function StarCatalogEditor({
   };
 
   if (!editing) {
+    const isToggling = pendingAction === toggleKey;
     return (
-      <div className="flex flex-wrap items-center justify-between gap-3 p-4">
-        <div>
-          <p className="text-sm font-medium">{item.name}</p>
-          <p className="text-xs text-muted-foreground">
-            Amount: {item.defaultAmountUnit ?? "No default"}; concentration: {item.defaultConcentrationUnit ?? "No default"}
+      <div
+        className={cn(
+          "flex flex-wrap items-center justify-between gap-3 p-4",
+          !item.isActive && "bg-muted/50",
+        )}
+      >
+        <div className="grid gap-1">
+          <p className={cn("text-sm font-medium", !item.isActive && "text-muted-foreground")}>
+            {item.name}
           </p>
+          <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+            {!item.isActive && (
+              <Badge variant="outline" className="text-muted-foreground">
+                Retired
+              </Badge>
+            )}
+            {builtIn && <Badge variant="secondary">Built-in</Badge>}
+            <span>{unitSummary(config, item)}</span>
+          </div>
         </div>
-        <div className="flex gap-2">
-          <Button type="button" variant="outline" className="min-h-11" disabled={disabled} onClick={() => setEditing(true)}><Pencil aria-hidden="true" /> Edit</Button>
-          <Button type="button" variant="outline" className="min-h-11" disabled={disabled} onClick={remove}><Trash2 aria-hidden="true" /> {isDeleting ? "Deleting…" : "Delete"}</Button>
+        <div className="flex flex-wrap gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            className="min-h-11"
+            disabled={disabled}
+            onClick={startEditing}
+          >
+            <Pencil aria-hidden="true" /> Edit
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            className="min-h-11"
+            disabled={disabled}
+            onClick={toggleActive}
+          >
+            {item.isActive ? (
+              <>
+                <Archive aria-hidden="true" /> {isToggling ? "Retiring…" : "Retire"}
+              </>
+            ) : (
+              <>
+                <ArchiveRestore aria-hidden="true" />{" "}
+                {isToggling ? "Reactivating…" : "Reactivate"}
+              </>
+            )}
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            className="min-h-11"
+            disabled={disabled || builtIn}
+            aria-describedby={builtIn ? builtInNoteId : undefined}
+            onClick={remove}
+          >
+            <Trash2 aria-hidden="true" />{" "}
+            {pendingAction === deleteKey ? "Deleting…" : "Delete"}
+          </Button>
         </div>
+        {builtInNote}
       </div>
     );
   }
 
+  const isSaving = pendingAction === saveKey;
   return (
     <form className="grid gap-3 p-4" onSubmit={save} noValidate aria-busy={isSaving}>
-      <div className="grid gap-3 sm:grid-cols-3">
+      <div className={cn("grid gap-3", fieldGridClassName(config))}>
         <div className="grid gap-2">
-          <Label htmlFor={`star-${item.id}-name`}>Name</Label>
-          <Input id={`star-${item.id}-name`} className="min-h-11" maxLength={100} value={name} disabled={disabled} onChange={(event) => setName(event.target.value)} />
+          <Label htmlFor={`${idPrefix}-name`}>Name</Label>
+          <Input
+            id={`${idPrefix}-name`}
+            className="min-h-11"
+            maxLength={config.nameMaxLength}
+            value={name}
+            disabled={disabled || builtIn}
+            aria-invalid={Boolean(errors.name)}
+            aria-describedby={describedBy(errors.name && nameErrorId, builtIn && builtInNoteId)}
+            onChange={(event) => setName(event.target.value)}
+          />
+          {errors.name && (
+            <p id={nameErrorId} className="text-sm text-red-500">
+              {errors.name}
+            </p>
+          )}
         </div>
-        <div className="grid gap-2">
-          <Label htmlFor={`star-${item.id}-amount-unit`}>Amount unit</Label>
-          <Input id={`star-${item.id}-amount-unit`} className="min-h-11" maxLength={50} placeholder="No default" value={amountUnit} disabled={disabled} onChange={(event) => setAmountUnit(event.target.value)} />
-        </div>
-        <div className="grid gap-2">
-          <Label htmlFor={`star-${item.id}-concentration-unit`}>Concentration unit</Label>
-          <Input id={`star-${item.id}-concentration-unit`} className="min-h-11" maxLength={50} placeholder="No default" value={concentrationUnit} disabled={disabled} onChange={(event) => setConcentrationUnit(event.target.value)} />
-        </div>
+        {config.unitFields.map((field) => (
+          <UnitSelect
+            key={field.column}
+            id={`${idPrefix}-${field.column}`}
+            label={field.label}
+            options={field.options}
+            value={units[field.column] ?? ""}
+            placeholder={field.required ? "Select a unit…" : "No default"}
+            error={errors[field.column]}
+            disabled={disabled}
+            onChange={(value) => setUnits((current) => ({ ...current, [field.column]: value }))}
+          />
+        ))}
+      </div>
+      {builtInNote}
+      <div className="flex min-h-11 items-center gap-2">
+        <Checkbox
+          id={`${idPrefix}-active`}
+          checked={isActive}
+          disabled={disabled}
+          onCheckedChange={(checked) => setIsActive(checked === true)}
+        />
+        <Label htmlFor={`${idPrefix}-active`}>Active in {config.formName}</Label>
       </div>
       <div className="flex gap-2">
-        <Button type="submit" className="min-h-11" disabled={disabled}><Save aria-hidden="true" /> {isSaving ? "Saving…" : "Save"}</Button>
-        <Button type="button" variant="ghost" className="min-h-11" disabled={disabled} onClick={() => { setName(item.name); setAmountUnit(item.defaultAmountUnit ?? ""); setConcentrationUnit(item.defaultConcentrationUnit ?? ""); setEditing(false); }}><X aria-hidden="true" /> Cancel</Button>
+        <Button type="submit" className="min-h-11" disabled={disabled}>
+          <Save aria-hidden="true" /> {isSaving ? "Saving…" : "Save"}
+        </Button>
+        <Button
+          type="button"
+          variant="ghost"
+          className="min-h-11"
+          disabled={disabled}
+          onClick={() => setEditing(false)}
+        >
+          <X aria-hidden="true" /> Cancel
+        </Button>
       </div>
     </form>
   );

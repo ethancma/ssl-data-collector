@@ -18,6 +18,10 @@ import {
   signInRoleClient,
   TECH_EMAIL,
   TECH_PASSWORD,
+  VOLUNTEER_EMAIL,
+  VOLUNTEER_PASSWORD,
+  VIEWER_EMAIL,
+  VIEWER_PASSWORD,
   RUN_TAG,
   todayDateString,
   daysAgoDateString,
@@ -130,22 +134,32 @@ test.describe("e2e smoke", () => {
     await login(page);
     await page.goto("/protected/daily-operations?type=feeding");
     await page.getByLabel("Animal").selectOption(String(ssl25AnimalId));
-    await page.getByRole("button", { name: "Krill" }).click();
-    await page.getByLabel("Amount").fill("2 krill");
+    await expect(page.getByLabel("Food name")).toHaveCount(0);
+    await page.getByRole("radio", { name: "Krill", exact: true }).check();
+    await expect(page.getByLabel("Unit", { exact: true })).toHaveValue("pieces");
+    await page.getByLabel("Amount (optional)").fill("2.5");
     await page.getByLabel("Notes").fill(`${RUN_TAG} feeding`);
     await page.getByRole("button", { name: "Save feeding" }).click();
     await expect(page).toHaveURL(/\/protected\/home/);
 
     const rows = dbQuery(`
-      select id, animal_id, food_type, amount, consumption_status, fed_at
+      select id, animal_id, food_catalog_id, food_name,
+        amount, amount_value, amount_unit, consumption_status, fed_at
       from core.feeding_logs
       where notes = '${RUN_TAG} feeding'
     `);
     expect(rows).toHaveLength(1);
     const feeding = rows[0];
+    const catalogRows = dbQuery(`
+      select id from core.food_catalog where name = 'Krill' and is_active
+    `);
+    expect(catalogRows).toHaveLength(1);
     expect(Number(feeding.animal_id)).toBe(ssl25AnimalId);
-    expect(feeding.food_type).toBe("krill");
-    expect(feeding.amount).toBe("2 krill");
+    expect(Number(feeding.food_catalog_id)).toBe(Number(catalogRows[0].id));
+    expect(feeding.food_name).toBe("Krill");
+    expect(feeding.amount).toBeNull();
+    expect(Number(feeding.amount_value)).toBe(2.5);
+    expect(feeding.amount_unit).toBe("pieces");
     expect(feeding.consumption_status).toBeNull();
     expect(localDateOf(String(feeding.fed_at))).toBe(todayDateString());
   });
@@ -539,7 +553,7 @@ test.describe("e2e smoke", () => {
     await page.getByLabel("System", { exact: true }).selectOption(String(chemicalSystemId));
     await page.getByRole("radio", { name: "C-Balance", exact: true }).click();
     await page.getByLabel("Amount").fill("50");
-    await page.getByLabel("Unit").fill("mL");
+    await page.getByLabel("Unit", { exact: true }).selectOption("mL");
     await page.getByLabel("Reason").fill(`${RUN_TAG} chemical addition picked time`);
     await page.getByRole("button", { name: "Save system addition" }).click();
     await expect(page).toHaveURL(/\/protected\/home/);
@@ -602,6 +616,340 @@ test.describe("e2e smoke", () => {
     expect(rows[0].task_type).toBe("filter_change");
     expect(localDateOf(String(rows[0].performed_at))).toBe(todayDateString());
     expect(localTimeOf(String(rows[0].performed_at))).toBe(PICKED_TIME);
+  });
+});
+
+test.describe("food catalog quick picks", () => {
+  test.describe.configure({ mode: "serial" });
+  test.skip(!ADMIN_PASSWORD || !TECH_PASSWORD, "Admin and technician test accounts required");
+
+  const techFoodName = `${RUN_TAG} tech food`;
+  const renamedName = `${RUN_TAG} renamed tech food`;
+  const disposableName = `${RUN_TAG} disposable food`;
+  const notesPrefix = `${RUN_TAG} catalog`;
+  const feedingNotes = `${notesPrefix} feeding`;
+  let catalogId: number;
+  let ssl25AnimalId: number;
+  let ssl25TankId: number;
+  let krillCatalogId: number;
+  let brineShrimpCatalogId: number;
+
+  const feedingCatalogCard = (page: Page) =>
+    page.getByText("Feeding", { exact: true }).locator("../..");
+
+  test.beforeAll(() => {
+    const animal = dbQuery(`select id, tank_id from core.animals where name = 'SSL25'`)[0];
+    ssl25AnimalId = Number(animal?.id);
+    ssl25TankId = Number(animal?.tank_id);
+    const foods = dbQuery(`select id, name from core.food_catalog
+      where name in ('Krill', 'Brine shrimp') and is_active`);
+    krillCatalogId = Number(foods.find((row) => row.name === "Krill")?.id);
+    brineShrimpCatalogId = Number(foods.find((row) => row.name === "Brine shrimp")?.id);
+    expect(ssl25AnimalId).toBeGreaterThan(0);
+    expect(krillCatalogId).toBeGreaterThan(0);
+    expect(brineShrimpCatalogId).toBeGreaterThan(0);
+  });
+
+  test.afterAll(() => {
+    dbQuery(`delete from core.feeding_logs where notes like ${sqlLiteral(`${notesPrefix}%`)}`);
+    dbQuery(`delete from core.food_catalog where name like ${sqlLiteral(`${RUN_TAG}%`)}`);
+  });
+
+  test("feeding form lists active foods alphabetically with the first preselected", async ({
+    page,
+  }) => {
+    const active = dbQuery(`select name, default_unit from core.food_catalog where is_active`)
+      .map((row) => ({ name: String(row.name), unit: String(row.default_unit) }))
+      .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
+    expect(active.length).toBeGreaterThan(0);
+    expect(dbQuery(`select name, default_unit from core.food_catalog
+      where name = 'Microalgae'`)).toEqual([{ name: "Microalgae", default_unit: "mL" }]);
+    expect(dbQuery(`select count(*)::int as n from core.food_catalog
+      where name <> 'Microalgae' and name not like 'e2e-%' and default_unit <> 'pieces'`))
+      .toEqual([{ n: 0 }]);
+
+    await login(page);
+    await page.goto("/protected/daily-operations?type=feeding");
+    const radios = page.getByRole("group", { name: "Food quick pick" }).getByRole("radio");
+    const labels = await radios.evaluateAll((items) =>
+      items.map((item) => item.parentElement?.textContent?.trim() ?? ""),
+    );
+    expect(labels).toEqual([...active.map((item) => item.name), "Other"]);
+    await expect(radios.first()).toBeChecked();
+    await expect(page.getByLabel("Unit", { exact: true })).toHaveValue(active[0].unit);
+    await expect(page.getByText("Select the matching quick pick instead")).toHaveCount(0);
+    const unitOptions = await page.getByLabel("Unit", { exact: true })
+      .locator("option")
+      .allTextContents();
+    expect(unitOptions).toEqual(["Select a unit…", "pieces", "mL", "L", "Other"]);
+  });
+
+  test("Other requires a food name, rejects text amounts, and free-text Krill auto-links", async ({
+    page,
+  }) => {
+    await login(page);
+    await page.goto("/protected/daily-operations?type=feeding");
+    const form = page.locator("form");
+    await form.getByLabel("Animal").selectOption(String(ssl25AnimalId));
+    await expect(form.getByLabel("Food name")).toHaveCount(0);
+    await form.getByRole("radio", { name: "Other", exact: true }).check();
+    await form.getByRole("button", { name: "Save feeding" }).click();
+    await expect(form.getByText("Enter a food name other than Other")).toBeVisible();
+
+    await form.getByLabel("Food name").fill("Krill");
+    await form.getByLabel("Amount (optional)").fill("2 krill");
+    await form.getByRole("button", { name: "Save feeding" }).click();
+    await expect(form.getByText("Enter a finite numeric amount")).toBeVisible();
+    await expect(page).toHaveURL(/\/protected\/daily-operations\?type=feeding/);
+    expect(dbQuery(`select id from core.feeding_logs
+      where notes = ${sqlLiteral(`${notesPrefix} free-text krill`)}`)).toHaveLength(0);
+
+    await form.getByLabel("Amount (optional)").fill("0.75");
+    await expect(form.getByLabel("Unit", { exact: true })).toHaveValue("pieces");
+    await form.getByLabel("Notes").fill(`${notesPrefix} free-text krill`);
+    await form.getByRole("button", { name: "Save feeding" }).click();
+    await expect(form.getByText("Select the matching quick pick instead")).toHaveCount(0);
+    await expect(page).toHaveURL(/\/protected\/home/);
+
+    const rows = dbQuery(`select animal_id, food_catalog_id, food_name, amount,
+        amount_value, amount_unit
+      from core.feeding_logs where notes = ${sqlLiteral(`${notesPrefix} free-text krill`)}`);
+    expect(rows).toHaveLength(1);
+    expect(Number(rows[0].animal_id)).toBe(ssl25AnimalId);
+    expect(Number(rows[0].food_catalog_id)).toBe(krillCatalogId);
+    expect(rows[0].food_name).toBe("Krill");
+    expect(rows[0].amount).toBeNull();
+    expect(Number(rows[0].amount_value)).toBe(0.75);
+    expect(rows[0].amount_unit).toBe("pieces");
+  });
+
+  test("normalized free-text food auto-links and an unmatched name stays unlinked", async ({
+    page,
+  }) => {
+    await login(page);
+    await page.goto("/protected/daily-operations?type=feeding");
+    await page.getByLabel("Animal").selectOption(String(ssl25AnimalId));
+    await page.getByRole("radio", { name: "Other", exact: true }).check();
+    await page.getByLabel("Food name").fill("  BRINE_shrimp ");
+    await page.getByLabel("Amount (optional)").fill("3");
+    await page.getByLabel("Unit", { exact: true }).selectOption("mL");
+    await page.getByLabel("Notes").fill(`${notesPrefix} normalized brine`);
+    await page.getByRole("button", { name: "Save feeding" }).click();
+    await expect(page).toHaveURL(/\/protected\/home/);
+
+    await page.goto("/protected/daily-operations?type=feeding");
+    await page.getByLabel("Animal").selectOption(String(ssl25AnimalId));
+    await page.getByRole("radio", { name: "Other", exact: true }).check();
+    await page.getByLabel("Food name").fill(`${RUN_TAG} copepods`);
+    await page.getByLabel("Amount (optional)").fill("1.25");
+    await page.getByLabel("Unit", { exact: true }).selectOption({ label: "Other" });
+    await page.getByLabel("Other unit").fill("scoops");
+    await page.getByLabel("Notes").fill(`${notesPrefix} unmatched`);
+    await page.getByRole("button", { name: "Save feeding" }).click();
+    await expect(page).toHaveURL(/\/protected\/home/);
+
+    expect(dbQuery(`select notes, food_catalog_id, food_name, amount_value, amount_unit
+      from core.feeding_logs
+      where notes in (${sqlLiteral(`${notesPrefix} normalized brine`)},
+        ${sqlLiteral(`${notesPrefix} unmatched`)})
+      order by notes`)).toEqual([
+      {
+        notes: `${notesPrefix} normalized brine`,
+        food_catalog_id: brineShrimpCatalogId,
+        food_name: "Brine shrimp",
+        amount_value: 3,
+        amount_unit: "mL",
+      },
+      {
+        notes: `${notesPrefix} unmatched`,
+        food_catalog_id: null,
+        food_name: `${RUN_TAG} copepods`,
+        amount_value: 1.25,
+        amount_unit: "scoops",
+      },
+    ]);
+  });
+
+  test("feeding with no amount stores a null unit and the DB enforces unit rules", async ({
+    page,
+  }) => {
+    await login(page);
+    await page.goto("/protected/daily-operations?type=feeding");
+    await page.getByLabel("Animal").selectOption(String(ssl25AnimalId));
+    await page.getByRole("radio", { name: "Krill", exact: true }).check();
+    await expect(page.getByLabel("Amount (optional)")).toHaveValue("");
+    await expect(page.getByLabel("Unit", { exact: true })).toHaveValue("pieces");
+    await page.getByLabel("Notes").fill(`${notesPrefix} no amount`);
+    await page.getByRole("button", { name: "Save feeding" }).click();
+    await expect(page).toHaveURL(/\/protected\/home/);
+    expect(dbQuery(`select food_catalog_id, amount, amount_value, amount_unit
+      from core.feeding_logs where notes = ${sqlLiteral(`${notesPrefix} no amount`)}`))
+      .toEqual([
+        { food_catalog_id: krillCatalogId, amount: null, amount_value: null, amount_unit: null },
+      ]);
+
+    const technician = await signInRoleClient(TECH_EMAIL, TECH_PASSWORD);
+    const base = { tank_id: ssl25TankId, animal_id: ssl25AnimalId, food_catalog_id: krillCatalogId };
+    const { error: missingUnit } = await technician.from("feeding_logs")
+      .insert({ ...base, amount_value: 1, notes: `${notesPrefix} db missing unit` });
+    expect(missingUnit?.code).toBe("23514");
+    expect(missingUnit?.message).toContain("Amount unit is required");
+    const { error: zeroAmount } = await technician.from("feeding_logs")
+      .insert({ ...base, amount_value: 0, amount_unit: "pieces", notes: `${notesPrefix} db zero` });
+    expect(zeroAmount?.code).toBe("23514");
+    const { error: unitWithoutAmount } = await technician.from("feeding_logs")
+      .insert({ ...base, amount_unit: "pieces", notes: `${notesPrefix} db unit only` });
+    expect(unitWithoutAmount).toBeNull();
+    expect(dbQuery(`select notes, amount_value, amount_unit from core.feeding_logs
+      where notes like ${sqlLiteral(`${notesPrefix} db%`)}`)).toEqual([
+      { notes: `${notesPrefix} db unit only`, amount_value: null, amount_unit: null },
+    ]);
+  });
+
+  test("Technician adds and retires a food; retired food leaves the form but keeps history", async ({
+    page,
+  }) => {
+    await loginAs(page, TECH_EMAIL, TECH_PASSWORD);
+    await page.goto("/protected/settings/quick-picks");
+    const feedingCatalog = feedingCatalogCard(page);
+    await expect(feedingCatalog.getByLabel("Default unit", { exact: true })).toHaveValue("pieces");
+    await feedingCatalog.getByLabel("Name").fill(techFoodName);
+    await feedingCatalog.getByLabel("Default unit", { exact: true }).selectOption("mL");
+    await feedingCatalog.getByRole("button", { name: "Add food" }).click();
+    await expect(feedingCatalog.getByText(`${techFoodName} added.`)).toBeVisible();
+    const created = dbQuery(`select id, name, default_unit, is_active
+      from core.food_catalog where name = ${sqlLiteral(techFoodName)}`);
+    expect(created).toHaveLength(1);
+    catalogId = Number(created[0].id);
+    expect(created[0]).toMatchObject({ name: techFoodName, default_unit: "mL", is_active: true });
+
+    const foodRow = feedingCatalog.getByText(techFoodName, { exact: true }).locator("../..");
+    await foodRow.getByRole("button", { name: "Edit" }).click();
+    const foodEditor = feedingCatalog.locator("form[aria-busy]");
+    await foodEditor.getByLabel("Name").fill(renamedName);
+    await foodEditor.getByLabel("Default unit", { exact: true }).selectOption("L");
+    await foodEditor.getByRole("button", { name: "Save", exact: true }).click();
+    await expect(feedingCatalog.getByText(`${renamedName} saved.`)).toBeVisible();
+    expect(dbQuery(`select name, default_unit from core.food_catalog where id = ${catalogId}`))
+      .toEqual([{ name: renamedName, default_unit: "L" }]);
+
+    await page.goto("/protected/daily-operations?type=feeding");
+    await page.getByLabel("Animal").selectOption(String(ssl25AnimalId));
+    await page.getByRole("radio", { name: renamedName, exact: true }).check();
+    await expect(page.getByLabel("Food name")).toHaveCount(0);
+    await expect(page.getByLabel("Unit", { exact: true })).toHaveValue("L");
+    await page.getByLabel("Amount (optional)").fill("1.5");
+    await page.getByLabel("Notes").fill(feedingNotes);
+    await page.getByRole("button", { name: "Save feeding" }).click();
+    await expect(page).toHaveURL(/\/protected\/home/);
+    expect(dbQuery(`select food_catalog_id, food_name, amount_value, amount_unit
+      from core.feeding_logs where notes = ${sqlLiteral(feedingNotes)}`)).toEqual([
+      { food_catalog_id: catalogId, food_name: renamedName, amount_value: 1.5, amount_unit: "L" },
+    ]);
+
+    await page.goto("/protected/settings/quick-picks");
+    const referencedRow = feedingCatalogCard(page)
+      .getByText(renamedName, { exact: true })
+      .locator("../..");
+    page.once("dialog", (dialog) => dialog.accept());
+    await referencedRow.getByRole("button", { name: "Delete" }).click();
+    await expect(
+      feedingCatalogCard(page).getByText(
+        `${renamedName} is used by saved feeding logs, so it cannot be deleted. Retire it instead.`,
+      ),
+    ).toBeVisible();
+    expect(dbQuery(`select id from core.food_catalog where id = ${catalogId}`)).toHaveLength(1);
+
+    await referencedRow.getByRole("button", { name: "Retire" }).click();
+    await expect(feedingCatalogCard(page).getByText(`${renamedName} retired.`)).toBeVisible();
+    await expect(referencedRow.getByText("Retired", { exact: true })).toBeVisible();
+    expect(dbQuery(`select is_active from core.food_catalog where id = ${catalogId}`))
+      .toEqual([{ is_active: false }]);
+
+    await page.goto("/protected/daily-operations?type=feeding");
+    await expect(page.getByRole("radio", { name: "Other", exact: true })).toBeVisible();
+    await expect(page.getByRole("radio", { name: renamedName, exact: true })).toHaveCount(0);
+    expect(dbQuery(`select food_catalog_id, food_name from core.feeding_logs
+      where notes = ${sqlLiteral(feedingNotes)}`)).toEqual([
+      { food_catalog_id: catalogId, food_name: renamedName },
+    ]);
+
+    const technician = await signInRoleClient(TECH_EMAIL, TECH_PASSWORD);
+    const { error: retiredPick } = await technician.from("feeding_logs").insert({
+      tank_id: ssl25TankId,
+      animal_id: ssl25AnimalId,
+      food_catalog_id: catalogId,
+      notes: `${notesPrefix} retired pick`,
+    });
+    expect(retiredPick?.code).toBe("23514");
+    expect(retiredPick?.message).toBe("Select an active food quick pick.");
+    const { error: retiredText } = await technician.from("feeding_logs").insert({
+      tank_id: ssl25TankId,
+      animal_id: ssl25AnimalId,
+      food_name: renamedName,
+      notes: `${notesPrefix} retired text`,
+    });
+    expect(retiredText).toBeNull();
+    expect(dbQuery(`select notes, food_catalog_id, food_name from core.feeding_logs
+      where notes like ${sqlLiteral(`${notesPrefix} retired%`)}`)).toEqual([
+      { notes: `${notesPrefix} retired text`, food_catalog_id: null, food_name: renamedName },
+    ]);
+
+    await page.goto("/protected/settings/quick-picks");
+    await feedingCatalogCard(page)
+      .getByText(renamedName, { exact: true })
+      .locator("../..")
+      .getByRole("button", { name: "Reactivate" })
+      .click();
+    await expect(feedingCatalogCard(page).getByText(`${renamedName} reactivated.`)).toBeVisible();
+    expect(dbQuery(`select is_active from core.food_catalog where id = ${catalogId}`))
+      .toEqual([{ is_active: true }]);
+  });
+
+  test("Technician can delete an unused custom food", async ({ page }) => {
+    await loginAs(page, TECH_EMAIL, TECH_PASSWORD);
+    await page.goto("/protected/settings/quick-picks");
+    const feedingCatalog = feedingCatalogCard(page);
+    await feedingCatalog.getByLabel("Name").fill(disposableName);
+    await feedingCatalog.getByRole("button", { name: "Add food" }).click();
+    await expect(feedingCatalog.getByText(`${disposableName} added.`)).toBeVisible();
+    expect(dbQuery(`select default_unit from core.food_catalog
+      where name = ${sqlLiteral(disposableName)}`)).toEqual([{ default_unit: "pieces" }]);
+    page.once("dialog", (dialog) => dialog.accept());
+    await feedingCatalog.getByText(disposableName, { exact: true }).locator("../..")
+      .getByRole("button", { name: "Delete" }).click();
+    await expect(feedingCatalog.getByText(`${disposableName} deleted.`)).toBeVisible();
+    expect(dbQuery(`select id from core.food_catalog
+      where name = ${sqlLiteral(disposableName)}`)).toHaveLength(0);
+  });
+
+  test("active roles can read food; Volunteer and Viewer cannot modify it", async () => {
+    const krill = dbQuery(`select id, name from core.food_catalog
+      where name = 'Krill' and is_active`);
+    expect(krill).toHaveLength(1);
+    for (const [email, password] of [
+      [VOLUNTEER_EMAIL, VOLUNTEER_PASSWORD],
+      [VIEWER_EMAIL, VIEWER_PASSWORD],
+    ]) {
+      const client = await signInRoleClient(email, password);
+      const { data, error } = await client.from("food_catalog").select("id, name")
+        .eq("name", "Krill").eq("is_active", true);
+      expect(error).toBeNull();
+      expect(data).toEqual(krill);
+      const { error: insertError } = await client.from("food_catalog")
+        .insert({ name: `${RUN_TAG} unauthorized food` });
+      expect(insertError).not.toBeNull();
+      const { error: updateError } = await client.from("food_catalog")
+        .update({ name: `${RUN_TAG} unauthorized rename` }).eq("id", krill[0].id);
+      expect(updateError).not.toBeNull();
+      const { error: deleteError } = await client.from("food_catalog")
+        .delete().eq("id", krill[0].id);
+      expect(deleteError).not.toBeNull();
+    }
+    expect(dbQuery(`select id, name from core.food_catalog
+      where name = 'Krill' and is_active`)).toEqual(krill);
+    expect(dbQuery(`select id from core.food_catalog
+      where name = ${sqlLiteral(`${RUN_TAG} unauthorized food`)}`)).toHaveLength(0);
   });
 });
 
@@ -707,9 +1055,10 @@ test.describe("P1 database-owned systems and Chemical addition quick picks", () 
     );
     await expect(page.getByRole("radio", { name: "C-Balance", exact: true })).toBeChecked();
     await expect(page.getByLabel("Chemical/product name")).toHaveCount(0);
-    await expect(page.getByLabel("Unit")).toHaveValue("mL");
+    await expect(page.getByLabel("Unit", { exact: true })).toHaveValue("mL");
     await page.getByLabel("Amount").fill("2.5");
-    await page.getByLabel("Unit").fill("drops");
+    await page.getByLabel("Unit", { exact: true }).selectOption({ label: "Other" });
+    await page.getByLabel("Other unit").fill("drops");
     await page.getByLabel("Reason").fill(`${tag} referenced`);
     await page.getByRole("button", { name: "Save system addition" }).click();
     await expect(page).toHaveURL(/\/protected\/home/);
@@ -734,7 +1083,8 @@ test.describe("P1 database-owned systems and Chemical addition quick picks", () 
     await expect(page.getByLabel("Chemical/product name")).toBeVisible();
     await page.getByLabel("Chemical/product name").fill("  Custom   Buffer  ");
     await page.getByLabel("Amount").fill("3");
-    await page.getByLabel("Unit").fill(" g ");
+    await page.getByLabel("Unit", { exact: true }).selectOption({ label: "Other" });
+    await page.getByLabel("Other unit").fill(" g ");
     await page.getByLabel("Reason").fill(`${tag} free text`);
     await page.getByRole("button", { name: "Save system addition" }).click();
     await expect(page).toHaveURL(/\/protected\/home/);

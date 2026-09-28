@@ -18,6 +18,7 @@ import { StarTreatmentForm } from "@/components/star-treatment-form";
 import { WaterQualityForm } from "@/components/water-quality-form";
 import type {
   ChemicalAdditionCatalogItem,
+  FoodCatalogItem,
   StarTreatmentCatalogItem,
 } from "@/components/daily-operations/quick-pick-catalogs";
 import type { WaterQualityTargetRange } from "@/components/daily-operations/water-quality-targets";
@@ -52,6 +53,8 @@ export type SharedFormData = {
   }[];
   chemicalCatalog: ChemicalAdditionCatalogItem[];
   chemicalCatalogLoadError?: string;
+  foodCatalog: FoodCatalogItem[];
+  foodCatalogLoadError?: string;
   starTreatmentCatalog: StarTreatmentCatalogItem[];
   starTreatmentCatalogLoadError?: string;
   waterQualityTargets: WaterQualityTargetRange[];
@@ -126,7 +129,13 @@ export function renderLogForm(
         />
       );
     case "feeding":
-      return <FeedingLogForm animals={data.animals} />;
+      return (
+        <FeedingLogForm
+          animals={data.animals}
+          catalogs={data.foodCatalog}
+          catalogLoadError={data.foodCatalogLoadError}
+        />
+      );
     case "water-quality":
       return (
         <WaterQualityForm

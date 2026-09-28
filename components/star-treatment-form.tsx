@@ -4,7 +4,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
-import { useForm } from "react-hook-form";
+import { Controller, useForm } from "react-hook-form";
 import { z } from "zod";
 
 import {
@@ -29,6 +29,8 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { UnitSelect } from "@/components/unit-select";
+import { MEASUREMENT_UNITS } from "@/lib/config/reference-data";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 
@@ -160,6 +162,7 @@ export function StarTreatmentForm({
   const defaultTreatment = selectStarTreatmentCatalogItem(defaultCatalog);
 
   const {
+    control,
     register,
     handleSubmit,
     reset,
@@ -583,7 +586,7 @@ export function StarTreatmentForm({
 
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="grid gap-3 rounded-md border p-4">
-              <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_8rem]">
+              <div className="grid items-start gap-2 sm:grid-cols-[minmax(0,1fr)_8rem]">
                 <div className="grid gap-2">
                   <Label htmlFor="star-treatment-amount">Amount</Label>
                   <Input
@@ -597,23 +600,22 @@ export function StarTreatmentForm({
                     {...register("amount")}
                   />
                 </div>
-                <div className="grid gap-2">
-                  <Label htmlFor="star-treatment-unit">Unit</Label>
-                  <Input
-                    id="star-treatment-unit"
-                    type="text"
-                    className="min-h-11"
-                    placeholder="mL"
-                    aria-describedby={errors.unit ? "star-treatment-unit-error" : undefined}
-                    aria-invalid={Boolean(errors.unit)}
-                    {...register("unit")}
-                  />
-                  {errors.unit && (
-                    <p id="star-treatment-unit-error" className="text-sm text-red-500">
-                      {errors.unit.message}
-                    </p>
+                <Controller
+                  control={control}
+                  name="unit"
+                  render={({ field }) => (
+                    <UnitSelect
+                      id="star-treatment-unit"
+                      label="Unit"
+                      placeholder="Select…"
+                      options={MEASUREMENT_UNITS}
+                      value={field.value}
+                      onChange={field.onChange}
+                      onBlur={field.onBlur}
+                      error={errors.unit?.message}
+                    />
                   )}
-                </div>
+                />
               </div>
               {errors.amount && (
                 <p id="star-treatment-amount-error" className="text-sm text-red-500">
@@ -623,7 +625,7 @@ export function StarTreatmentForm({
             </div>
 
             <div className="grid gap-3 rounded-md border p-4">
-              <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_8rem]">
+              <div className="grid items-start gap-2 sm:grid-cols-[minmax(0,1fr)_8rem]">
                 <div className="grid gap-2">
                   <Label htmlFor="star-treatment-concentration">Concentration</Label>
                   <Input
@@ -639,30 +641,22 @@ export function StarTreatmentForm({
                     {...register("concentration")}
                   />
                 </div>
-                <div className="grid gap-2">
-                  <Label htmlFor="star-treatment-concentration-unit">Unit</Label>
-                  <Input
-                    id="star-treatment-concentration-unit"
-                    type="text"
-                    className="min-h-11"
-                    placeholder="ppm"
-                    aria-describedby={
-                      errors.concentrationUnit
-                        ? "star-treatment-concentration-unit-error"
-                        : undefined
-                    }
-                    aria-invalid={Boolean(errors.concentrationUnit)}
-                    {...register("concentrationUnit")}
-                  />
-                  {errors.concentrationUnit && (
-                    <p
-                      id="star-treatment-concentration-unit-error"
-                      className="text-sm text-red-500"
-                    >
-                      {errors.concentrationUnit.message}
-                    </p>
+                <Controller
+                  control={control}
+                  name="concentrationUnit"
+                  render={({ field }) => (
+                    <UnitSelect
+                      id="star-treatment-concentration-unit"
+                      label="Unit"
+                      placeholder="Select…"
+                      options={MEASUREMENT_UNITS}
+                      value={field.value}
+                      onChange={field.onChange}
+                      onBlur={field.onBlur}
+                      error={errors.concentrationUnit?.message}
+                    />
                   )}
-                </div>
+                />
               </div>
               {errors.concentration && (
                 <p id="star-treatment-concentration-error" className="text-sm text-red-500">

@@ -312,7 +312,7 @@ test.describe("Star treatments: URL controls and client validation", () => {
     await expect(page.locator("#star-treatment-unit")).toHaveValue("");
     await page.getByRole("button", { name: "Save star treatment" }).click();
     await expect(page.getByText("Enter an amount unit")).toBeVisible();
-    await page.locator("#star-treatment-unit").fill("mL");
+    await page.locator("#star-treatment-unit").selectOption("mL");
     await page.locator("#star-treatment-amount").fill("");
     await page.locator("#star-treatment-concentration").fill("10");
     await expect(page.locator("#star-treatment-concentration-unit")).toHaveValue("");
@@ -361,10 +361,10 @@ test.describe("Star treatments: Probiotics stays out of system chemical addition
     const systemId = await system.locator("option:not([value=''])").first().getAttribute("value");
     expect(systemId).toBeTruthy();
     await system.selectOption(systemId ?? "");
-    await page.getByLabel("Enter manually", { exact: true }).check();
+    await page.getByRole("radio", { name: "Other", exact: true }).check();
     await page.getByLabel("Chemical/product name").fill("Probiotics");
     await page.getByLabel("Amount", { exact: true }).fill("10");
-    await page.getByLabel("Unit", { exact: true }).fill("ppm");
+    await page.getByLabel("Unit", { exact: true }).selectOption("ppm");
     await page.getByLabel("Reason", { exact: true }).fill(reason);
     await system.selectOption(systemId ?? "");
     await expect(system).toHaveValue(systemId ?? "");
@@ -481,7 +481,7 @@ test.describe("Star treatments: hosted schema, RPC, and lifecycle", () => {
   test.afterAll(async () => {
     if (!schemaStatus.available || !ADMIN_PASSWORD) return;
     dbQuery(`update core.star_treatment_catalog
-      set name = 'Reef Dip', default_amount_unit = null,
+      set name = 'Reef Dip', is_active = true, default_amount_unit = null,
           default_concentration_unit = null
       where id = ${reefDipCatalogId}`);
     const remaining = dbQuery(
@@ -703,23 +703,69 @@ test.describe("Star treatments: hosted schema, RPC, and lifecycle", () => {
     await expect(treatmentArticle(page, customTreatmentId)).toHaveCount(0);
   });
 
-  test("renaming a referenced Star quick pick preserves history and deletion is blocked", async () => {
-    const adminClient = await signInRoleClient(ADMIN_EMAIL, ADMIN_PASSWORD);
-    const renamed = `${TAG} Reef Dip renamed`;
+  test("built-in Star quick picks reject rename and delete but keep history and allow retirement", async ({
+    page,
+  }) => {
+    const technicianClient = await signInRoleClient(TECH_EMAIL, TECH_PASSWORD);
 
     try {
-      const { data: updated, error: updateError } = await adminClient
+      for (const [catalogId, name] of [
+        [probioticsCatalogId, "Probiotics"],
+        [reefDipCatalogId, "Reef Dip"],
+      ] as const) {
+        const { data: renamed, error: renameError } = await technicianClient
+          .from("star_treatment_catalog")
+          .update({ name: `${TAG} ${name} renamed` })
+          .eq("id", catalogId)
+          .select("id")
+          .maybeSingle();
+        expect(renameError?.code).toBe("23514");
+        expect(renameError?.message).toContain("cannot be renamed");
+        expect(renamed).toBeNull();
+
+        const { data: deleted, error: deleteError } = await technicianClient
+          .from("star_treatment_catalog")
+          .delete()
+          .eq("id", catalogId)
+          .select("id")
+          .maybeSingle();
+        expect(deleteError?.code).toBe("23514");
+        expect(deleteError?.message).toContain("cannot be deleted");
+        expect(deleted).toBeNull();
+      }
+
+      const { data: retired, error: retireError } = await technicianClient
         .from("star_treatment_catalog")
-        .update({
-          name: renamed,
-          default_amount_unit: "mL",
-          default_concentration_unit: "ppm",
-        })
+        .update({ is_active: false, default_amount_unit: "mL" })
         .eq("id", reefDipCatalogId)
-        .select("id, name")
+        .select("id, name, is_active, default_amount_unit")
         .single();
-      expect(updateError).toBeNull();
-      expect(updated).toMatchObject({ id: reefDipCatalogId, name: renamed });
+      expect(retireError).toBeNull();
+      expect(retired).toEqual({
+        id: reefDipCatalogId,
+        name: "Reef Dip",
+        is_active: false,
+        default_amount_unit: "mL",
+      });
+      const { error: retiredCreateError } = await technicianClient.rpc(
+        "create_star_treatment",
+        {
+          p_animal_id: star.id,
+          p_tank_id: star.tankId,
+          p_amount: null,
+          p_unit: null,
+          p_concentration: null,
+          p_concentration_unit: null,
+          p_treatment_type: "Reef Dip",
+          p_notes: `${TAG} retired reef dip`,
+          p_administered_at: new Date().toISOString(),
+          p_catalog_id: reefDipCatalogId,
+        },
+      );
+      expect(retiredCreateError?.code).toBe("23514");
+      expect(retiredCreateError?.message).toContain(
+        "Select an active star treatment quick pick.",
+      );
 
       const historical = dbQuery(`select catalog_id, treatment_type, amount,
           unit, concentration, concentration_unit
@@ -728,23 +774,42 @@ test.describe("Star treatments: hosted schema, RPC, and lifecycle", () => {
       expect(historical.treatment_type).toBe("reef_dip");
       expect(historical.amount).toBeNull();
       expect(historical.unit).toBeNull();
-      expect(historical.concentration).toBeNull();
-      expect(historical.concentration_unit).toBeNull();
-
-      const { data: deleted, error: deleteError } = await adminClient
-        .from("star_treatment_catalog")
-        .delete()
-        .eq("id", reefDipCatalogId)
-        .select("id")
-        .maybeSingle();
-      expect(deleteError).not.toBeNull();
-      expect(deleted).toBeNull();
     } finally {
       dbQuery(`update core.star_treatment_catalog
-        set name = 'Reef Dip', default_amount_unit = null,
+        set name = 'Reef Dip', is_active = true, default_amount_unit = null,
             default_concentration_unit = null
         where id = ${reefDipCatalogId}`);
     }
+    expect(
+      dbQuery(`select name, is_active, default_amount_unit, default_concentration_unit
+        from core.star_treatment_catalog order by id`),
+    ).toEqual([
+      {
+        name: "Probiotics",
+        is_active: true,
+        default_amount_unit: "mL",
+        default_concentration_unit: "ppm",
+      },
+      {
+        name: "Reef Dip",
+        is_active: true,
+        default_amount_unit: null,
+        default_concentration_unit: null,
+      },
+    ]);
+
+    await loginAs(page, TECH_EMAIL, TECH_PASSWORD);
+    await page.goto("/protected/settings/quick-picks");
+    const probioticsRow = page
+      .locator(`#star-${probioticsCatalogId}-built-in-note`)
+      .locator("..");
+    await expect(probioticsRow.getByText("Probiotics", { exact: true })).toBeVisible();
+    await expect(probioticsRow.getByRole("button", { name: "Delete" })).toBeDisabled();
+    await expect(probioticsRow.getByRole("button", { name: "Retire" })).toBeEnabled();
+    await probioticsRow.getByRole("button", { name: "Edit" }).click();
+    await expect(page.locator(`#star-${probioticsCatalogId}-name`)).toBeDisabled();
+    await expect(page.locator(`#star-${probioticsCatalogId}-name`)).toHaveValue("Probiotics");
+    await page.getByRole("button", { name: "Cancel" }).click();
   });
 
   test("Volunteer corrects only their own treatment and cannot delete", async ({

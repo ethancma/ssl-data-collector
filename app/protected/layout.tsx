@@ -14,7 +14,7 @@ export default async function ProtectedLayout({
   const showDailyOperations =
     profile?.status === "active" &&
     ["admin", "technician", "volunteer"].includes(profile.role);
-  const showWaterQualityTargets =
+  const showLabSettings =
     profile?.status === "active" &&
     ["admin", "technician"].includes(profile.role);
 
@@ -22,7 +22,7 @@ export default async function ProtectedLayout({
     <ProtectedShell
       showAdmin={showAdmin}
       showDailyOperations={showDailyOperations}
-      showWaterQualityTargets={showWaterQualityTargets}
+      showLabSettings={showLabSettings}
       userEmail={profile?.email}
       authSlot={
         <Suspense>

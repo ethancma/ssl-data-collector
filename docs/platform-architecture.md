@@ -36,7 +36,7 @@ star health and SSWD symptom onset over time.
   parameters are always manually tested. Nitrate is measured in ppm, nitrite in ppb
   (not ppm — a different unit than the other parameters).
 - **Chemical additions** (C balance, buffers, etc.) logged per system.
-- **Feeding** every other day: krill, brine shrimp, abalone, urchin (purple, sometimes white
+- **Feeding** every other day: krill, brine shrimp, abalone, urchin (purple, sometimes painted
   painted), microalgae — varies by species/life stage — plus a same-day follow-up on
   whether food was eaten.
 - **Daily AM/PM checks**: water running in all tubes/systems, star health (arm drops,
@@ -146,16 +146,24 @@ erDiagram
 - `water_quality_target_ranges` — id, optional system_id, fixed parameter key, optional
   inclusive min/max bounds. A system row overrides the lab-wide row; Admins and Technicians
   manage ranges, and no numeric ranges are seeded.
-- `chemical_addition_catalog` — Admin-managed lab-wide quick picks with a name and suggested
-  unit. C-Balance, Mg, and DI-Trace are seeded with `mL` suggestions.
-- `star_treatment_catalog` — Admin-managed lab-wide quick picks with optional suggested
-  amount/concentration units. Probiotics and Reef Dip are seeded.
+- Quick-pick catalogs (`food_catalog`, `chemical_addition_catalog`,
+  `star_treatment_catalog`) — Admin/Technician-managed lab-wide lists, shown alphabetically.
+  Each has `is_active`: retired entries stay on historical events but can't be newly
+  selected. Free text matching an active entry's name auto-links to it. Event rows keep
+  name/unit snapshots, so renames never rewrite history. Units are picked from shared
+  dropdowns in `lib/config/reference-data.ts` with an "Other" free-text fallback.
+  - `food_catalog` — name, default_unit (`pieces`; Microalgae is `mL`).
+  - `chemical_addition_catalog` — name, default_unit. C-Balance, Mg, and DI-Trace are
+    seeded with `mL`.
+  - `star_treatment_catalog` — name, optional default amount/concentration units.
+    Probiotics and Reef Dip are seeded and locked (can be retired, not renamed or deleted)
+    because name-based rules depend on them.
 - `chemical_additions` — id, system_id, optional catalog_id, chemical_name and unit
   event-time snapshots, amount, added_at, recorded_by, reason, data_source
 - `daily_checks` — id, system_id, check_type (AM|PM), checked_at, water_running (bool), temperature, recorded_by, notes, flagged_health_observation_id (nullable, set when a check flags an issue and a follow-up health observation is opened but not yet completed), data_source
 - `microalgae_logs` — id, system_id (the Micro-Algae system), logged_at, density_reading, harvest_volume, condition_notes, recorded_by, data_source
 - `health_observations` — id, animal_id, tank_id, observed_at, issues (multi-select: arm_drop, spine_drop, lesion, arm_curling, flattening, other), severity (3-level scale, exact labels TBD), photo required at submit time for arm_drop/spine_drop/lesion always, and for other issue types above a severity threshold (TBD), notes, recorded_by, data_source
-- `feeding_logs` — id, tank_id, animal_id (required for tanks with named individuals; logged per animal even when multiple animals share a tank), food_type (krill|brine_shrimp|abalone|urchin_purple|urchin_white|microalgae|other), amount, fed_at, recorded_by, consumption_status (full|partial|none|unknown), consumption_checked_at, notes, data_source
+- `feeding_logs` — id, tank_id, animal_id (required for tanks with named individuals; logged per animal even when multiple animals share a tank), optional food_catalog_id, food_name snapshot, amount_value (positive, fractions allowed) with amount_unit snapshot (legacy rows keep free-text amount), fed_at, recorded_by, consumption_status (full|partial|none|unknown), consumption_checked_at, notes, data_source
 - `star_treatments` — id, animal_id, tank_id treatment-time snapshot, optional catalog_id,
   treatment_type and unit event-time snapshots, optional amount/unit and
   concentration/unit pairs, notes, administered_at, recorded_by, data_source, entered_at.
@@ -184,8 +192,8 @@ The current native-role policy is enforced with Postgres grants, RLS, and RPCs:
 - **Admin** — full manage access: systems, tanks, species, animals, users/roles, all logs
   (full CRUD on all operational log tables), water-quality ranges, and quick-pick catalogs.
 - **Technician** — full CRUD on all log tables (water quality, feeding, health, daily
-  checks, chemical additions, maintenance, micro-algae) plus water-quality range
-  management. Lab-wide access, no per-system restriction; quick-pick catalogs are read-only.
+  checks, chemical additions, maintenance, micro-algae) plus water-quality range and
+  quick-pick catalog management. Lab-wide access, no per-system restriction.
 - **Volunteer** — read and create ordinary operational logs, update only entries they
   recorded (with no time or `data_source` restriction), and cannot delete.
 - **Viewer** — read-only across all tables (e.g., PI/researcher).

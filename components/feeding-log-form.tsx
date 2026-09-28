@@ -3,7 +3,8 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { useForm } from "react-hook-form";
+import { Controller, useForm } from "react-hook-form";
+import { z } from "zod";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -18,54 +19,95 @@ import {
   getPacificTimeString,
   pacificWallTimeToIso,
 } from "@/components/daily-operations/pacific-date-time";
+import {
+  catalogNameKey,
+  DEFAULT_FOOD_UNIT,
+  normalizeSnapshot,
+  type FoodCatalogItem,
+} from "@/components/daily-operations/quick-pick-catalogs";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { FOOD_TYPES, type FoodType } from "@/lib/config/reference-data";
+import { UnitSelect } from "@/components/unit-select";
+import { FOOD_UNITS } from "@/lib/config/reference-data";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
-import {
-  feedingLogSchema,
-  type FeedingLogFormInput,
-  type FeedingLogFormValues,
-} from "@/lib/validation/feeding-log";
+import { feedingLogSchema } from "@/lib/validation/feeding-log";
 
 type AnimalOption = { id: number; name: string; tankId: number };
 
-const FOOD_TYPE_LABELS: Record<FoodType, string> = {
-  krill: "Krill",
-  brine_shrimp: "Brine shrimp",
-  abalone: "Abalone",
-  urchin_purple: "Purple urchin",
-  urchin_white: "White urchin",
-  microalgae: "Microalgae",
-  other: "Other",
-};
-
-export function FeedingLogForm({ animals }: { animals: AnimalOption[] }) {
+export function FeedingLogForm({
+  animals,
+  catalogs,
+  catalogLoadError,
+}: {
+  animals: AnimalOption[];
+  catalogs: FoodCatalogItem[];
+  catalogLoadError?: string;
+}) {
   const router = useRouter();
   const [serverError, setServerError] = useState<string | null>(null);
+  const schema = feedingLogSchema
+    .pick({
+      date: true,
+      time: true,
+      animalId: true,
+      tankId: true,
+      amount: true,
+      amountUnit: true,
+      notes: true,
+    })
+    .extend({
+      catalogId: z.string().refine(
+        (value) => value === "" || catalogs.some((item) => String(item.id) === value),
+        "Select a quick pick",
+      ),
+      foodName: z.string().max(200, "Keep the food name under 200 characters"),
+    })
+    .superRefine((values, context) => {
+      if (values.amount.trim() !== "" && normalizeSnapshot(values.amountUnit) === "") {
+        context.addIssue({
+          code: "custom",
+          path: ["amountUnit"],
+          message: "Enter an amount unit",
+        });
+      }
+      if (values.catalogId !== "") return;
+      const name = normalizeSnapshot(values.foodName);
+      if (!name || catalogNameKey(name) === "other") {
+        context.addIssue({
+          code: "custom",
+          path: ["foodName"],
+          message: "Enter a food name other than Other",
+        });
+      }
+    });
+  type FeedingInput = z.input<typeof schema>;
+  type FeedingValues = z.output<typeof schema>;
 
   const {
+    control,
     register,
     handleSubmit,
     watch,
     setError,
     setValue,
     formState: { errors, isSubmitting },
-  } = useForm<FeedingLogFormInput, unknown, FeedingLogFormValues>({
-    resolver: zodResolver(feedingLogSchema),
+  } = useForm<FeedingInput, unknown, FeedingValues>({
+    resolver: zodResolver(schema),
     defaultValues: {
       date: getPacificDateString(),
       time: getPacificTimeString(),
       animalId: "",
       tankId: "",
-      foodType: undefined,
+      catalogId: catalogs[0] ? String(catalogs[0].id) : "",
+      foodName: "",
       amount: "",
+      amountUnit: catalogs[0]?.defaultUnit ?? DEFAULT_FOOD_UNIT,
       notes: "",
     },
   });
 
-  const foodType = watch("foodType");
+  const catalogId = watch("catalogId");
 
   const onAnimalChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const animal = animals.find((a) => String(a.id) === e.target.value);
@@ -74,7 +116,7 @@ export function FeedingLogForm({ animals }: { animals: AnimalOption[] }) {
     });
   };
 
-  const onSubmit = async (values: FeedingLogFormValues) => {
+  const onSubmit = async (values: FeedingValues) => {
     setServerError(null);
     let fedAt: string;
     try {
@@ -86,13 +128,17 @@ export function FeedingLogForm({ animals }: { animals: AnimalOption[] }) {
       return;
     }
 
+    const selectedFood = catalogs.find((item) => String(item.id) === values.catalogId);
+    const hasAmount = values.amount.trim() !== "";
     const supabase = createClient();
     const { error } = await supabase.from("feeding_logs").insert({
       fed_at: fedAt,
       animal_id: values.animalId,
       tank_id: values.tankId,
-      food_type: values.foodType,
-      amount: values.amount.trim(),
+      food_catalog_id: selectedFood?.id ?? null,
+      ...(selectedFood ? {} : { food_name: normalizeSnapshot(values.foodName) }),
+      amount_value: hasAmount ? Number(values.amount.trim()) : null,
+      amount_unit: hasAmount ? normalizeSnapshot(values.amountUnit) : null,
       notes: values.notes?.trim() ? values.notes.trim() : null,
     });
     if (error) {
@@ -147,36 +193,101 @@ export function FeedingLogForm({ animals }: { animals: AnimalOption[] }) {
             )}
           </div>
 
-          <div className="grid gap-2">
-            <Label>Food type</Label>
-            <div className="flex flex-wrap gap-2">
-              {FOOD_TYPES.map((t) => (
-                <Button
-                  key={t}
-                  type="button"
-                  variant={foodType === t ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => setValue("foodType", t, { shouldValidate: true })}
+          <fieldset className="grid gap-3">
+            <legend className="text-sm font-medium">Food quick pick</legend>
+            <div className="grid gap-2 sm:grid-cols-2">
+              {catalogs.map((item) => (
+                <label
+                  key={item.id}
+                  className="flex min-h-11 cursor-pointer items-center gap-3 rounded-md border border-input px-3 py-2 text-sm has-[:checked]:border-foreground has-[:checked]:bg-muted"
                 >
-                  {FOOD_TYPE_LABELS[t]}
-                </Button>
+                  <input
+                    type="radio"
+                    value={item.id}
+                    {...register("catalogId", {
+                      onChange: () => {
+                        setValue("foodName", "");
+                        setValue("amountUnit", item.defaultUnit, { shouldValidate: true });
+                      },
+                    })}
+                  />
+                  {item.name}
+                </label>
               ))}
+              <label className="flex min-h-11 cursor-pointer items-center gap-3 rounded-md border border-input px-3 py-2 text-sm has-[:checked]:border-foreground has-[:checked]:bg-muted">
+                <input
+                  type="radio"
+                  value=""
+                  {...register("catalogId", {
+                    onChange: () =>
+                      setValue("amountUnit", DEFAULT_FOOD_UNIT, { shouldValidate: true }),
+                  })}
+                />
+                Other
+              </label>
             </div>
-            {errors.foodType && (
-              <p className="text-sm text-red-500">{errors.foodType.message}</p>
+            {errors.catalogId && (
+              <p className="text-sm text-red-500">{errors.catalogId.message}</p>
             )}
-          </div>
+          </fieldset>
 
-          <div className="grid gap-2">
-            <Label htmlFor="amount">Amount</Label>
-            <Input
-              id="amount"
-              placeholder='e.g. "2 krill" or "half a pellet"'
-              {...register("amount")}
+          {catalogLoadError && (
+            <p className="text-sm text-red-500" role="alert">
+              Quick picks could not be loaded. Enter the food manually.
+            </p>
+          )}
+
+          {catalogId === "" && (
+            <div className="grid gap-2">
+              <Label htmlFor="foodName">Food name</Label>
+              <Input
+                id="foodName"
+                maxLength={200}
+                aria-invalid={Boolean(errors.foodName)}
+                aria-describedby={errors.foodName ? "foodName-error" : undefined}
+                {...register("foodName")}
+              />
+              {errors.foodName && (
+                <p id="foodName-error" className="text-sm text-red-500">
+                  {errors.foodName.message}
+                </p>
+              )}
+            </div>
+          )}
+
+          <div className="grid grid-cols-2 items-start gap-4">
+            <div className="grid gap-2">
+              <Label htmlFor="amount">Amount (optional)</Label>
+              <Input
+                id="amount"
+                className="min-h-11"
+                inputMode="decimal"
+                placeholder="e.g. 2"
+                aria-invalid={Boolean(errors.amount)}
+                aria-describedby={errors.amount ? "amount-error" : undefined}
+                {...register("amount", { deps: "amountUnit" })}
+              />
+              {errors.amount && (
+                <p id="amount-error" className="text-sm text-red-500">
+                  {errors.amount.message}
+                </p>
+              )}
+            </div>
+            <Controller
+              control={control}
+              name="amountUnit"
+              render={({ field }) => (
+                <UnitSelect
+                  id="amountUnit"
+                  label="Unit"
+                  options={FOOD_UNITS}
+                  value={field.value}
+                  onChange={field.onChange}
+                  onBlur={field.onBlur}
+                  error={errors.amountUnit?.message}
+                />
+              )}
             />
-            {errors.amount && (
-              <p className="text-sm text-red-500">{errors.amount.message}</p>
-            )}
           </div>
 
           <div className="grid gap-2">

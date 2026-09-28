@@ -5,8 +5,7 @@ create table core.feeding_logs (
   id serial primary key,
   tank_id int not null references core.tanks (id),
   animal_id int not null references core.animals (id) on delete cascade,
-  food_type text not null
-    check (food_type in ('krill', 'brine_shrimp', 'abalone', 'urchin_purple', 'urchin_white', 'microalgae', 'other')),
+  food_name text,
   amount text,
   fed_at timestamptz not null default now(),
   recorded_by int not null default core.current_profile_id() references core.profiles (id),

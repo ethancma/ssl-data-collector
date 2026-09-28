@@ -69,7 +69,7 @@ type NavItem = {
 export function ProtectedSidebar({
   showAdmin,
   showDailyOperations,
-  showWaterQualityTargets,
+  showLabSettings,
   authSlot,
   userEmail,
   collapsed,
@@ -77,7 +77,7 @@ export function ProtectedSidebar({
 }: {
   showAdmin: boolean;
   showDailyOperations: boolean;
-  showWaterQualityTargets: boolean;
+  showLabSettings: boolean;
   authSlot: React.ReactNode;
   userEmail?: string | null;
   collapsed: boolean;
@@ -97,22 +97,24 @@ export function ProtectedSidebar({
       icon: ClipboardList,
     });
   }
-  if (showWaterQualityTargets) {
-    items.splice(items.length - 1, 0, {
-      href: "/protected/settings/water-quality-targets",
-      label: "Water quality targets",
-      icon: SlidersHorizontal,
-    });
-  }
-  if (showAdmin) {
-    items.push(
+  if (showLabSettings) {
+    items.splice(
+      items.length - 1,
+      0,
       {
-        href: "/protected/admin/quick-picks",
+        href: "/protected/settings/water-quality-targets",
+        label: "Water quality targets",
+        icon: SlidersHorizontal,
+      },
+      {
+        href: "/protected/settings/quick-picks",
         label: "Quick-pick catalogs",
         icon: FlaskConical,
       },
-      { href: "/protected/admin", label: "Admin", icon: ShieldCheck, exact: true },
     );
+  }
+  if (showAdmin) {
+    items.push({ href: "/protected/admin", label: "Admin", icon: ShieldCheck, exact: true });
   }
 
   const initial = userEmail?.trim()?.[0]?.toUpperCase() ?? "?";

@@ -1,7 +1,5 @@
 import { z } from "zod";
 
-import { FOOD_TYPES, type FoodType } from "@/lib/config/reference-data";
-
 const idField = (label: string) =>
   z
     .string()
@@ -21,21 +19,28 @@ const timeField = z
   .min(1, "Select a time")
   .regex(/^\d{2}:\d{2}$/, "Enter a time as HH:mm");
 
-// Validation for the per-animal feeding log form. amount stays free text since
-// units vary by food type (e.g. "2 krill", "half a pellet").
 export const feedingLogSchema = z.object({
   date: dateField,
   time: timeField,
   animalId: idField("Select an animal"),
   tankId: idField("Select an animal"),
-  foodType: z
-    .enum(FOOD_TYPES)
-    .optional()
-    .refine((v): v is FoodType => v !== undefined, "Select a food type"),
   amount: z
     .string()
-    .min(1, "Enter an amount")
-    .max(200, "Keep the amount under 200 characters"),
+    .refine(
+      (value) =>
+        value.trim() === "" ||
+        (/^[+-]?(?:\d+\.?\d*|\.\d+)$/.test(value.trim()) &&
+          Number.isFinite(Number(value.trim()))),
+      "Enter a finite numeric amount",
+    )
+    .refine(
+      (value) =>
+        value.trim() === "" ||
+        !Number.isFinite(Number(value.trim())) ||
+        Number(value.trim()) > 0,
+      "Enter an amount greater than 0",
+    ),
+  amountUnit: z.string().max(50, "Keep the unit under 50 characters"),
   notes: z.string().max(2000, "Keep notes under 2000 characters").optional(),
 });
 

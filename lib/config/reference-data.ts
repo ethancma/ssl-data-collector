@@ -2,17 +2,6 @@
 // Keep this file as the single source of truth for dropdown options and future
 // zod/DB-check-constraint validation, so the app and schema never drift apart.
 
-export const FOOD_TYPES = [
-  "krill",
-  "brine_shrimp",
-  "abalone",
-  "urchin_purple",
-  "urchin_white",
-  "microalgae",
-  "other",
-] as const;
-export type FoodType = (typeof FOOD_TYPES)[number];
-
 export const CONSUMPTION_STATUSES = ["full", "partial", "none", "unknown"] as const;
 
 export const HEALTH_ISSUE_TYPES = [
@@ -42,6 +31,13 @@ export const MAINTENANCE_TASK_TYPES = ["filter_change", "sump_flush", "other"] a
 export type MaintenanceTaskType = (typeof MAINTENANCE_TASK_TYPES)[number];
 
 export const PH_SOURCES = ["manual", "apex_probe"] as const;
+
+// Suggested unit dropdown options; forms also offer "Other" free text, so the DB accepts any unit.
+export const MEASUREMENT_UNITS = ["mL", "L", "g", "mg", "ppm"] as const;
+export type MeasurementUnit = (typeof MEASUREMENT_UNITS)[number];
+
+export const FOOD_UNITS = ["pieces", "mL", "L"] as const;
+export type FoodUnit = (typeof FOOD_UNITS)[number];
 
 export const PROFILE_ROLES = ["admin", "technician", "volunteer", "viewer"] as const;
 export type ProfileRole = (typeof PROFILE_ROLES)[number];

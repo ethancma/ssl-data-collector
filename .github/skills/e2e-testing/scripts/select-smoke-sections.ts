@@ -57,11 +57,13 @@ const rules: SelectionRule[] = [
     matches: (file) =>
       /^app\/protected\/(daily-operations|home)(\/|$)/.test(file) ||
       file === "app/protected/admin/quick-picks/page.tsx" ||
+      /^app\/protected\/settings\/quick-picks(\/|$)/.test(file) ||
       file === "app/protected/settings/water-quality-targets/page.tsx" ||
       /^components\/daily-operations\//.test(file) ||
-      /^components\/(chemical-addition-form|daily-check-form|feeding-log-form|health-observation-form|maintenance-log-form|quick-pick-catalog-manager|water-quality-form|water-quality-target-manager)\.tsx$/.test(
+      /^components\/(chemical-addition-form|daily-check-form|feeding-log-form|health-observation-form|maintenance-log-form|quick-pick-catalog-manager|unit-select|water-quality-form|water-quality-target-manager)\.tsx$/.test(
         file,
       ) ||
+      file === "components/quick-pick-catalog-config.ts" ||
       /^lib\/validation\/(chemical-addition|daily-check|feeding-log|health-observation|maintenance-log|water-quality)\.ts$/.test(
         file,
       ),
@@ -89,9 +91,18 @@ const rules: SelectionRule[] = [
     matches: (file) =>
       /^app\/protected\/star-treatments(\/|$)/.test(file) ||
       file === "app/protected/admin/quick-picks/page.tsx" ||
+      /^app\/protected\/settings\/quick-picks(\/|$)/.test(file) ||
       file === "components/quick-pick-catalog-manager.tsx" ||
+      file === "components/quick-pick-catalog-config.ts" ||
+      file === "components/unit-select.tsx" ||
       /^components\/star-treatment-(form|record)\.tsx$/.test(file),
     sections: ["star-treatments"],
+  },
+  {
+    description: "role-gated quick-pick catalog management",
+    matches: (file) =>
+      /^app\/protected\/(admin|settings)\/quick-picks(\/|$)/.test(file),
+    sections: ["operational-rbac"],
   },
   {
     description: "Systems dashboard or trend charts",

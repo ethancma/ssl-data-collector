@@ -10,7 +10,10 @@ import {
   getPacificDateString,
   pacificDayBoundaryToIso,
 } from "@/components/daily-operations/pacific-date-time";
-import type { StarTreatmentCatalogItem } from "@/components/daily-operations/quick-pick-catalogs";
+import {
+  sortCatalogByName,
+  type StarTreatmentCatalogItem,
+} from "@/components/daily-operations/quick-pick-catalogs";
 import { Button } from "@/components/ui/button";
 import { getCurrentProfile } from "@/lib/supabase/current-profile";
 import { createClient } from "@/lib/supabase/server";
@@ -68,18 +71,23 @@ export default async function StarTreatmentsPage({ searchParams }: { searchParam
       .eq("category", "star")
       .order("common_name")
       .order("id"),
+    // Retired rows are included so existing records keep their quick pick; the record
+    // editor only offers them on records that already reference them.
     supabase
       .from("star_treatment_catalog")
-      .select("id, name, default_amount_unit, default_concentration_unit")
-      .order("id"),
+      .select("id, name, default_amount_unit, default_concentration_unit, is_active")
+      .order("name"),
   ]);
   const { data: starSpecies, error: starSpeciesError } = starSpeciesResult;
-  const catalog: StarTreatmentCatalogItem[] = (catalogResult.data ?? []).map((item) => ({
-    id: item.id,
-    name: item.name,
-    defaultAmountUnit: item.default_amount_unit,
-    defaultConcentrationUnit: item.default_concentration_unit,
-  }));
+  const catalog: StarTreatmentCatalogItem[] = sortCatalogByName(
+    (catalogResult.data ?? []).map((item) => ({
+      id: item.id,
+      name: item.name,
+      defaultAmountUnit: item.default_amount_unit,
+      defaultConcentrationUnit: item.default_concentration_unit,
+      isActive: item.is_active,
+    })),
+  );
   const starSpeciesIds = (starSpecies ?? []).map((species) => species.id);
   const starsResult = starSpeciesIds.length
     ? await supabase

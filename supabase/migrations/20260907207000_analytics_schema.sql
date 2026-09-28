@@ -141,7 +141,7 @@ create table analytics.fact_feeding (
   tank_id int not null references analytics.dim_tank (id),
   animal_id int not null references analytics.dim_animal (id),
   profile_id int references analytics.dim_profile (id),
-  food_type text,
+  food_name text,
   amount text,
   consumption_status text,
   data_source text

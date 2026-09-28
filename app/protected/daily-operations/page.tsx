@@ -5,6 +5,7 @@ import { DailyOperationsHub } from "@/components/daily-operations/daily-operatio
 import { pacificDateKey } from "@/components/daily-operations/pacific-date-time";
 import type {
   ChemicalAdditionCatalogItem,
+  FoodCatalogItem,
   StarTreatmentCatalogItem,
 } from "@/components/daily-operations/quick-pick-catalogs";
 import type { WaterQualityTargetRange } from "@/components/daily-operations/water-quality-targets";
@@ -57,6 +58,7 @@ async function DailyOperationsContent() {
     { data: animals, error: animalsError },
     { data: waterQualityTargets, error: waterQualityTargetsError },
     { data: chemicalCatalog, error: chemicalCatalogError },
+    { data: foodCatalog, error: foodCatalogError },
     { data: starTreatmentCatalog, error: starTreatmentCatalogError },
   ] = await Promise.all([
     supabase
@@ -75,11 +77,18 @@ async function DailyOperationsContent() {
     supabase
       .from("chemical_addition_catalog")
       .select("id, name, default_unit")
-      .order("id"),
+      .eq("is_active", true)
+      .order("name"),
+    supabase
+      .from("food_catalog")
+      .select("id, name, default_unit")
+      .eq("is_active", true)
+      .order("name"),
     supabase
       .from("star_treatment_catalog")
       .select("id, name, default_amount_unit, default_concentration_unit")
-      .order("id"),
+      .eq("is_active", true)
+      .order("name"),
   ]);
   const systemOptions = (systems ?? []).map((system) => ({
     id: system.id,
@@ -117,6 +126,11 @@ async function DailyOperationsContent() {
   const chemicalCatalogOptions: ChemicalAdditionCatalogItem[] = (
     chemicalCatalog ?? []
   ).map((item) => ({
+    id: item.id,
+    name: item.name,
+    defaultUnit: item.default_unit,
+  }));
+  const foodCatalogOptions: FoodCatalogItem[] = (foodCatalog ?? []).map((item) => ({
     id: item.id,
     name: item.name,
     defaultUnit: item.default_unit,
@@ -219,6 +233,8 @@ async function DailyOperationsContent() {
       pendingFeedingLogs={pendingFeedingLogs}
       chemicalCatalog={chemicalCatalogOptions}
       chemicalCatalogLoadError={chemicalCatalogError?.message}
+      foodCatalog={foodCatalogOptions}
+      foodCatalogLoadError={foodCatalogError?.message}
       starTreatmentCatalog={starTreatmentCatalogOptions}
       starTreatmentCatalogLoadError={starTreatmentCatalogError?.message}
       waterQualityTargets={targetOptions}

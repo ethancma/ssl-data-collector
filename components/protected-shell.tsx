@@ -10,14 +10,14 @@ const SIDEBAR_COLLAPSED_STORAGE_KEY = "ssl:sidebar-collapsed";
 export function ProtectedShell({
   showAdmin,
   showDailyOperations,
-  showWaterQualityTargets,
+  showLabSettings,
   authSlot,
   userEmail,
   children,
 }: {
   showAdmin: boolean;
   showDailyOperations: boolean;
-  showWaterQualityTargets: boolean;
+  showLabSettings: boolean;
   authSlot: React.ReactNode;
   userEmail?: string | null;
   children: React.ReactNode;
@@ -52,7 +52,7 @@ export function ProtectedShell({
         <ProtectedSidebar
           showAdmin={showAdmin}
           showDailyOperations={showDailyOperations}
-          showWaterQualityTargets={showWaterQualityTargets}
+          showLabSettings={showLabSettings}
           authSlot={authSlot}
           userEmail={userEmail}
           collapsed={collapsed}

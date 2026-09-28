@@ -80,20 +80,26 @@ function rlsRebuildWriteSuite(
       await signIn(page);
       await page.goto("/protected/daily-operations?type=feeding");
       await page.getByLabel("Animal").selectOption(String(ssl25AnimalId));
-      await page.getByRole("button", { name: "Krill" }).click();
-      await page.getByLabel("Amount").fill("2 krill");
+      await page.getByRole("radio", { name: "Krill", exact: true }).check();
+      await page.getByLabel("Amount (optional)").fill("2");
       await page.getByLabel("Notes").fill(`${tag} feeding`);
       await page.getByRole("button", { name: "Save feeding" }).click();
       await expect(page).toHaveURL(/\/protected\/home/);
 
       const rows = dbQuery(
-        `select animal_id, food_type, amount, consumption_status
+        `select animal_id, food_catalog_id, food_name, amount, amount_value, consumption_status
          from core.feeding_logs where notes = '${tag} feeding'`,
       );
+      const catalogRows = dbQuery(
+        `select id from core.food_catalog where name = 'Krill' and is_active`,
+      );
       expect(rows.length).toBe(1);
+      expect(catalogRows).toHaveLength(1);
       expect(Number(rows[0]?.animal_id)).toBe(ssl25AnimalId);
-      expect(rows[0]?.food_type).toBe("krill");
-      expect(rows[0]?.amount).toBe("2 krill");
+      expect(Number(rows[0]?.food_catalog_id)).toBe(Number(catalogRows[0].id));
+      expect(rows[0]?.food_name).toBe("Krill");
+      expect(rows[0]?.amount).toBeNull();
+      expect(Number(rows[0]?.amount_value)).toBe(2);
       expect(rows[0]?.consumption_status).toBeNull();
     });
 
@@ -167,7 +173,7 @@ function rlsRebuildWriteSuite(
       await page.getByRole("radio", { name: "Other", exact: true }).click();
       await page.getByLabel("Chemical/product name").fill(`${tag} baking soda`);
       await page.getByLabel("Amount").fill("50");
-      await page.getByLabel("Unit").fill("mL");
+      await page.getByLabel("Unit", { exact: true }).selectOption("mL");
       await page.getByLabel("Reason").fill(`${tag} chemical addition`);
       await page.getByRole("button", { name: "Save system addition" }).click();
       await expect(page).toHaveURL(/\/protected\/home/);

@@ -9,7 +9,23 @@ export type StarTreatmentCatalogItem = {
   name: string;
   defaultAmountUnit: string | null;
   defaultConcentrationUnit: string | null;
+  // Omitted means active; retired items only reach forms editing a record that uses them.
+  isActive?: boolean;
 };
+
+export type FoodCatalogItem = {
+  id: number;
+  name: string;
+  defaultUnit: string;
+};
+
+export const DEFAULT_FOOD_UNIT = "pieces";
+
+export function sortCatalogByName<T extends { name: string }>(items: readonly T[]) {
+  return [...items].sort((left, right) =>
+    left.name.localeCompare(right.name, undefined, { sensitivity: "base" }),
+  );
+}
 
 export type CatalogSelection = {
   catalogId: number | null;
@@ -37,7 +53,7 @@ export function normalizeSnapshot(value: string) {
   return value.trim().replace(/\s+/g, " ");
 }
 
-function catalogNameKey(value: string) {
+export function catalogNameKey(value: string) {
   return normalizeSnapshot(value).toLowerCase().replace(/[\s_-]+/g, "");
 }
 

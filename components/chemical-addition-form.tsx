@@ -3,7 +3,7 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { useForm } from "react-hook-form";
+import { Controller, useForm } from "react-hook-form";
 import { z } from "zod";
 
 import { Button } from "@/components/ui/button";
@@ -21,6 +21,8 @@ import {
 } from "@/components/daily-operations/pacific-date-time";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { UnitSelect } from "@/components/unit-select";
+import { MEASUREMENT_UNITS } from "@/lib/config/reference-data";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 import {
@@ -68,6 +70,7 @@ export function ChemicalAdditionForm({
     : { catalogId: null, name: "", unit: "" };
 
   const {
+    control,
     register,
     handleSubmit,
     watch,
@@ -237,6 +240,7 @@ export function ChemicalAdditionForm({
               <Label htmlFor="amount">Amount</Label>
               <Input
                 id="amount"
+                className="min-h-11"
                 inputMode="decimal"
                 placeholder="e.g. 50"
                 {...register("amount")}
@@ -245,17 +249,21 @@ export function ChemicalAdditionForm({
                 <p className="text-sm text-red-500">{errors.amount.message}</p>
               )}
             </div>
-            <div className="grid gap-2">
-              <Label htmlFor="unit">Unit</Label>
-              <Input
-                id="unit"
-                placeholder="e.g. mL, g"
-                {...register("unit")}
-              />
-              {errors.unit && (
-                <p className="text-sm text-red-500">{errors.unit.message}</p>
+            <Controller
+              control={control}
+              name="unit"
+              render={({ field }) => (
+                <UnitSelect
+                  id="unit"
+                  label="Unit"
+                  options={MEASUREMENT_UNITS}
+                  value={field.value}
+                  onChange={field.onChange}
+                  onBlur={field.onBlur}
+                  error={errors.unit?.message}
+                />
               )}
-            </div>
+            />
           </div>
 
           <div className="grid gap-2">

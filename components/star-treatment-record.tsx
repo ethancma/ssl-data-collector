@@ -3,7 +3,7 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { useForm } from "react-hook-form";
+import { Controller, useForm } from "react-hook-form";
 import { z } from "zod";
 
 import { formatPacificDateTime } from "@/components/daily-operations/pacific-date-time";
@@ -18,6 +18,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { UnitSelect } from "@/components/unit-select";
+import { MEASUREMENT_UNITS } from "@/lib/config/reference-data";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 
@@ -121,10 +123,14 @@ export function StarTreatmentRecord({
   catalogs: StarTreatmentCatalogItem[];
 }) {
   const router = useRouter();
+  // Retired quick picks stay selectable only on the record that already uses them.
+  const visibleCatalogs = catalogs.filter(
+    (catalog) => catalog.isActive !== false || catalog.id === treatment.catalogId,
+  );
   const currentCatalog = resolveStarTreatmentCatalogItem(
     treatment.catalogId,
     treatment.treatmentType,
-    catalogs,
+    visibleCatalogs,
   );
   const defaultTreatment = selectStarTreatmentCatalogItem(
     currentCatalog,
@@ -137,6 +143,7 @@ export function StarTreatmentRecord({
   const fieldId = (name: string) => `treatment-${treatment.id}-${name}`;
 
   const {
+    control,
     register,
     handleSubmit,
     watch,
@@ -160,7 +167,7 @@ export function StarTreatmentRecord({
   const catalogId = watch("catalogId");
 
   const onTreatmentCatalogChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const selectedCatalog = catalogs.find(
+    const selectedCatalog = visibleCatalogs.find(
       (catalog) => String(catalog.id) === event.target.value,
     );
     const selection = selectStarTreatmentCatalogItem(selectedCatalog ?? null);
@@ -186,7 +193,7 @@ export function StarTreatmentRecord({
         catalogId: values.catalogId === "" ? null : Number(values.catalogId),
         name: values.treatmentName,
       },
-      catalogs,
+      visibleCatalogs,
     );
     const supabase = createClient();
     const { error } = await supabase.rpc("update_star_treatment", {
@@ -293,7 +300,7 @@ export function StarTreatmentRecord({
             <fieldset className="grid gap-3">
               <legend className="text-sm font-medium">Treatment type</legend>
               <div className="grid gap-2 sm:grid-cols-3">
-                {catalogs.map((item) => (
+                {visibleCatalogs.map((item) => (
                   <label
                     key={item.id}
                     className="flex min-h-11 cursor-pointer items-center gap-3 rounded-md border border-input px-3 py-2 text-sm has-[:checked]:border-foreground has-[:checked]:bg-muted"
@@ -304,6 +311,9 @@ export function StarTreatmentRecord({
                       {...register("catalogId", { onChange: onTreatmentCatalogChange })}
                     />
                     {item.name}
+                    {item.isActive === false && (
+                      <span className="text-xs text-muted-foreground">(retired)</span>
+                    )}
                   </label>
                 ))}
                 <label className="flex min-h-11 cursor-pointer items-center gap-3 rounded-md border border-input px-3 py-2 text-sm has-[:checked]:border-foreground has-[:checked]:bg-muted">
@@ -340,7 +350,7 @@ export function StarTreatmentRecord({
 
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="grid gap-3 rounded-md border p-4">
-                <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_8rem]">
+                <div className="grid items-start gap-2 sm:grid-cols-[minmax(0,1fr)_8rem]">
                   <div className="grid gap-2">
                     <Label htmlFor={fieldId("amount")}>Amount</Label>
                     <Input
@@ -358,22 +368,22 @@ export function StarTreatmentRecord({
                       })}
                     />
                   </div>
-                  <div className="grid gap-2">
-                    <Label htmlFor={fieldId("unit")}>Unit</Label>
-                    <Input
-                      id={fieldId("unit")}
-                      className="min-h-11"
-                      placeholder="mL"
-                      aria-describedby={errors.unit ? fieldId("unit-error") : undefined}
-                      aria-invalid={Boolean(errors.unit)}
-                      {...register("unit")}
-                    />
-                    {errors.unit && (
-                      <p id={fieldId("unit-error")} className="text-sm text-red-500">
-                        {errors.unit.message}
-                      </p>
+                  <Controller
+                    control={control}
+                    name="unit"
+                    render={({ field }) => (
+                      <UnitSelect
+                        id={fieldId("unit")}
+                        label="Unit"
+                        placeholder="Select…"
+                        options={MEASUREMENT_UNITS}
+                        value={field.value}
+                        onChange={field.onChange}
+                        onBlur={field.onBlur}
+                        error={errors.unit?.message}
+                      />
                     )}
-                  </div>
+                  />
                 </div>
                 {errors.amount && (
                   <p id={fieldId("amount-error")} className="text-sm text-red-500">
@@ -383,7 +393,7 @@ export function StarTreatmentRecord({
               </div>
 
               <div className="grid gap-3 rounded-md border p-4">
-                <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_8rem]">
+                <div className="grid items-start gap-2 sm:grid-cols-[minmax(0,1fr)_8rem]">
                   <div className="grid gap-2">
                     <Label htmlFor={fieldId("concentration")}>Concentration</Label>
                     <Input
@@ -406,29 +416,22 @@ export function StarTreatmentRecord({
                       })}
                     />
                   </div>
-                  <div className="grid gap-2">
-                    <Label htmlFor={fieldId("concentration-unit")}>Unit</Label>
-                    <Input
-                      id={fieldId("concentration-unit")}
-                      className="min-h-11"
-                      placeholder="ppm"
-                      aria-describedby={
-                        errors.concentrationUnit
-                          ? fieldId("concentration-unit-error")
-                          : undefined
-                      }
-                      aria-invalid={Boolean(errors.concentrationUnit)}
-                      {...register("concentrationUnit")}
-                    />
-                    {errors.concentrationUnit && (
-                      <p
-                        id={fieldId("concentration-unit-error")}
-                        className="text-sm text-red-500"
-                      >
-                        {errors.concentrationUnit.message}
-                      </p>
+                  <Controller
+                    control={control}
+                    name="concentrationUnit"
+                    render={({ field }) => (
+                      <UnitSelect
+                        id={fieldId("concentration-unit")}
+                        label="Unit"
+                        placeholder="Select…"
+                        options={MEASUREMENT_UNITS}
+                        value={field.value}
+                        onChange={field.onChange}
+                        onBlur={field.onBlur}
+                        error={errors.concentrationUnit?.message}
+                      />
                     )}
-                  </div>
+                  />
                 </div>
                 {errors.concentration && (
                   <p id={fieldId("concentration-error")} className="text-sm text-red-500">
