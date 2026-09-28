@@ -20,9 +20,8 @@ import {
   type StarTreatmentCatalogItem,
 } from "@/components/daily-operations/quick-pick-catalogs";
 import {
-  QUICK_PICK_FIELDSET_CLASS,
+  QUICK_PICK_HEADING_CLASS,
   QUICK_PICK_LABEL_CLASS,
-  QUICK_PICK_LEGEND_CLASS,
   QUICK_PICK_OPTION_CLASS,
   SELECT_CLASS,
 } from "@/components/daily-operations/form-classes";
@@ -537,8 +536,14 @@ export function StarTreatmentForm({
             </p>
           </div>
 
-          <fieldset className={QUICK_PICK_FIELDSET_CLASS}>
-            <legend className={QUICK_PICK_LEGEND_CLASS}>Treatment type</legend>
+          <div
+            role="group"
+            aria-labelledby="star-treatment-type-label"
+            className="grid content-start gap-2"
+          >
+            <p id="star-treatment-type-label" className={QUICK_PICK_HEADING_CLASS}>
+              Treatment type
+            </p>
             <div className="grid gap-2 sm:grid-cols-2">
               {catalogs.map((item) => (
                 <label key={item.id} className={QUICK_PICK_OPTION_CLASS} title={item.name}>
@@ -559,7 +564,7 @@ export function StarTreatmentForm({
                 <span className={QUICK_PICK_LABEL_CLASS}>Other</span>
               </label>
             </div>
-          </fieldset>
+          </div>
 
           {catalogLoadError && (
             <p className="text-sm text-red-500" role="alert">

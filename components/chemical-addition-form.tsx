@@ -20,9 +20,8 @@ import {
   pacificWallTimeToIso,
 } from "@/components/daily-operations/pacific-date-time";
 import {
-  QUICK_PICK_FIELDSET_CLASS,
+  QUICK_PICK_HEADING_CLASS,
   QUICK_PICK_LABEL_CLASS,
-  QUICK_PICK_LEGEND_CLASS,
   QUICK_PICK_OPTION_CLASS,
   SELECT_CLASS,
 } from "@/components/daily-operations/form-classes";
@@ -183,8 +182,14 @@ export function ChemicalAdditionForm({
             )}
           </div>
 
-          <fieldset className={QUICK_PICK_FIELDSET_CLASS}>
-            <legend className={QUICK_PICK_LEGEND_CLASS}>Quick pick</legend>
+          <div
+            role="group"
+            aria-labelledby="chemical-quick-pick-label"
+            className="grid content-start gap-2"
+          >
+            <p id="chemical-quick-pick-label" className={QUICK_PICK_HEADING_CLASS}>
+              Quick pick
+            </p>
             <div className="grid gap-2 sm:grid-cols-2">
               {catalogs.map((item) => (
                 <label key={item.id} className={QUICK_PICK_OPTION_CLASS} title={item.name}>
@@ -216,7 +221,7 @@ export function ChemicalAdditionForm({
                 <span className={QUICK_PICK_LABEL_CLASS}>Other</span>
               </label>
             </div>
-          </fieldset>
+          </div>
 
           {catalogLoadError && (
             <p className="text-sm text-red-500" role="alert">

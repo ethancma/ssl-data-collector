@@ -26,9 +26,8 @@ import {
   type FoodCatalogItem,
 } from "@/components/daily-operations/quick-pick-catalogs";
 import {
-  QUICK_PICK_FIELDSET_CLASS,
+  QUICK_PICK_HEADING_CLASS,
   QUICK_PICK_LABEL_CLASS,
-  QUICK_PICK_LEGEND_CLASS,
   QUICK_PICK_OPTION_CLASS,
   SELECT_CLASS,
 } from "@/components/daily-operations/form-classes";
@@ -204,8 +203,14 @@ export function FeedingLogForm({
             )}
           </div>
 
-          <fieldset className={QUICK_PICK_FIELDSET_CLASS}>
-            <legend className={QUICK_PICK_LEGEND_CLASS}>Food quick pick</legend>
+          <div
+            role="group"
+            aria-labelledby="feeding-quick-pick-label"
+            className="grid content-start gap-2"
+          >
+            <p id="feeding-quick-pick-label" className={QUICK_PICK_HEADING_CLASS}>
+              Food quick pick
+            </p>
             <div className="grid gap-2 sm:grid-cols-2">
               {catalogs.map((item) => (
                 <label key={item.id} className={QUICK_PICK_OPTION_CLASS} title={item.name}>
@@ -235,9 +240,9 @@ export function FeedingLogForm({
               </label>
             </div>
             {errors.catalogId && (
-              <p className="mt-2 text-sm text-red-500">{errors.catalogId.message}</p>
+              <p className="text-sm text-red-500">{errors.catalogId.message}</p>
             )}
-          </fieldset>
+          </div>
 
           {catalogLoadError && (
             <p className="text-sm text-red-500" role="alert">

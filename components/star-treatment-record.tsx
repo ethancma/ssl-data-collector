@@ -16,9 +16,8 @@ import {
   type StarTreatmentCatalogItem,
 } from "@/components/daily-operations/quick-pick-catalogs";
 import {
-  QUICK_PICK_FIELDSET_CLASS,
+  QUICK_PICK_HEADING_CLASS,
   QUICK_PICK_LABEL_CLASS,
-  QUICK_PICK_LEGEND_CLASS,
   QUICK_PICK_OPTION_CLASS,
 } from "@/components/daily-operations/form-classes";
 import { Button } from "@/components/ui/button";
@@ -307,8 +306,14 @@ export function StarTreatmentRecord({
               className="flex max-w-lg flex-col gap-6"
               noValidate
             >
-            <fieldset className={QUICK_PICK_FIELDSET_CLASS}>
-              <legend className={QUICK_PICK_LEGEND_CLASS}>Treatment type</legend>
+            <div
+              role="group"
+              aria-labelledby={fieldId("type-label")}
+              className="grid content-start gap-2"
+            >
+              <p id={fieldId("type-label")} className={QUICK_PICK_HEADING_CLASS}>
+                Treatment type
+              </p>
               <div className="grid gap-2 sm:grid-cols-2">
                 {visibleCatalogs.map((item) => (
                   <label
@@ -336,7 +341,7 @@ export function StarTreatmentRecord({
                   <span className={QUICK_PICK_LABEL_CLASS}>Other</span>
                 </label>
               </div>
-            </fieldset>
+            </div>
 
             {catalogId === "" && (
               <div className="grid gap-2">

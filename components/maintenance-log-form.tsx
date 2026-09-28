@@ -19,9 +19,8 @@ import {
   pacificWallTimeToIso,
 } from "@/components/daily-operations/pacific-date-time";
 import {
-  QUICK_PICK_FIELDSET_CLASS,
+  QUICK_PICK_HEADING_CLASS,
   QUICK_PICK_LABEL_CLASS,
-  QUICK_PICK_LEGEND_CLASS,
   QUICK_PICK_OPTION_CLASS,
   SELECT_CLASS,
 } from "@/components/daily-operations/form-classes";
@@ -148,8 +147,14 @@ export function MaintenanceLogForm({
             )}
           </div>
 
-          <fieldset className={QUICK_PICK_FIELDSET_CLASS}>
-            <legend className={QUICK_PICK_LEGEND_CLASS}>Task</legend>
+          <div
+            role="group"
+            aria-labelledby="maintenance-task-label"
+            className="grid content-start gap-2"
+          >
+            <p id="maintenance-task-label" className={QUICK_PICK_HEADING_CLASS}>
+              Task
+            </p>
             <div className="grid gap-2 sm:grid-cols-3">
               {MAINTENANCE_TASK_TYPES.map((taskType) => (
                 <label
@@ -167,9 +172,9 @@ export function MaintenanceLogForm({
               ))}
             </div>
             {errors.taskType && (
-              <p className="mt-2 text-sm text-red-500">{errors.taskType.message}</p>
+              <p className="text-sm text-red-500">{errors.taskType.message}</p>
             )}
-          </fieldset>
+          </div>
 
           <div className="grid gap-2">
             <Label htmlFor="notes">Notes</Label>
