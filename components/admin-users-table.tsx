@@ -56,18 +56,28 @@ function UserRow({ profile }: { profile: ProfileRow }) {
   const updateProfile = async (nextStatus: ProfileStatus) => {
     setError(null);
     setIsSubmitting(true);
-    const supabase = createClient();
-    const { error: updateError } = await supabase
-      .from("profiles")
-      .update({ role: role || null, status: nextStatus })
-      .eq("id", profile.id);
-    setIsSubmitting(false);
-    if (updateError) {
-      setError(updateError.message);
-      return;
+    try {
+      const supabase = createClient();
+      const { data, error: updateError } = await supabase
+        .from("profiles")
+        .update({ role: role || null, status: nextStatus })
+        .eq("id", profile.id)
+        .select("id")
+        .maybeSingle();
+
+      if (updateError) throw updateError;
+      if (!data || data.id !== profile.id) {
+        throw new Error("No matching profile was updated.");
+      }
+
+      setStatus(nextStatus);
+      router.refresh();
+    } catch (cause) {
+      const detail = cause instanceof Error ? cause.message : "Unexpected error";
+      setError(`Could not update user: ${detail} Refresh and retry; if this continues, sign in again or contact an administrator.`);
+    } finally {
+      setIsSubmitting(false);
     }
-    setStatus(nextStatus);
-    router.refresh();
   };
 
   return (
@@ -81,6 +91,7 @@ function UserRow({ profile }: { profile: ProfileRow }) {
         <select
           className="flex h-9 rounded-md border border-input bg-transparent px-3 py-1 text-base shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring md:text-sm"
           value={role}
+          disabled={isSubmitting}
           onChange={(e) => setRole(e.target.value as ProfileRole | "")}
         >
           <option value="">No role</option>
@@ -94,6 +105,7 @@ function UserRow({ profile }: { profile: ProfileRow }) {
         <select
           className="flex h-9 rounded-md border border-input bg-transparent px-3 py-1 text-base shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring md:text-sm"
           value={status}
+          disabled={isSubmitting}
           onChange={(e) => updateProfile(e.target.value as ProfileStatus)}
         >
           {PROFILE_STATUSES.map((s) => (
@@ -129,7 +141,8 @@ function UserRow({ profile }: { profile: ProfileRow }) {
         </Button>
       </div>
 
-      {error && <p className="w-full text-sm text-red-500">{error}</p>}
+      {isSubmitting && <p role="status" className="w-full text-sm text-muted-foreground">Saving change…</p>}
+      {error && <p role="alert" className="w-full text-sm text-red-500">{error}</p>}
     </div>
   );
 }
