@@ -416,8 +416,8 @@ export function StarTreatmentForm({
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-6" noValidate>
-          <div className="grid gap-2 rounded-lg border border-input bg-muted/30 p-4 sm:grid-cols-2">
-            <div className="grid gap-2">
+          <div className="grid gap-4 rounded-lg border border-input bg-muted/30 p-4 sm:grid-cols-2">
+            <div className="grid content-start gap-2">
               <Label htmlFor="star-treatment-date">Administered date</Label>
               <Input
                 id="star-treatment-date"
@@ -435,7 +435,7 @@ export function StarTreatmentForm({
                 </p>
               )}
             </div>
-            <div className="grid gap-2">
+            <div className="grid content-start gap-2">
               <Label htmlFor="star-treatment-time">Time</Label>
               <Input
                 id="star-treatment-time"
@@ -530,13 +530,13 @@ export function StarTreatmentForm({
             {filterMessage}
           </p>
 
-          <fieldset className="grid gap-3">
+          <fieldset className="grid content-start auto-rows-min gap-3">
             <legend className="text-sm font-medium">Treatment type</legend>
-            <div className="grid gap-2 sm:grid-cols-3">
+            <div className="grid auto-rows-min gap-2 sm:grid-cols-3">
               {catalogs.map((item) => (
                 <label
                   key={item.id}
-                  className="flex min-h-11 cursor-pointer items-center gap-3 rounded-md border border-input px-3 py-2 text-sm has-[:checked]:border-foreground has-[:checked]:bg-muted"
+                  className="flex min-h-11 cursor-pointer items-center gap-3 rounded-md border border-input px-3 py-2 text-sm [overflow-wrap:anywhere] has-[:checked]:border-foreground has-[:checked]:bg-muted"
                 >
                   <input
                     type="radio"
@@ -584,10 +584,10 @@ export function StarTreatmentForm({
             </div>
           )}
 
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="grid gap-3 rounded-md border p-4">
-              <div className="grid items-start gap-2 sm:grid-cols-[minmax(0,1fr)_8rem]">
-                <div className="grid gap-2">
+          <div className="grid items-start gap-4 lg:grid-cols-2">
+            <div className="grid content-start gap-4 rounded-md border p-4">
+              <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,7rem),1fr))] items-start gap-4">
+                <div className="grid content-start gap-2">
                   <Label htmlFor="star-treatment-amount">Amount</Label>
                   <Input
                     id="star-treatment-amount"
@@ -624,9 +624,9 @@ export function StarTreatmentForm({
               )}
             </div>
 
-            <div className="grid gap-3 rounded-md border p-4">
-              <div className="grid items-start gap-2 sm:grid-cols-[minmax(0,1fr)_8rem]">
-                <div className="grid gap-2">
+            <div className="grid content-start gap-4 rounded-md border p-4">
+              <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,7rem),1fr))] items-start gap-4">
+                <div className="grid content-start gap-2">
                   <Label htmlFor="star-treatment-concentration">Concentration</Label>
                   <Input
                     id="star-treatment-concentration"

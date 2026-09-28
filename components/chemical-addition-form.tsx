@@ -140,24 +140,28 @@ export function ChemicalAdditionForm({
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-6">
-          <div className="grid gap-2 rounded-lg border border-input bg-muted/30 p-4">
-            <Label htmlFor="date">Date</Label>
-            <Input id="date" type="date" {...register("date")} />
-            {errors.date && (
-              <p className="text-sm text-red-500">{errors.date.message}</p>
-            )}
-            <Label htmlFor="time">Time</Label>
-            <Input id="time" type="time" {...register("time")} />
-            {errors.time && (
-              <p className="text-sm text-red-500">{errors.time.message}</p>
-            )}
+          <div className="grid gap-4 rounded-lg border border-input bg-muted/30 p-4 sm:grid-cols-2">
+            <div className="grid content-start gap-2">
+              <Label htmlFor="date">Date</Label>
+              <Input id="date" type="date" className="min-h-11" {...register("date")} />
+              {errors.date && (
+                <p className="text-sm text-red-500">{errors.date.message}</p>
+              )}
+            </div>
+            <div className="grid content-start gap-2">
+              <Label htmlFor="time">Time</Label>
+              <Input id="time" type="time" className="min-h-11" {...register("time")} />
+              {errors.time && (
+                <p className="text-sm text-red-500">{errors.time.message}</p>
+              )}
+            </div>
           </div>
 
           <div className="grid gap-2">
             <Label htmlFor="systemId">System</Label>
             <select
               id="systemId"
-              className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-base shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring md:text-sm"
+              className="flex min-h-11 w-full rounded-md border border-input bg-transparent px-3 py-2 text-base shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring md:text-sm"
               {...register("systemId")}
             >
               <option value="">Select a system…</option>
@@ -172,13 +176,13 @@ export function ChemicalAdditionForm({
             )}
           </div>
 
-          <fieldset className="grid gap-3">
+          <fieldset className="grid content-start auto-rows-min gap-3">
             <legend className="text-sm font-medium">Quick pick</legend>
-            <div className="grid gap-2 sm:grid-cols-2">
+            <div className="grid auto-rows-min gap-2 sm:grid-cols-2">
               {catalogs.map((item) => (
                 <label
                   key={item.id}
-                  className="flex min-h-11 cursor-pointer items-center gap-3 rounded-md border border-input px-3 py-2 text-sm has-[:checked]:border-foreground has-[:checked]:bg-muted"
+                  className="flex min-h-11 cursor-pointer items-center gap-3 rounded-md border border-input px-3 py-2 text-sm [overflow-wrap:anywhere] has-[:checked]:border-foreground has-[:checked]:bg-muted"
                 >
                   <input
                     type="radio"
@@ -235,8 +239,8 @@ export function ChemicalAdditionForm({
             </div>
           )}
 
-          <div className="grid grid-cols-2 items-start gap-4">
-            <div className="grid gap-2">
+          <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,7rem),1fr))] items-start gap-4">
+            <div className="grid content-start gap-2">
               <Label htmlFor="amount">Amount</Label>
               <Input
                 id="amount"

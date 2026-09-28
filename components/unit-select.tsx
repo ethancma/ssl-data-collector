@@ -56,7 +56,7 @@ export function UnitSelect({
       <Label htmlFor={id}>{label}</Label>
       <select
         id={id}
-        className="flex min-h-11 w-full rounded-md border border-input bg-transparent px-3 py-2 text-base shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 md:text-sm"
+        className="flex h-11 w-full rounded-md border border-input bg-transparent px-3 py-2 text-base shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 md:text-sm"
         value={isOther ? OTHER_VALUE : value}
         disabled={disabled}
         aria-invalid={Boolean(error)}

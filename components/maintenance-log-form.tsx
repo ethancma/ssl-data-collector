@@ -137,9 +137,9 @@ export function MaintenanceLogForm({
             )}
           </div>
 
-          <fieldset className="grid gap-3">
+          <fieldset className="grid content-start auto-rows-min gap-3">
             <legend className="text-sm font-medium">Task</legend>
-            <div className="grid gap-2 sm:grid-cols-3">
+            <div className="grid auto-rows-min gap-2 sm:grid-cols-3">
               {MAINTENANCE_TASK_TYPES.map((taskType) => (
                 <label
                   key={taskType}

@@ -297,13 +297,13 @@ export function StarTreatmentRecord({
 
           {canEdit && (
             <form onSubmit={handleSubmit(onUpdate)} className="grid gap-5" noValidate>
-            <fieldset className="grid gap-3">
+            <fieldset className="grid content-start auto-rows-min gap-3">
               <legend className="text-sm font-medium">Treatment type</legend>
-              <div className="grid gap-2 sm:grid-cols-3">
+              <div className="grid auto-rows-min gap-2 sm:grid-cols-3">
                 {visibleCatalogs.map((item) => (
                   <label
                     key={item.id}
-                    className="flex min-h-11 cursor-pointer items-center gap-3 rounded-md border border-input px-3 py-2 text-sm has-[:checked]:border-foreground has-[:checked]:bg-muted"
+                    className="flex min-h-11 cursor-pointer items-center gap-3 rounded-md border border-input px-3 py-2 text-sm [overflow-wrap:anywhere] has-[:checked]:border-foreground has-[:checked]:bg-muted"
                   >
                     <input
                       type="radio"
@@ -348,10 +348,10 @@ export function StarTreatmentRecord({
               </div>
             )}
 
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="grid gap-3 rounded-md border p-4">
-                <div className="grid items-start gap-2 sm:grid-cols-[minmax(0,1fr)_8rem]">
-                  <div className="grid gap-2">
+            <div className="grid items-start gap-4 lg:grid-cols-2">
+              <div className="grid content-start gap-4 rounded-md border p-4">
+                <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,7rem),1fr))] items-start gap-4">
+                  <div className="grid content-start gap-2">
                     <Label htmlFor={fieldId("amount")}>Amount</Label>
                     <Input
                       id={fieldId("amount")}
@@ -392,9 +392,9 @@ export function StarTreatmentRecord({
                 )}
               </div>
 
-              <div className="grid gap-3 rounded-md border p-4">
-                <div className="grid items-start gap-2 sm:grid-cols-[minmax(0,1fr)_8rem]">
-                  <div className="grid gap-2">
+              <div className="grid content-start gap-4 rounded-md border p-4">
+                <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,7rem),1fr))] items-start gap-4">
+                  <div className="grid content-start gap-2">
                     <Label htmlFor={fieldId("concentration")}>Concentration</Label>
                     <Input
                       id={fieldId("concentration")}
