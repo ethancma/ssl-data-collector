@@ -19,6 +19,13 @@ import {
   selectStarTreatmentCatalogItem,
   type StarTreatmentCatalogItem,
 } from "@/components/daily-operations/quick-pick-catalogs";
+import {
+  QUICK_PICK_FIELDSET_CLASS,
+  QUICK_PICK_LABEL_CLASS,
+  QUICK_PICK_LEGEND_CLASS,
+  QUICK_PICK_OPTION_CLASS,
+  SELECT_CLASS,
+} from "@/components/daily-operations/form-classes";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -387,7 +394,7 @@ export function StarTreatmentForm({
 
   if (savedStarName) {
     return (
-      <Card className="w-full max-w-2xl">
+      <Card className="w-full max-w-lg">
         <CardHeader>
           <CardTitle className="text-2xl">Star treatment saved</CardTitle>
           <CardDescription role="status" aria-live="polite">
@@ -395,10 +402,10 @@ export function StarTreatmentForm({
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-wrap gap-3">
-          <Button type="button" className="min-h-11" onClick={logAnother}>
+          <Button type="button" onClick={logAnother}>
             Log another treatment
           </Button>
-          <Button asChild variant="outline" className="min-h-11">
+          <Button asChild variant="outline">
             <Link href="/protected/star-treatments">View treatments</Link>
           </Button>
         </CardContent>
@@ -407,7 +414,7 @@ export function StarTreatmentForm({
   }
 
   return (
-    <Card className="w-full max-w-2xl">
+    <Card className="w-full max-w-lg">
       <CardHeader>
         <CardTitle className="text-2xl">Star treatment</CardTitle>
         <CardDescription>
@@ -422,7 +429,6 @@ export function StarTreatmentForm({
               <Input
                 id="star-treatment-date"
                 type="date"
-                className="min-h-11"
                 min={getPacificDateString()}
                 max={getPacificDateString()}
                 aria-describedby={errors.date ? "star-treatment-date-error" : undefined}
@@ -440,7 +446,6 @@ export function StarTreatmentForm({
               <Input
                 id="star-treatment-time"
                 type="time"
-                className="min-h-11"
                 aria-describedby={errors.time ? "star-treatment-time-error" : undefined}
                 aria-invalid={Boolean(errors.time)}
                 {...register("time")}
@@ -453,106 +458,105 @@ export function StarTreatmentForm({
             </div>
           </div>
 
-          <div className="grid gap-4 sm:grid-cols-3">
-            <div className="grid gap-2">
-              <Label htmlFor="star-treatment-system">System</Label>
-              <select
-                id="star-treatment-system"
-                className="flex min-h-11 w-full rounded-md border border-input bg-transparent px-3 py-2 text-base shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring md:text-sm"
-                aria-describedby={errors.systemId ? "star-treatment-system-error" : undefined}
-                aria-invalid={Boolean(errors.systemId)}
-                {...register("systemId", { onChange: onSystemChange })}
-              >
-                <option value="">Select a system…</option>
-                {systems.map((system) => (
-                  <option key={system.id} value={system.id}>
-                    {system.name}
-                  </option>
-                ))}
-              </select>
-              {errors.systemId && (
-                <p id="star-treatment-system-error" className="text-sm text-red-500">
-                  {errors.systemId.message}
-                </p>
-              )}
-            </div>
-
-            <div className="grid gap-2">
-              <Label htmlFor="star-treatment-tank">Tank</Label>
-              <select
-                id="star-treatment-tank"
-                className="flex min-h-11 w-full rounded-md border border-input bg-transparent px-3 py-2 text-base shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-50 md:text-sm"
-                disabled={!systemId}
-                aria-describedby={errors.tankId ? "star-treatment-tank-error" : undefined}
-                aria-invalid={Boolean(errors.tankId)}
-                {...register("tankId", { onChange: onTankChange })}
-              >
-                <option value="">Select a tank…</option>
-                {filteredTanks.map((tank) => (
-                  <option key={tank.id} value={tank.id}>
-                    {tank.name}
-                  </option>
-                ))}
-              </select>
-              {errors.tankId && (
-                <p id="star-treatment-tank-error" className="text-sm text-red-500">
-                  {errors.tankId.message}
-                </p>
-              )}
-            </div>
-
-            <div className="grid gap-2">
-              <Label htmlFor="star-treatment-animal">Treated star</Label>
-              <select
-                id="star-treatment-animal"
-                className="flex min-h-11 w-full rounded-md border border-input bg-transparent px-3 py-2 text-base shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-50 md:text-sm"
-                disabled={!tankId}
-                aria-describedby={errors.animalId ? "star-treatment-animal-error" : undefined}
-                aria-invalid={Boolean(errors.animalId)}
-                {...register("animalId", { onChange: onStarChange })}
-              >
-                <option value="">Select a star…</option>
-                {filteredStars.map((star) => (
-                  <option key={star.id} value={star.id}>
-                    {star.name} — {star.speciesName}
-                  </option>
-                ))}
-              </select>
-              {errors.animalId && (
-                <p id="star-treatment-animal-error" className="text-sm text-red-500">
-                  {errors.animalId.message}
-                </p>
-              )}
-            </div>
+          <div className="grid gap-2">
+            <Label htmlFor="star-treatment-system">System</Label>
+            <select
+              id="star-treatment-system"
+              className={SELECT_CLASS}
+              aria-describedby={errors.systemId ? "star-treatment-system-error" : undefined}
+              aria-invalid={Boolean(errors.systemId)}
+              {...register("systemId", { onChange: onSystemChange })}
+            >
+              <option value="">Select a system…</option>
+              {systems.map((system) => (
+                <option key={system.id} value={system.id}>
+                  {system.name}
+                </option>
+              ))}
+            </select>
+            {errors.systemId && (
+              <p id="star-treatment-system-error" className="text-sm text-red-500">
+                {errors.systemId.message}
+              </p>
+            )}
           </div>
 
-          <p className="text-sm text-muted-foreground" role="status" aria-live="polite">
-            {filterMessage}
-          </p>
+          <div className="grid gap-2">
+            <Label htmlFor="star-treatment-tank">Tank</Label>
+            <select
+              id="star-treatment-tank"
+              className={SELECT_CLASS}
+              disabled={!systemId}
+              aria-describedby={errors.tankId ? "star-treatment-tank-error" : undefined}
+              aria-invalid={Boolean(errors.tankId)}
+              {...register("tankId", { onChange: onTankChange })}
+            >
+              <option value="">Select a tank…</option>
+              {filteredTanks.map((tank) => (
+                <option key={tank.id} value={tank.id}>
+                  {tank.name}
+                </option>
+              ))}
+            </select>
+            {errors.tankId && (
+              <p id="star-treatment-tank-error" className="text-sm text-red-500">
+                {errors.tankId.message}
+              </p>
+            )}
+          </div>
 
-          <fieldset className="grid content-start auto-rows-min gap-3">
-            <legend className="text-sm font-medium">Treatment type</legend>
-            <div className="grid auto-rows-min gap-2 sm:grid-cols-3">
+          <div className="grid gap-2">
+            <Label htmlFor="star-treatment-animal">Treated star</Label>
+            <select
+              id="star-treatment-animal"
+              className={SELECT_CLASS}
+              disabled={!tankId}
+              aria-describedby={errors.animalId ? "star-treatment-animal-error" : undefined}
+              aria-invalid={Boolean(errors.animalId)}
+              {...register("animalId", { onChange: onStarChange })}
+            >
+              <option value="">Select a star…</option>
+              {filteredStars.map((star) => (
+                <option key={star.id} value={star.id}>
+                  {star.name} — {star.speciesName}
+                </option>
+              ))}
+            </select>
+            {errors.animalId && (
+              <p id="star-treatment-animal-error" className="text-sm text-red-500">
+                {errors.animalId.message}
+              </p>
+            )}
+            {/* sr-only while empty keeps the live region mounted without adding an extra gap-6 row. */}
+            <p
+              className="text-sm text-muted-foreground empty:sr-only"
+              role="status"
+              aria-live="polite"
+            >
+              {filterMessage}
+            </p>
+          </div>
+
+          <fieldset className={QUICK_PICK_FIELDSET_CLASS}>
+            <legend className={QUICK_PICK_LEGEND_CLASS}>Treatment type</legend>
+            <div className="grid gap-2 sm:grid-cols-2">
               {catalogs.map((item) => (
-                <label
-                  key={item.id}
-                  className="flex min-h-11 cursor-pointer items-center gap-3 rounded-md border border-input px-3 py-2 text-sm [overflow-wrap:anywhere] has-[:checked]:border-foreground has-[:checked]:bg-muted"
-                >
+                <label key={item.id} className={QUICK_PICK_OPTION_CLASS} title={item.name}>
                   <input
                     type="radio"
                     value={item.id}
                     {...register("catalogId", { onChange: onTreatmentCatalogChange })}
                   />
-                  {item.name}
+                  <span className={QUICK_PICK_LABEL_CLASS}>{item.name}</span>
                 </label>
               ))}
-              <label className="flex min-h-11 cursor-pointer items-center gap-3 rounded-md border border-input px-3 py-2 text-sm has-[:checked]:border-foreground has-[:checked]:bg-muted">
+              <label className={QUICK_PICK_OPTION_CLASS}>
                 <input
                   type="radio"
                   value=""
                   {...register("catalogId", { onChange: onTreatmentCatalogChange })}
                 />
-                Other
+                <span className={QUICK_PICK_LABEL_CLASS}>Other</span>
               </label>
             </div>
           </fieldset>
@@ -568,7 +572,6 @@ export function StarTreatmentForm({
               <Label htmlFor="star-treatment-custom">Treatment name</Label>
               <Input
                 id="star-treatment-custom"
-                className="min-h-11"
                 maxLength={100}
                 aria-describedby={
                   errors.treatmentName ? "star-treatment-custom-error" : undefined
@@ -584,86 +587,78 @@ export function StarTreatmentForm({
             </div>
           )}
 
-          <div className="grid items-start gap-4 lg:grid-cols-2">
-            <div className="grid content-start gap-4 rounded-md border p-4">
-              <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,7rem),1fr))] items-start gap-4">
-                <div className="grid content-start gap-2">
-                  <Label htmlFor="star-treatment-amount">Amount</Label>
-                  <Input
-                    id="star-treatment-amount"
-                    type="text"
-                    className="min-h-11"
-                    inputMode="decimal"
-                    placeholder="Optional"
-                    aria-describedby={errors.amount ? "star-treatment-amount-error" : undefined}
-                    aria-invalid={Boolean(errors.amount)}
-                    {...register("amount")}
-                  />
-                </div>
-                <Controller
-                  control={control}
-                  name="unit"
-                  render={({ field }) => (
-                    <UnitSelect
-                      id="star-treatment-unit"
-                      label="Unit"
-                      placeholder="Select…"
-                      options={MEASUREMENT_UNITS}
-                      value={field.value}
-                      onChange={field.onChange}
-                      onBlur={field.onBlur}
-                      error={errors.unit?.message}
-                    />
-                  )}
-                />
-              </div>
+          <div className="grid items-start gap-4 sm:grid-cols-2">
+            <div className="grid content-start gap-2">
+              <Label htmlFor="star-treatment-amount">Amount</Label>
+              <Input
+                id="star-treatment-amount"
+                type="text"
+                inputMode="decimal"
+                placeholder="Optional"
+                aria-describedby={errors.amount ? "star-treatment-amount-error" : undefined}
+                aria-invalid={Boolean(errors.amount)}
+                {...register("amount")}
+              />
               {errors.amount && (
                 <p id="star-treatment-amount-error" className="text-sm text-red-500">
                   {errors.amount.message}
                 </p>
               )}
             </div>
-
-            <div className="grid content-start gap-4 rounded-md border p-4">
-              <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,7rem),1fr))] items-start gap-4">
-                <div className="grid content-start gap-2">
-                  <Label htmlFor="star-treatment-concentration">Concentration</Label>
-                  <Input
-                    id="star-treatment-concentration"
-                    type="text"
-                    className="min-h-11"
-                    inputMode="decimal"
-                    placeholder="Optional"
-                    aria-describedby={
-                      errors.concentration ? "star-treatment-concentration-error" : undefined
-                    }
-                    aria-invalid={Boolean(errors.concentration)}
-                    {...register("concentration")}
-                  />
-                </div>
-                <Controller
-                  control={control}
-                  name="concentrationUnit"
-                  render={({ field }) => (
-                    <UnitSelect
-                      id="star-treatment-concentration-unit"
-                      label="Unit"
-                      placeholder="Select…"
-                      options={MEASUREMENT_UNITS}
-                      value={field.value}
-                      onChange={field.onChange}
-                      onBlur={field.onBlur}
-                      error={errors.concentrationUnit?.message}
-                    />
-                  )}
+            <Controller
+              control={control}
+              name="unit"
+              render={({ field }) => (
+                <UnitSelect
+                  id="star-treatment-unit"
+                  label="Unit"
+                  placeholder="Select…"
+                  options={MEASUREMENT_UNITS}
+                  value={field.value}
+                  onChange={field.onChange}
+                  onBlur={field.onBlur}
+                  error={errors.unit?.message}
                 />
-              </div>
+              )}
+            />
+          </div>
+
+          <div className="grid items-start gap-4 sm:grid-cols-2">
+            <div className="grid content-start gap-2">
+              <Label htmlFor="star-treatment-concentration">Concentration</Label>
+              <Input
+                id="star-treatment-concentration"
+                type="text"
+                inputMode="decimal"
+                placeholder="Optional"
+                aria-describedby={
+                  errors.concentration ? "star-treatment-concentration-error" : undefined
+                }
+                aria-invalid={Boolean(errors.concentration)}
+                {...register("concentration")}
+              />
               {errors.concentration && (
                 <p id="star-treatment-concentration-error" className="text-sm text-red-500">
                   {errors.concentration.message}
                 </p>
               )}
             </div>
+            <Controller
+              control={control}
+              name="concentrationUnit"
+              render={({ field }) => (
+                <UnitSelect
+                  id="star-treatment-concentration-unit"
+                  label="Unit"
+                  placeholder="Select…"
+                  options={MEASUREMENT_UNITS}
+                  value={field.value}
+                  onChange={field.onChange}
+                  onBlur={field.onBlur}
+                  error={errors.concentrationUnit?.message}
+                />
+              )}
+            />
           </div>
 
           <div className="grid gap-2">
@@ -692,10 +687,10 @@ export function StarTreatmentForm({
           )}
 
           <div className="flex flex-wrap gap-3">
-            <Button type="submit" className="min-h-11" disabled={isSubmitting}>
+            <Button type="submit" disabled={isSubmitting}>
               {isSubmitting ? "Saving…" : "Save star treatment"}
             </Button>
-            <Button asChild variant="outline" className="min-h-11">
+            <Button asChild variant="outline">
               <Link href="/protected/star-treatments">View treatments</Link>
             </Button>
           </div>

@@ -103,8 +103,9 @@ These are the highest-priority open items because they affect data ownership or 
 - [x] Confirm salinity as the official ninth weekly water-quality parameter. Its fixed unit
       is `ppt`; analytics alignment remains deferred until that schema is populated.
 - [ ] Build the Micro-Algae production log.
-- [ ] Extend last-used-system defaults, field-linked errors, live announcements, and
-      44-pixel touch targets from Star treatments to the older forms.
+- [ ] Extend last-used-system defaults, field-linked errors, and live announcements from
+      Star treatments to the older forms. Form controls use a uniform 36px (`h-9`) height
+      across all Daily Operations forms.
 - [ ] Add the explicit **Log a star treatment instead** path from System chemical addition.
 
 ## Dashboards, History, And Imports

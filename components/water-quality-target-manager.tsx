@@ -8,6 +8,7 @@ import {
   resolveWaterQualityTarget,
   type WaterQualityTargetRange,
 } from "@/components/daily-operations/water-quality-targets";
+import { SELECT_CLASS } from "@/components/daily-operations/form-classes";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -97,7 +98,7 @@ export function WaterQualityTargetManager({
           <Label htmlFor="target-scope">Range scope</Label>
           <select
             id="target-scope"
-            className="flex min-h-11 w-full rounded-md border border-input bg-transparent px-3 py-2 text-base shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring md:text-sm"
+            className={SELECT_CLASS}
             value={scope}
             disabled={pendingAction !== null || Boolean(loadError)}
             onChange={(event) => {
@@ -326,7 +327,6 @@ function TargetRangeEditor({
           <Input
             id={minimumId}
             inputMode="decimal"
-            className="min-h-11"
             value={minimum}
             disabled={disabled}
             aria-describedby={rowError ? errorId : undefined}
@@ -340,7 +340,6 @@ function TargetRangeEditor({
           <Input
             id={maximumId}
             inputMode="decimal"
-            className="min-h-11"
             value={maximum}
             disabled={disabled}
             aria-describedby={rowError ? errorId : undefined}
@@ -378,7 +377,7 @@ function TargetRangeEditor({
       </div>
 
       <div className="flex flex-wrap gap-2 lg:justify-end">
-        <Button type="submit" className="min-h-11" disabled={disabled}>
+        <Button type="submit" disabled={disabled}>
           <Save aria-hidden="true" />
           {target ? "Save" : "Add"}
         </Button>
@@ -386,7 +385,6 @@ function TargetRangeEditor({
           <Button
             type="button"
             variant="outline"
-            className="min-h-11"
             disabled={disabled}
             onClick={deleteTarget}
           >

@@ -59,7 +59,7 @@ export function ProtectedShell({
           onToggleCollapsed={toggleCollapsed}
         />
       </aside>
-      <main className="min-w-0 flex-1 overflow-y-auto overflow-x-auto p-5 sm:p-8">
+      <main className="min-w-0 flex-1 overflow-y-auto overflow-x-auto p-5 [scrollbar-gutter:stable] sm:p-8">
         {children}
       </main>
     </div>

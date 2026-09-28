@@ -104,7 +104,7 @@ verification to `e2e-verifier`. This is a **Tier 3** change.
 - Generate the request UUID once per submit attempt and reuse it on retry.
 - Accessibility and mobile: labeled native selects, a fieldset and legend for scope,
   labeled checkboxes, keyboard operation, `aria-live` count/success messages, `role="alert"`
-  errors, linked field errors, 44-pixel touch targets, and no horizontal scroll at 390px.
+  errors, linked field errors, 36px (`h-9`) controls matching the other forms, and no horizontal scroll at 390px.
 - Do not change Home.
 
 ## Verification (`e2e-verifier`)

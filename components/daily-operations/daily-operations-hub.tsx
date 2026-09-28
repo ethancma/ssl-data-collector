@@ -43,7 +43,7 @@ export function DailyOperationsHub(data: SharedFormData) {
             asChild
             size="sm"
             variant={active === t.id ? "default" : "ghost"}
-            className="min-h-11 gap-1.5 rounded-md"
+            className="h-9 gap-1.5 rounded-md"
           >
             <Link
               href={hrefForType(t.id)}

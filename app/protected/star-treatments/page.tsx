@@ -10,6 +10,7 @@ import {
   getPacificDateString,
   pacificDayBoundaryToIso,
 } from "@/components/daily-operations/pacific-date-time";
+import { SELECT_CLASS } from "@/components/daily-operations/form-classes";
 import {
   sortCatalogByName,
   type StarTreatmentCatalogItem,
@@ -158,7 +159,7 @@ export default async function StarTreatmentsPage({ searchParams }: { searchParam
           <p className="text-sm text-muted-foreground">Daily Operations</p>
           <h1 className="text-3xl font-semibold tracking-tight">Star treatments</h1>
         </div>
-        <Button asChild variant="outline" className="min-h-11">
+        <Button asChild variant="outline">
           <Link href="/protected/daily-operations?type=star-treatment">
             Log star treatment
           </Link>
@@ -188,7 +189,7 @@ export default async function StarTreatmentsPage({ searchParams }: { searchParam
             name="from"
             type="date"
             defaultValue={from}
-            className="min-h-11 rounded-md border border-input bg-transparent px-3 text-sm"
+            className="h-9 rounded-md border border-input bg-transparent px-3 text-sm"
           />
         </div>
         <div className="grid gap-2">
@@ -200,7 +201,7 @@ export default async function StarTreatmentsPage({ searchParams }: { searchParam
             name="to"
             type="date"
             defaultValue={to}
-            className="min-h-11 rounded-md border border-input bg-transparent px-3 text-sm"
+            className="h-9 rounded-md border border-input bg-transparent px-3 text-sm"
           />
         </div>
         <div className="grid gap-2">
@@ -211,7 +212,7 @@ export default async function StarTreatmentsPage({ searchParams }: { searchParam
             id="treatments-animal"
             name="animal"
             defaultValue={animalFilter}
-            className="min-h-11 rounded-md border border-input bg-transparent px-3 text-sm"
+            className={SELECT_CLASS}
           >
             <option value="">All stars</option>
             {(stars ?? []).map((star) => (
@@ -229,7 +230,7 @@ export default async function StarTreatmentsPage({ searchParams }: { searchParam
             id="treatments-type"
             name="treatment"
             defaultValue={treatmentFilter}
-            className="min-h-11 rounded-md border border-input bg-transparent px-3 text-sm"
+            className={SELECT_CLASS}
           >
             <option value="">All treatments</option>
             <option value="probiotics">Probiotics</option>
@@ -238,10 +239,10 @@ export default async function StarTreatmentsPage({ searchParams }: { searchParam
           </select>
         </div>
         <div className="flex flex-wrap gap-3 sm:col-span-2 lg:col-span-4">
-          <Button type="submit" className="min-h-11">
+          <Button type="submit">
             Apply filters
           </Button>
-          <Button asChild variant="ghost" className="min-h-11">
+          <Button asChild variant="ghost">
             <Link href="/protected/star-treatments">Reset</Link>
           </Button>
         </div>

@@ -15,6 +15,12 @@ import {
   selectStarTreatmentCatalogItem,
   type StarTreatmentCatalogItem,
 } from "@/components/daily-operations/quick-pick-catalogs";
+import {
+  QUICK_PICK_FIELDSET_CLASS,
+  QUICK_PICK_LABEL_CLASS,
+  QUICK_PICK_LEGEND_CLASS,
+  QUICK_PICK_OPTION_CLASS,
+} from "@/components/daily-operations/form-classes";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -261,7 +267,7 @@ export function StarTreatmentRecord({
       </div>
 
       <details className="mt-4 border-t pt-4">
-        <summary className="flex min-h-11 cursor-pointer items-center text-sm font-medium">
+        <summary className="flex min-h-9 cursor-pointer items-center text-sm font-medium">
           {canEdit ? "View details and correct" : "View details"}
         </summary>
 
@@ -296,33 +302,38 @@ export function StarTreatmentRecord({
           </dl>
 
           {canEdit && (
-            <form onSubmit={handleSubmit(onUpdate)} className="grid gap-5" noValidate>
-            <fieldset className="grid content-start auto-rows-min gap-3">
-              <legend className="text-sm font-medium">Treatment type</legend>
-              <div className="grid auto-rows-min gap-2 sm:grid-cols-3">
+            <form
+              onSubmit={handleSubmit(onUpdate)}
+              className="flex max-w-lg flex-col gap-6"
+              noValidate
+            >
+            <fieldset className={QUICK_PICK_FIELDSET_CLASS}>
+              <legend className={QUICK_PICK_LEGEND_CLASS}>Treatment type</legend>
+              <div className="grid gap-2 sm:grid-cols-2">
                 {visibleCatalogs.map((item) => (
                   <label
                     key={item.id}
-                    className="flex min-h-11 cursor-pointer items-center gap-3 rounded-md border border-input px-3 py-2 text-sm [overflow-wrap:anywhere] has-[:checked]:border-foreground has-[:checked]:bg-muted"
+                    className={QUICK_PICK_OPTION_CLASS}
+                    title={item.isActive === false ? `${item.name} (retired)` : item.name}
                   >
                     <input
                       type="radio"
                       value={item.id}
                       {...register("catalogId", { onChange: onTreatmentCatalogChange })}
                     />
-                    {item.name}
+                    <span className={QUICK_PICK_LABEL_CLASS}>{item.name}</span>
                     {item.isActive === false && (
-                      <span className="text-xs text-muted-foreground">(retired)</span>
+                      <span className="shrink-0 text-xs text-muted-foreground">(retired)</span>
                     )}
                   </label>
                 ))}
-                <label className="flex min-h-11 cursor-pointer items-center gap-3 rounded-md border border-input px-3 py-2 text-sm has-[:checked]:border-foreground has-[:checked]:bg-muted">
+                <label className={QUICK_PICK_OPTION_CLASS}>
                   <input
                     type="radio"
                     value=""
                     {...register("catalogId", { onChange: onTreatmentCatalogChange })}
                   />
-                  Other
+                  <span className={QUICK_PICK_LABEL_CLASS}>Other</span>
                 </label>
               </div>
             </fieldset>
@@ -332,7 +343,6 @@ export function StarTreatmentRecord({
                 <Label htmlFor={fieldId("custom-treatment")}>Treatment name</Label>
                 <Input
                   id={fieldId("custom-treatment")}
-                  className="min-h-11"
                   maxLength={100}
                   aria-describedby={
                     errors.treatmentName ? fieldId("custom-treatment-error") : undefined
@@ -348,97 +358,89 @@ export function StarTreatmentRecord({
               </div>
             )}
 
-            <div className="grid items-start gap-4 lg:grid-cols-2">
-              <div className="grid content-start gap-4 rounded-md border p-4">
-                <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,7rem),1fr))] items-start gap-4">
-                  <div className="grid content-start gap-2">
-                    <Label htmlFor={fieldId("amount")}>Amount</Label>
-                    <Input
-                      id={fieldId("amount")}
-                      className="min-h-11"
-                      inputMode="decimal"
-                      aria-describedby={errors.amount ? fieldId("amount-error") : undefined}
-                      aria-invalid={Boolean(errors.amount)}
-                      {...register("amount", {
-                        onChange: (event) => {
-                          if (event.target.value.trim() && !getValues("unit").trim()) {
-                            setValue("unit", "mL");
-                          }
-                        },
-                      })}
-                    />
-                  </div>
-                  <Controller
-                    control={control}
-                    name="unit"
-                    render={({ field }) => (
-                      <UnitSelect
-                        id={fieldId("unit")}
-                        label="Unit"
-                        placeholder="Select…"
-                        options={MEASUREMENT_UNITS}
-                        value={field.value}
-                        onChange={field.onChange}
-                        onBlur={field.onBlur}
-                        error={errors.unit?.message}
-                      />
-                    )}
-                  />
-                </div>
+            <div className="grid items-start gap-4 sm:grid-cols-2">
+              <div className="grid content-start gap-2">
+                <Label htmlFor={fieldId("amount")}>Amount</Label>
+                <Input
+                  id={fieldId("amount")}
+                  inputMode="decimal"
+                  aria-describedby={errors.amount ? fieldId("amount-error") : undefined}
+                  aria-invalid={Boolean(errors.amount)}
+                  {...register("amount", {
+                    onChange: (event) => {
+                      if (event.target.value.trim() && !getValues("unit").trim()) {
+                        setValue("unit", "mL");
+                      }
+                    },
+                  })}
+                />
                 {errors.amount && (
                   <p id={fieldId("amount-error")} className="text-sm text-red-500">
                     {errors.amount.message}
                   </p>
                 )}
               </div>
-
-              <div className="grid content-start gap-4 rounded-md border p-4">
-                <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,7rem),1fr))] items-start gap-4">
-                  <div className="grid content-start gap-2">
-                    <Label htmlFor={fieldId("concentration")}>Concentration</Label>
-                    <Input
-                      id={fieldId("concentration")}
-                      className="min-h-11"
-                      inputMode="decimal"
-                      aria-describedby={
-                        errors.concentration ? fieldId("concentration-error") : undefined
-                      }
-                      aria-invalid={Boolean(errors.concentration)}
-                      {...register("concentration", {
-                        onChange: (event) => {
-                          if (
-                            event.target.value.trim() &&
-                            !getValues("concentrationUnit").trim()
-                          ) {
-                            setValue("concentrationUnit", "ppm");
-                          }
-                        },
-                      })}
-                    />
-                  </div>
-                  <Controller
-                    control={control}
-                    name="concentrationUnit"
-                    render={({ field }) => (
-                      <UnitSelect
-                        id={fieldId("concentration-unit")}
-                        label="Unit"
-                        placeholder="Select…"
-                        options={MEASUREMENT_UNITS}
-                        value={field.value}
-                        onChange={field.onChange}
-                        onBlur={field.onBlur}
-                        error={errors.concentrationUnit?.message}
-                      />
-                    )}
+              <Controller
+                control={control}
+                name="unit"
+                render={({ field }) => (
+                  <UnitSelect
+                    id={fieldId("unit")}
+                    label="Unit"
+                    placeholder="Select…"
+                    options={MEASUREMENT_UNITS}
+                    value={field.value}
+                    onChange={field.onChange}
+                    onBlur={field.onBlur}
+                    error={errors.unit?.message}
                   />
-                </div>
+                )}
+              />
+            </div>
+
+            <div className="grid items-start gap-4 sm:grid-cols-2">
+              <div className="grid content-start gap-2">
+                <Label htmlFor={fieldId("concentration")}>Concentration</Label>
+                <Input
+                  id={fieldId("concentration")}
+                  inputMode="decimal"
+                  aria-describedby={
+                    errors.concentration ? fieldId("concentration-error") : undefined
+                  }
+                  aria-invalid={Boolean(errors.concentration)}
+                  {...register("concentration", {
+                    onChange: (event) => {
+                      if (
+                        event.target.value.trim() &&
+                        !getValues("concentrationUnit").trim()
+                      ) {
+                        setValue("concentrationUnit", "ppm");
+                      }
+                    },
+                  })}
+                />
                 {errors.concentration && (
                   <p id={fieldId("concentration-error")} className="text-sm text-red-500">
                     {errors.concentration.message}
                   </p>
                 )}
               </div>
+              <Controller
+                control={control}
+                name="concentrationUnit"
+                render={({ field }) => (
+                  <UnitSelect
+                    id={fieldId("concentration-unit")}
+                    label="Unit"
+                    placeholder="Select…"
+                    options={MEASUREMENT_UNITS}
+                    value={field.value}
+                    onChange={field.onChange}
+                    onBlur={field.onBlur}
+                    error={errors.concentrationUnit?.message}
+                  />
+                )}
+              />
             </div>
 
             <div className="grid gap-2">
@@ -472,7 +474,7 @@ export function StarTreatmentRecord({
               </p>
             )}
 
-            <Button type="submit" className="min-h-11 w-fit" disabled={isSubmitting}>
+            <Button type="submit" className="w-fit" disabled={isSubmitting}>
               {isSubmitting ? "Saving…" : "Save correction"}
             </Button>
             </form>
@@ -480,7 +482,7 @@ export function StarTreatmentRecord({
 
           {canDelete && (
             <details className="border-t border-destructive/40 pt-4">
-              <summary className="flex min-h-11 cursor-pointer items-center text-sm font-medium text-destructive">
+              <summary className="flex min-h-9 cursor-pointer items-center text-sm font-medium text-destructive">
                 Delete treatment
               </summary>
               <div className="grid max-w-2xl gap-3 pt-3">
@@ -497,7 +499,7 @@ export function StarTreatmentRecord({
                 <Button
                   type="button"
                   variant="destructive"
-                  className="min-h-11 w-fit"
+                  className="w-fit"
                   disabled={isDeleting}
                   onClick={onDelete}
                 >

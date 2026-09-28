@@ -254,7 +254,6 @@ function QuickPickCatalogSection({
               <Label htmlFor={newNameId}>Name</Label>
               <Input
                 id={newNameId}
-                className="min-h-11"
                 maxLength={config.nameMaxLength}
                 value={newName}
                 disabled={disabled}
@@ -284,7 +283,7 @@ function QuickPickCatalogSection({
               />
             ))}
           </div>
-          <Button type="submit" className="min-h-11 w-fit" disabled={disabled}>
+          <Button type="submit" className="w-fit" disabled={disabled}>
             <Plus aria-hidden="true" />
             {pending === createKey ? "Adding…" : `Add ${config.itemNoun}`}
           </Button>
@@ -456,7 +455,6 @@ function QuickPickCatalogItem({
           <Button
             type="button"
             variant="outline"
-            className="min-h-11"
             disabled={disabled}
             onClick={startEditing}
           >
@@ -465,7 +463,6 @@ function QuickPickCatalogItem({
           <Button
             type="button"
             variant="outline"
-            className="min-h-11"
             disabled={disabled}
             onClick={toggleActive}
           >
@@ -483,7 +480,6 @@ function QuickPickCatalogItem({
           <Button
             type="button"
             variant="outline"
-            className="min-h-11"
             disabled={disabled || builtIn}
             aria-describedby={builtIn ? builtInNoteId : undefined}
             onClick={remove}
@@ -505,7 +501,6 @@ function QuickPickCatalogItem({
           <Label htmlFor={`${idPrefix}-name`}>Name</Label>
           <Input
             id={`${idPrefix}-name`}
-            className="min-h-11"
             maxLength={config.nameMaxLength}
             value={name}
             disabled={disabled || builtIn}
@@ -534,7 +529,7 @@ function QuickPickCatalogItem({
         ))}
       </div>
       {builtInNote}
-      <div className="flex min-h-11 items-center gap-2">
+      <div className="flex min-h-9 items-center gap-2">
         <Checkbox
           id={`${idPrefix}-active`}
           checked={isActive}
@@ -544,13 +539,12 @@ function QuickPickCatalogItem({
         <Label htmlFor={`${idPrefix}-active`}>Active in {config.formName}</Label>
       </div>
       <div className="flex gap-2">
-        <Button type="submit" className="min-h-11" disabled={disabled}>
+        <Button type="submit" disabled={disabled}>
           <Save aria-hidden="true" /> {isSaving ? "Saving…" : "Save"}
         </Button>
         <Button
           type="button"
           variant="ghost"
-          className="min-h-11"
           disabled={disabled}
           onClick={() => setEditing(false)}
         >

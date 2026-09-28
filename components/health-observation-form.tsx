@@ -18,6 +18,7 @@ import {
   getPacificTimeString,
   pacificWallTimeToIso,
 } from "@/components/daily-operations/pacific-date-time";
+import { SELECT_CLASS } from "@/components/daily-operations/form-classes";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -167,24 +168,28 @@ export function HealthObservationForm({
         <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-6">
           <input type="hidden" {...register("tankId")} />
 
-          <div className="grid gap-2 rounded-lg border border-input bg-muted/30 p-4">
-            <Label htmlFor="date">Date</Label>
-            <Input id="date" type="date" {...register("date")} />
-            {errors.date && (
-              <p className="text-sm text-red-500">{errors.date.message}</p>
-            )}
-            <Label htmlFor="time">Time</Label>
-            <Input id="time" type="time" {...register("time")} />
-            {errors.time && (
-              <p className="text-sm text-red-500">{errors.time.message}</p>
-            )}
+          <div className="grid gap-4 rounded-lg border border-input bg-muted/30 p-4 sm:grid-cols-2">
+            <div className="grid content-start gap-2">
+              <Label htmlFor="date">Date</Label>
+              <Input id="date" type="date" {...register("date")} />
+              {errors.date && (
+                <p className="text-sm text-red-500">{errors.date.message}</p>
+              )}
+            </div>
+            <div className="grid content-start gap-2">
+              <Label htmlFor="time">Time</Label>
+              <Input id="time" type="time" {...register("time")} />
+              {errors.time && (
+                <p className="text-sm text-red-500">{errors.time.message}</p>
+              )}
+            </div>
           </div>
 
           <div className="grid gap-2">
             <Label htmlFor="animalId">Animal</Label>
             <select
               id="animalId"
-              className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-base shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring md:text-sm"
+              className={SELECT_CLASS}
               {...register("animalId", { onChange: onAnimalChange })}
             >
               <option value="">Select an animal…</option>

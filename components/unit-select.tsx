@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 
+import { SELECT_CLASS } from "@/components/daily-operations/form-classes";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
@@ -52,11 +53,11 @@ export function UnitSelect({
   };
 
   return (
-    <div className={cn("grid gap-2", className)}>
+    <div className={cn("grid content-start gap-2", className)}>
       <Label htmlFor={id}>{label}</Label>
       <select
         id={id}
-        className="flex h-11 w-full rounded-md border border-input bg-transparent px-3 py-2 text-base shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 md:text-sm"
+        className={SELECT_CLASS}
         value={isOther ? OTHER_VALUE : value}
         disabled={disabled}
         aria-invalid={Boolean(error)}
@@ -88,7 +89,6 @@ export function UnitSelect({
           </Label>
           <Input
             id={otherId}
-            className="min-h-11"
             maxLength={50}
             value={value}
             disabled={disabled}

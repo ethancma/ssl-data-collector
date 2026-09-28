@@ -19,6 +19,13 @@ import {
   getPacificTimeString,
   pacificWallTimeToIso,
 } from "@/components/daily-operations/pacific-date-time";
+import {
+  QUICK_PICK_FIELDSET_CLASS,
+  QUICK_PICK_LABEL_CLASS,
+  QUICK_PICK_LEGEND_CLASS,
+  QUICK_PICK_OPTION_CLASS,
+  SELECT_CLASS,
+} from "@/components/daily-operations/form-classes";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { UnitSelect } from "@/components/unit-select";
@@ -143,14 +150,14 @@ export function ChemicalAdditionForm({
           <div className="grid gap-4 rounded-lg border border-input bg-muted/30 p-4 sm:grid-cols-2">
             <div className="grid content-start gap-2">
               <Label htmlFor="date">Date</Label>
-              <Input id="date" type="date" className="min-h-11" {...register("date")} />
+              <Input id="date" type="date" {...register("date")} />
               {errors.date && (
                 <p className="text-sm text-red-500">{errors.date.message}</p>
               )}
             </div>
             <div className="grid content-start gap-2">
               <Label htmlFor="time">Time</Label>
-              <Input id="time" type="time" className="min-h-11" {...register("time")} />
+              <Input id="time" type="time" {...register("time")} />
               {errors.time && (
                 <p className="text-sm text-red-500">{errors.time.message}</p>
               )}
@@ -161,7 +168,7 @@ export function ChemicalAdditionForm({
             <Label htmlFor="systemId">System</Label>
             <select
               id="systemId"
-              className="flex min-h-11 w-full rounded-md border border-input bg-transparent px-3 py-2 text-base shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring md:text-sm"
+              className={SELECT_CLASS}
               {...register("systemId")}
             >
               <option value="">Select a system…</option>
@@ -176,14 +183,11 @@ export function ChemicalAdditionForm({
             )}
           </div>
 
-          <fieldset className="grid content-start auto-rows-min gap-3">
-            <legend className="text-sm font-medium">Quick pick</legend>
-            <div className="grid auto-rows-min gap-2 sm:grid-cols-2">
+          <fieldset className={QUICK_PICK_FIELDSET_CLASS}>
+            <legend className={QUICK_PICK_LEGEND_CLASS}>Quick pick</legend>
+            <div className="grid gap-2 sm:grid-cols-2">
               {catalogs.map((item) => (
-                <label
-                  key={item.id}
-                  className="flex min-h-11 cursor-pointer items-center gap-3 rounded-md border border-input px-3 py-2 text-sm [overflow-wrap:anywhere] has-[:checked]:border-foreground has-[:checked]:bg-muted"
-                >
+                <label key={item.id} className={QUICK_PICK_OPTION_CLASS} title={item.name}>
                   <input
                     type="radio"
                     value={item.id}
@@ -195,10 +199,10 @@ export function ChemicalAdditionForm({
                       },
                     })}
                   />
-                  {item.name}
+                  <span className={QUICK_PICK_LABEL_CLASS}>{item.name}</span>
                 </label>
               ))}
-              <label className="flex min-h-11 cursor-pointer items-center gap-3 rounded-md border border-input px-3 py-2 text-sm has-[:checked]:border-foreground has-[:checked]:bg-muted">
+              <label className={QUICK_PICK_OPTION_CLASS}>
                 <input
                   type="radio"
                   value=""
@@ -209,7 +213,7 @@ export function ChemicalAdditionForm({
                     },
                   })}
                 />
-                Other
+                <span className={QUICK_PICK_LABEL_CLASS}>Other</span>
               </label>
             </div>
           </fieldset>
@@ -225,7 +229,6 @@ export function ChemicalAdditionForm({
               <Label htmlFor="chemicalName">Chemical/product name</Label>
               <Input
                 id="chemicalName"
-                className="min-h-11"
                 maxLength={200}
                 aria-describedby={errors.chemicalName ? "chemicalName-error" : undefined}
                 aria-invalid={Boolean(errors.chemicalName)}
@@ -239,12 +242,11 @@ export function ChemicalAdditionForm({
             </div>
           )}
 
-          <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,7rem),1fr))] items-start gap-4">
+          <div className="grid items-start gap-4 sm:grid-cols-2">
             <div className="grid content-start gap-2">
               <Label htmlFor="amount">Amount</Label>
               <Input
                 id="amount"
-                className="min-h-11"
                 inputMode="decimal"
                 placeholder="e.g. 50"
                 {...register("amount")}
@@ -287,7 +289,7 @@ export function ChemicalAdditionForm({
 
           {serverError && <p className="text-sm text-red-500">{serverError}</p>}
 
-          <Button type="submit" className="min-h-11" disabled={isSubmitting}>
+          <Button type="submit" disabled={isSubmitting}>
             {isSubmitting ? "Saving…" : "Save system addition"}
           </Button>
         </form>

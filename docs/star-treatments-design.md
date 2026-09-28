@@ -258,7 +258,7 @@ server/database and must not be editable or client-overridable for live entry.
   do not apply ARIA tab semantics unless the final interaction behaves as a true tablist.
 - Use clear labels and grouping for the star and treatment-type controls.
 - Associate errors with their fields and announce filtering, failure, and success changes.
-- Use at least 44 by 44 pixel touch targets.
+- Use the shared 36px (`h-9`) control height used by every Daily Operations form.
 - Stack value/unit pairs on phone widths and prevent horizontal scrolling.
 - Keep the star selector usable on phones with a consistently reachable submit action.
 

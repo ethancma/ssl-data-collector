@@ -18,6 +18,7 @@ import {
   getPacificTimeString,
   pacificWallTimeToIso,
 } from "@/components/daily-operations/pacific-date-time";
+import { SELECT_CLASS } from "@/components/daily-operations/form-classes";
 import {
   formatWaterQualityTarget,
   isWaterQualityValueOutOfRange,
@@ -148,7 +149,7 @@ export function WaterQualityForm({
   };
 
   return (
-    <Card className="w-full max-w-2xl">
+    <Card className="w-full max-w-lg">
       <CardHeader>
         <CardTitle className="text-2xl">Water quality reading</CardTitle>
         <CardDescription>
@@ -158,12 +159,11 @@ export function WaterQualityForm({
       <CardContent>
         <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-6" noValidate>
           <div className="grid gap-4 rounded-lg border border-input bg-muted/30 p-4 sm:grid-cols-2">
-            <div className="grid gap-2">
+            <div className="grid content-start gap-2">
               <Label htmlFor="date">Date</Label>
               <Input
                 id="date"
                 type="date"
-                className="min-h-11"
                 aria-describedby={errors.date ? "water-quality-date-error" : undefined}
                 aria-invalid={Boolean(errors.date)}
                 {...register("date")}
@@ -174,12 +174,11 @@ export function WaterQualityForm({
                 </p>
               )}
             </div>
-            <div className="grid gap-2">
+            <div className="grid content-start gap-2">
               <Label htmlFor="time">Time</Label>
               <Input
                 id="time"
                 type="time"
-                className="min-h-11"
                 aria-describedby={errors.time ? "water-quality-time-error" : undefined}
                 aria-invalid={Boolean(errors.time)}
                 {...register("time")}
@@ -196,7 +195,7 @@ export function WaterQualityForm({
             <Label htmlFor="systemId">System</Label>
             <select
               id="systemId"
-              className="flex min-h-11 w-full rounded-md border border-input bg-transparent px-3 py-2 text-base shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring md:text-sm"
+              className={SELECT_CLASS}
               aria-describedby={errors.systemId ? "water-quality-system-error" : undefined}
               aria-invalid={Boolean(errors.systemId)}
               {...register("systemId")}
@@ -223,7 +222,7 @@ export function WaterQualityForm({
                   key={s}
                   type="button"
                   variant={phSource === s ? "default" : "outline"}
-                  className="min-h-11 flex-1"
+                  className="flex-1"
                   onClick={() => setValue("phSource", s, { shouldValidate: true })}
                 >
                   {PH_SOURCE_LABELS[s]}
@@ -259,7 +258,6 @@ export function WaterQualityForm({
                   <Input
                     id={param.key}
                     inputMode="decimal"
-                    className="min-h-11"
                     placeholder="—"
                     aria-describedby={describedBy}
                     aria-invalid={Boolean(errors[param.key])}
@@ -320,7 +318,6 @@ export function WaterQualityForm({
 
           <Button
             type="submit"
-            className="min-h-11"
             disabled={isSubmitting || Boolean(targetLoadError)}
           >
             {isSubmitting ? "Saving…" : "Save reading"}

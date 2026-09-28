@@ -18,6 +18,13 @@ import {
   getPacificTimeString,
   pacificWallTimeToIso,
 } from "@/components/daily-operations/pacific-date-time";
+import {
+  QUICK_PICK_FIELDSET_CLASS,
+  QUICK_PICK_LABEL_CLASS,
+  QUICK_PICK_LEGEND_CLASS,
+  QUICK_PICK_OPTION_CLASS,
+  SELECT_CLASS,
+} from "@/components/daily-operations/form-classes";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -105,24 +112,28 @@ export function MaintenanceLogForm({
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-6">
-          <div className="grid gap-2 rounded-lg border border-input bg-muted/30 p-4">
-            <Label htmlFor="date">Date</Label>
-            <Input id="date" type="date" {...register("date")} />
-            {errors.date && (
-              <p className="text-sm text-red-500">{errors.date.message}</p>
-            )}
-            <Label htmlFor="time">Time</Label>
-            <Input id="time" type="time" {...register("time")} />
-            {errors.time && (
-              <p className="text-sm text-red-500">{errors.time.message}</p>
-            )}
+          <div className="grid gap-4 rounded-lg border border-input bg-muted/30 p-4 sm:grid-cols-2">
+            <div className="grid content-start gap-2">
+              <Label htmlFor="date">Date</Label>
+              <Input id="date" type="date" {...register("date")} />
+              {errors.date && (
+                <p className="text-sm text-red-500">{errors.date.message}</p>
+              )}
+            </div>
+            <div className="grid content-start gap-2">
+              <Label htmlFor="time">Time</Label>
+              <Input id="time" type="time" {...register("time")} />
+              {errors.time && (
+                <p className="text-sm text-red-500">{errors.time.message}</p>
+              )}
+            </div>
           </div>
 
           <div className="grid gap-2">
             <Label htmlFor="systemId">System</Label>
             <select
               id="systemId"
-              className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-base shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring md:text-sm"
+              className={SELECT_CLASS}
               {...register("systemId")}
             >
               <option value="">Select a system…</option>
@@ -137,25 +148,26 @@ export function MaintenanceLogForm({
             )}
           </div>
 
-          <fieldset className="grid content-start auto-rows-min gap-3">
-            <legend className="text-sm font-medium">Task</legend>
-            <div className="grid auto-rows-min gap-2 sm:grid-cols-3">
+          <fieldset className={QUICK_PICK_FIELDSET_CLASS}>
+            <legend className={QUICK_PICK_LEGEND_CLASS}>Task</legend>
+            <div className="grid gap-2 sm:grid-cols-3">
               {MAINTENANCE_TASK_TYPES.map((taskType) => (
                 <label
                   key={taskType}
-                  className="flex min-h-11 cursor-pointer items-center gap-3 rounded-md border border-input px-3 py-2 text-sm has-[:checked]:border-foreground has-[:checked]:bg-muted"
+                  className={QUICK_PICK_OPTION_CLASS}
+                  title={TASK_TYPE_LABELS[taskType]}
                 >
                   <input
                     type="radio"
                     value={taskType}
                     {...register("taskType")}
                   />
-                  {TASK_TYPE_LABELS[taskType]}
+                  <span className={QUICK_PICK_LABEL_CLASS}>{TASK_TYPE_LABELS[taskType]}</span>
                 </label>
               ))}
             </div>
             {errors.taskType && (
-              <p className="text-sm text-red-500">{errors.taskType.message}</p>
+              <p className="mt-2 text-sm text-red-500">{errors.taskType.message}</p>
             )}
           </fieldset>
 
