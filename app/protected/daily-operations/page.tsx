@@ -2,6 +2,11 @@ import { Suspense } from "react";
 import { notFound } from "next/navigation";
 
 import { DailyOperationsHub } from "@/components/daily-operations/daily-operations-hub";
+import type {
+  BatchScopeAnimal,
+  BatchScopeSystem,
+  BatchScopeTank,
+} from "@/components/daily-operations/batch-selection";
 import { pacificDateKey } from "@/components/daily-operations/pacific-date-time";
 import type {
   ChemicalAdditionCatalogItem,
@@ -55,6 +60,7 @@ async function DailyOperationsContent() {
 
   const [
     { data: systems, error: systemsError },
+    { data: tanks, error: tanksError },
     { data: animals, error: animalsError },
     { data: waterQualityTargets, error: waterQualityTargetsError },
     { data: chemicalCatalog, error: chemicalCatalogError },
@@ -66,6 +72,7 @@ async function DailyOperationsContent() {
       .select("id, name")
       .order("name", { ascending: true })
       .order("id", { ascending: true }),
+    supabase.from("tanks").select("id, name, system_id").order("name").order("id"),
     supabase
       .from("animals")
       .select("id, name, tank_id, species_id, tracking_type, status")
@@ -96,6 +103,7 @@ async function DailyOperationsContent() {
   }));
   const referenceDataLoadError =
     systemsError?.message ??
+    tanksError?.message ??
     animalsError?.message ??
     (systemOptions.length === 0 ? "No systems are configured." : undefined);
 
@@ -104,6 +112,22 @@ async function DailyOperationsContent() {
     name: a.name,
     tankId: a.tank_id,
   }));
+  const tankOptions = (tanks ?? []).map((tank) => ({
+    id: tank.id,
+    name: tank.name,
+    systemId: tank.system_id,
+  }));
+  // Mirrors create_feeding_batch eligibility: every active animal, cohorts included.
+  const feedingAnimals = (animals ?? []).map((animal) => ({
+    id: animal.id,
+    name: animal.name,
+    tankId: animal.tank_id,
+    detail: animal.tracking_type === "cohort" ? "Cohort" : undefined,
+  }));
+  const feedingTankIds = new Set(feedingAnimals.map((animal) => animal.tankId));
+  const feedingTanks = tankOptions.filter((tank) => feedingTankIds.has(tank.id));
+  const feedingSystemIds = new Set(feedingTanks.map((tank) => tank.systemId));
+  const feedingSystems = systemOptions.filter((system) => feedingSystemIds.has(system.id));
   const targetOptions = (waterQualityTargets ?? []).flatMap((target) => {
     if (
       !WATER_QUALITY_PARAMETERS.includes(
@@ -177,21 +201,18 @@ async function DailyOperationsContent() {
       }];
     });
 
-  let starSystems: { id: number; name: string }[] = [];
-  let starTanks: { id: number; name: string; systemId: number }[] = [];
-  let stars: { id: number; name: string; tankId: number; speciesName: string }[] = [];
+  let starSystems: BatchScopeSystem[] = [];
+  let starTanks: BatchScopeTank[] = [];
+  let stars: BatchScopeAnimal[] = [];
   let starTreatmentLoadError: string | undefined;
 
   if (canManageStarTreatments) {
-    const [tankResult, speciesResult] = await Promise.all([
-      supabase.from("tanks").select("id, name, system_id").order("name"),
-      supabase
-        .from("species")
-        .select("id, common_name, category")
-        .eq("category", "star")
-        .order("common_name")
-        .order("id"),
-    ]);
+    const speciesResult = await supabase
+      .from("species")
+      .select("id, common_name, category")
+      .eq("category", "star")
+      .order("common_name")
+      .order("id");
     const starSpeciesById = new Map(
       (speciesResult.data ?? []).map((species) => [species.id, species.common_name]),
     );
@@ -204,18 +225,16 @@ async function DailyOperationsContent() {
         id: animal.id,
         name: animal.name,
         tankId: animal.tank_id,
-        speciesName: starSpeciesById.get(animal.species_id) ?? "Star",
+        detail: starSpeciesById.get(animal.species_id) ?? "Star",
       }));
     const eligibleTankIds = new Set(stars.map((star) => star.tankId));
-    starTanks = (tankResult.data ?? [])
-      .filter((tank) => eligibleTankIds.has(tank.id))
-      .map((tank) => ({ id: tank.id, name: tank.name, systemId: tank.system_id }));
+    starTanks = tankOptions.filter((tank) => eligibleTankIds.has(tank.id));
     const eligibleSystemIds = new Set(starTanks.map((tank) => tank.systemId));
     starSystems = systemOptions.filter((system) => eligibleSystemIds.has(system.id));
     starTreatmentLoadError =
       systemsError?.message ??
       animalsError?.message ??
-      tankResult.error?.message ??
+      tanksError?.message ??
       speciesResult.error?.message ??
       ((speciesResult.data ?? []).length === 0
         ? "No star species are configured."
@@ -226,6 +245,9 @@ async function DailyOperationsContent() {
     <DailyOperationsHub
       systems={systemOptions}
       animals={animalOptions}
+      feedingSystems={feedingSystems}
+      feedingTanks={feedingTanks}
+      feedingAnimals={feedingAnimals}
       canManageStarTreatments={canManageStarTreatments}
       starSystems={starSystems}
       starTanks={starTanks}

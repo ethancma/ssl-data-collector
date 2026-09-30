@@ -8,6 +8,8 @@ import { CHECK_TYPES } from "@/lib/config/reference-data";
 
 import { LOG_TYPES, renderLogForm, type LogTypeId, type SharedFormData } from "./log-types";
 
+const BATCH_LOG_TYPES: ReadonlySet<LogTypeId> = new Set(["feeding", "star-treatment"]);
+
 export function DailyOperationsHub(data: SharedFormData) {
   const searchParams = useSearchParams();
   const requestedType = searchParams.get("type");
@@ -21,8 +23,11 @@ export function DailyOperationsHub(data: SharedFormData) {
   const hrefForType = (type: LogTypeId) => {
     const nextParams = new URLSearchParams(searchParams.toString());
     nextParams.set("type", type);
-    if (type !== "star-treatment") {
+    if (!BATCH_LOG_TYPES.has(type)) {
       nextParams.delete("tank");
+      nextParams.delete("animal");
+    } else if (type !== active) {
+      // Feeding and Star treatment share system/tank scope, but an animal is type-specific.
       nextParams.delete("animal");
     }
     if (type !== "daily-check") {

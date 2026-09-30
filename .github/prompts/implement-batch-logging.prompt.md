@@ -23,13 +23,16 @@ verification to `e2e-verifier`. This is a **Tier 3** change.
   - System + tank: every eligible subject in that tank.
   - System + tank + animal: one subject (kept for deep links).
 - **One row per animal.** A batch writes one ordinary `feeding_logs` or `star_treatments`
-  row per included animal. No multi-animal rows.
+  row per included animal. No multi-animal rows or new columns on either log table.
 - **Amount is per animal.** Feeding amount and Star treatment amount/concentration apply to
   each animal and are copied unchanged to every row. Never divide a total across animals.
 - **Exclusions are allowed.** Eligible animals appear as a checklist, all checked by
   default. Unchecking an animal excludes it from the save.
 - **Exclusion reasons use the existing Notes field.** Do not add a per-animal reason field.
   The Notes value is saved on every created row, like the other shared values.
+- **Duplicate protection via a request ledger.** Each save carries a request UUID. Retrying
+  that UUID returns the original result without writing new rows. A new UUID is a new,
+  intentional save. The ledger links a batch to its rows; the log tables get no new columns.
 - **Home shows nothing about exclusions for now.** Do not change Home completion logic or
   add "not fed" or "excluded" indicators.
 - **Eligibility.**
@@ -45,33 +48,43 @@ verification to `e2e-verifier`. This is a **Tier 3** change.
   request UUID, system ID, optional tank ID, optional animal ID, included animal IDs,
   excluded animal IDs, and the existing form fields for that log type.
 - In one transaction:
-  1. Validate the active caller and role. Admin, Technician, and Volunteer may create;
-     Viewer may not. Star treatments stay hidden from Viewer entirely.
-  2. Validate that the tank belongs to the system and the animal belongs to the scope.
-  3. Resolve the current eligible set server-side and lock those animal rows `FOR SHARE`.
-  4. Reject unless included ∪ excluded exactly equals the eligible set, the two sets do not
-     overlap, and at least one animal is included. A mismatch is a stale-preview error.
-  5. Insert one row per included animal, snapshotting each animal's current `tank_id`.
+  1. Validate the active caller and role, including `core.matches_live_profile_role()`.
+     `SECURITY DEFINER` bypasses the restrictive `live_native_role` policy that protects
+     direct feeding inserts, so the RPC must enforce it itself. Admin, Technician, and
+     Volunteer may create; Viewer may not. Star treatments stay hidden from Viewer entirely.
+  2. Serialize calls by request UUID (for example, a transaction-scoped advisory lock). If
+     the ledger already holds that UUID, compare the actor, operation, and canonical payload;
+     return its stored result on a match, or reject a mismatch. Do this before rechecking
+     the current scope so a valid retry still replays after animals move or become inactive.
+  3. Reject null or duplicate IDs in the included or excluded arrays before any set
+     comparison.
+  4. Validate that the tank belongs to the system and the animal belongs to the scope.
+  5. Resolve the current eligible set server-side and lock those animal rows `FOR SHARE`.
   6. Reject a scope with zero eligible animals instead of reporting success.
+  7. Reject unless included ∪ excluded exactly equals the eligible set, the two sets do not
+     overlap, and at least one animal is included. A mismatch is a stale-preview error
+     with a distinct, documented error code or message the UI can detect.
+  8. Insert all included rows with one set-based `INSERT ... SELECT ... RETURNING`,
+     snapshotting each animal's current `tank_id`. Do not loop over single-animal RPCs.
+  9. Write the ledger row with the canonical payload and result in the same transaction.
 - Any failure rolls back every row.
 - Keep server-owned provenance (`recorded_by`, `entered_at`, `data_source = 'live'`) and
   existing validation: feeding keeps its current date behavior, and Star treatments keep the
   current-Pacific-date restriction, catalog snapshots, and Reef Dip exception.
-- Add an append-only `core.operational_batch_requests` ledger for request UUID, operation
-  type, system/tank/animal scope, canonical payload (including notes), included and excluded
-  animal IDs, actor, server timestamp, and stored result. Only Admin and Technician may read
-  it directly; clients may not write it.
-- Add nullable `batch_id` references on both log tables, plus partial unique indexes on
-  `(batch_id, animal_id)`.
-- Idempotency: replaying the same request UUID with the same payload returns the stored
-  result without writing again. Reusing a UUID with a different payload or actor fails. A
-  new UUID may repeat a treatment intentionally.
+- Feeding food and amount checks already run per row in the existing insert triggers;
+  rely on them. For Star treatments, move the shared validation and normalization out
+  of `create_star_treatment` into one internal helper that both the single-animal and
+  batch RPCs call, so the rules cannot drift. Keep the single RPC's signature and behavior.
+- Add an append-only `core.operational_batch_requests` ledger with request UUID (primary
+  key, unique across both operations), operation type, system/tank/animal scope, canonical
+  payload (including notes), sorted included and excluded animal IDs, actor profile, server
+  timestamp, and stored result. Enable RLS; only Admin and Technician may read it; no client
+  role may insert, update, or delete. Do not add `batch_id` columns to the log tables.
 - Return `request_id`, `replayed`, `created_count`, `excluded_animal_ids`, and `records`
   (`id`, `animal_id`, `tank_id` for each row).
 - Use `SECURITY DEFINER` only with a fixed `search_path`, an internal active-profile check,
   revoked `PUBLIC` execute, and grants to the intended roles. Run database advisors.
 - Keep the existing single-animal `create_star_treatment` RPC for compatibility.
-- Add a shared result type under `lib/models/**`.
 
 ## UI contract (`form-builder`)
 
@@ -101,7 +114,9 @@ verification to `e2e-verifier`. This is a **Tier 3** change.
 - Failure: keep every entered value and announce that nothing was saved.
 - Stale preview: show a specific message and refresh the list. Keep existing exclusions;
   animals new to the scope appear unchecked and must be checked explicitly.
-- Generate the request UUID once per submit attempt and reuse it on retry.
+- Generate the request UUID once per submit attempt and reuse it when retrying after a
+  network failure or lost response. Generate a new one after any edit to the form or
+  checklist, and after success. Disable save while a submission is in flight.
 - Accessibility and mobile: labeled native selects, a fieldset and legend for scope,
   labeled checkboxes, keyboard operation, `aria-live` count/success messages, `role="alert"`
   errors, linked field errors, 36px (`h-9`) controls matching the other forms, and no horizontal scroll at 390px.
@@ -115,11 +130,16 @@ verification to `e2e-verifier`. This is a **Tier 3** change.
 - For both forms, cover:
   - Graham-wide, Middle-only, and single-animal batches.
   - Batches with one or more exclusions.
-  - Direct database checks that rows exist only for the included animal IDs, with identical
-    shared values on every row, correct tank snapshots, provenance, and `batch_id`.
-  - Ledger checks that included and excluded IDs are recorded accurately.
+  - Direct database checks, using the returned row IDs, that rows exist only for the
+    included animal IDs, with identical shared values on every row, correct tank snapshots,
+    and provenance.
+  - Ledger checks that included and excluded IDs and the stored result match the RPC
+    response.
   - Stale-preview rejection with zero rows written.
-  - Idempotent replay and double submission.
+  - Idempotent replay (same UUID returns the same row IDs, no new rows), reused UUID with a
+    different payload or actor rejected, concurrent same-UUID calls write once, and double
+    submission from the UI.
+  - Null or duplicate IDs in the arrays rejected, and a mismatched native role rejected.
   - Forced rollback with zero rows written.
   - Disabled save when everyone is unchecked.
   - Reload resetting everyone to checked.

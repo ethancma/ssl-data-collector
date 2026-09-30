@@ -23,15 +23,54 @@ decisions is [docs/implementation-checklist.md](docs/implementation-checklist.md
 ## Stack
 Next.js + TypeScript + Supabase (Postgres, Auth, Storage, RLS), deployed to Vercel.
 
-## File structure
+## File map
+
+Start with the row matching the task. Read the route or component first, then its
+validation/config and database dependencies as needed.
+
+| Task | Start here | Related files |
+| --- | --- | --- |
+| Public entry, auth screens, invitations | [`app/page.tsx`](app/page.tsx), [`app/auth/`](app/auth/), [`components/login-form.tsx`](components/login-form.tsx), [`components/sign-up-form.tsx`](components/sign-up-form.tsx) | [`app/api/onboarding/`](app/api/onboarding/), [`components/invitation-password-form.tsx`](components/invitation-password-form.tsx) |
+| Session protection, profiles, roles | [`proxy.ts`](proxy.ts), [`app/protected/layout.tsx`](app/protected/layout.tsx), [`lib/supabase/`](lib/supabase/) | [`components/protected-shell.tsx`](components/protected-shell.tsx), [`components/protected-sidebar.tsx`](components/protected-sidebar.tsx) |
+| Admin user approval and access | [`app/protected/admin/`](app/protected/admin/), [`app/api/admin/`](app/api/admin/) | [`components/admin-users-table.tsx`](components/admin-users-table.tsx) |
+| Daily Operations routing and shared workflow | [`app/protected/daily-operations/`](app/protected/daily-operations/), [`components/daily-operations/`](components/daily-operations/) | Individual form components in [`components/`](components/), validators in [`lib/validation/`](lib/validation/) |
+| AM/PM checks | [`components/daily-check-form.tsx`](components/daily-check-form.tsx) | [`lib/validation/daily-check.ts`](lib/validation/daily-check.ts) |
+| Feeding and consumption | [`components/feeding-log-form.tsx`](components/feeding-log-form.tsx) | [`lib/validation/feeding-log.ts`](lib/validation/feeding-log.ts) |
+| Water quality and targets | [`components/water-quality-form.tsx`](components/water-quality-form.tsx), [`components/water-quality-target-manager.tsx`](components/water-quality-target-manager.tsx) | [`lib/validation/water-quality.ts`](lib/validation/water-quality.ts), [`components/daily-operations/water-quality-targets.ts`](components/daily-operations/water-quality-targets.ts) |
+| Health observations | [`components/health-observation-form.tsx`](components/health-observation-form.tsx) | [`lib/validation/health-observation.ts`](lib/validation/health-observation.ts) |
+| Chemical additions | [`components/chemical-addition-form.tsx`](components/chemical-addition-form.tsx) | [`lib/validation/chemical-addition.ts`](lib/validation/chemical-addition.ts) |
+| Maintenance logs | [`components/maintenance-log-form.tsx`](components/maintenance-log-form.tsx) | [`lib/validation/maintenance-log.ts`](lib/validation/maintenance-log.ts) |
+| Star treatments | [`app/protected/star-treatments/`](app/protected/star-treatments/), [`components/star-treatment-form.tsx`](components/star-treatment-form.tsx) | [`components/star-treatment-record.tsx`](components/star-treatment-record.tsx) |
+| Home and Systems dashboards | [`app/protected/home/`](app/protected/home/), [`app/protected/systems/`](app/protected/systems/) | [`components/systems/`](components/systems/) |
+| History and export | [`app/protected/history/`](app/protected/history/) | Relevant log forms and Supabase queries for the record type |
+| Account settings and password changes | [`app/protected/settings/`](app/protected/settings/), [`app/protected/change-password/`](app/protected/change-password/) | [`lib/supabase/`](lib/supabase/) |
+| Global styling and reusable controls | [`app/globals.css`](app/globals.css), [`components/ui/`](components/ui/) | [`docs/style-guide.md`](docs/style-guide.md), [`tailwind.config.ts`](tailwind.config.ts) |
+| Reference data and configurable quick picks | [`lib/config/reference-data.ts`](lib/config/reference-data.ts), [`components/quick-pick-catalog-config.ts`](components/quick-pick-catalog-config.ts) | [`components/quick-pick-catalog-manager.tsx`](components/quick-pick-catalog-manager.tsx), [`components/daily-operations/quick-pick-catalogs.ts`](components/daily-operations/quick-pick-catalogs.ts) |
+| Database schema, RLS, and seed data | [`supabase/migrations/`](supabase/migrations/), [`supabase/seeds/`](supabase/seeds/) | [`supabase/config.toml`](supabase/config.toml), [`supabase/seed.sql`](supabase/seed.sql), [`supabase/snippets/`](supabase/snippets/) |
+| Unit and end-to-end tests | [`tests/unit/`](tests/unit/), [`.github/skills/e2e-testing/`](.github/skills/e2e-testing/) | [`playwright.config.ts`](playwright.config.ts), [`docs/testing-strategy.md`](docs/testing-strategy.md) |
+| Requirements, status, and architecture | [`docs/implementation-checklist.md`](docs/implementation-checklist.md), [`docs/platform-architecture.md`](docs/platform-architecture.md) | [`docs/lab-operations-plan.md`](docs/lab-operations-plan.md), [`docs/style-guide.md`](docs/style-guide.md) |
+
+Top-level structure:
+
 ```
 .
 ├── README.md                    # you are here
 ├── AGENTS.md                    # rules for coding agents working in this repo
-├── app/                          # Next.js App Router (auth, dashboards, admin, settings, operations)
-├── components/                   # forms, dashboards, navigation, and UI primitives
-├── lib/supabase/                 # Supabase browser/server clients (@supabase/ssr)
-├── proxy.ts                       # session refresh + route protection (Next.js middleware)
+├── app/                         # Next.js routes, layouts, and server route handlers
+│   ├── api/                     # admin and onboarding server endpoints
+│   ├── auth/                    # login, signup, confirmation, and invitation routes
+│   └── protected/               # authenticated admin, operations, and dashboard routes
+├── components/                  # forms, dashboard features, navigation, and UI primitives
+│   ├── daily-operations/        # shared workflow state, selection, time, and form helpers
+│   ├── systems/                 # Systems dashboard charts, summaries, and data types
+│   └── ui/                      # reusable low-level controls
+├── lib/
+│   ├── config/                  # shared reference data
+│   ├── supabase/                # browser/server clients and current-profile lookup
+│   └── validation/              # form schemas and domain validation
+├── supabase/                    # local config, migrations, repeatable seeds, and SQL snippets
+├── tests/unit/                  # focused unit tests
+├── proxy.ts                    # session refresh and route protection
 ├── docs/
 │   ├── platform-architecture.md   # stack, data model, roles, roadmap, cost
 │   ├── lab-operations-plan.md     # the lab: systems, cadence, rollout

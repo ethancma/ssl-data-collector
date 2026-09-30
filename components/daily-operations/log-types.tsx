@@ -17,6 +17,11 @@ import { MaintenanceLogForm } from "@/components/maintenance-log-form";
 import { StarTreatmentForm } from "@/components/star-treatment-form";
 import { WaterQualityForm } from "@/components/water-quality-form";
 import type {
+  BatchScopeAnimal,
+  BatchScopeSystem,
+  BatchScopeTank,
+} from "@/components/daily-operations/batch-selection";
+import type {
   ChemicalAdditionCatalogItem,
   FoodCatalogItem,
   StarTreatmentCatalogItem,
@@ -42,10 +47,13 @@ export type LogType = {
 export type SharedFormData = {
   systems: { id: number; name: string }[];
   animals: { id: number; name: string; tankId: number }[];
+  feedingSystems: BatchScopeSystem[];
+  feedingTanks: BatchScopeTank[];
+  feedingAnimals: BatchScopeAnimal[];
   canManageStarTreatments: boolean;
-  starSystems: { id: number; name: string }[];
-  starTanks: { id: number; name: string; systemId: number }[];
-  stars: { id: number; name: string; tankId: number; speciesName: string }[];
+  starSystems: BatchScopeSystem[];
+  starTanks: BatchScopeTank[];
+  stars: BatchScopeAnimal[];
   pendingFeedingLogs: {
     id: number;
     animalName: string;
@@ -131,7 +139,9 @@ export function renderLogForm(
     case "feeding":
       return (
         <FeedingLogForm
-          animals={data.animals}
+          systems={data.feedingSystems}
+          tanks={data.feedingTanks}
+          animals={data.feedingAnimals}
           catalogs={data.foodCatalog}
           catalogLoadError={data.foodCatalogLoadError}
         />

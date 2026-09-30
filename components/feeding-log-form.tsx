@@ -2,7 +2,7 @@
 
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Controller, useForm } from "react-hook-form";
 import { z } from "zod";
 
@@ -14,6 +14,19 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import {
+  BatchScopeFields,
+  BatchSuccessCard,
+  useBatchRequestId,
+  useBatchScope,
+} from "@/components/daily-operations/batch-scope-checklist";
+import {
+  runBatchSave,
+  type BatchLogResult,
+  type BatchScopeAnimal,
+  type BatchScopeSystem,
+  type BatchScopeTank,
+} from "@/components/daily-operations/batch-selection";
 import {
   getPacificDateString,
   getPacificTimeString,
@@ -29,7 +42,6 @@ import {
   QUICK_PICK_HEADING_CLASS,
   QUICK_PICK_LABEL_CLASS,
   QUICK_PICK_OPTION_CLASS,
-  SELECT_CLASS,
 } from "@/components/daily-operations/form-classes";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -39,25 +51,44 @@ import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 import { feedingLogSchema } from "@/lib/validation/feeding-log";
 
-type AnimalOption = { id: number; name: string; tankId: number };
+const FEEDING_SCOPE_TEXT = {
+  legend: "Animals fed",
+  animalLabel: "Animal",
+  allAnimalsOption: "All animals in tank",
+  checklistLabel: "Animals to log",
+  nounPlural: "animals",
+};
 
 export function FeedingLogForm({
+  systems,
+  tanks,
   animals,
   catalogs,
   catalogLoadError,
 }: {
-  animals: AnimalOption[];
+  systems: BatchScopeSystem[];
+  tanks: BatchScopeTank[];
+  animals: BatchScopeAnimal[];
   catalogs: FoodCatalogItem[];
   catalogLoadError?: string;
 }) {
   const router = useRouter();
   const [serverError, setServerError] = useState<string | null>(null);
+  const [savedResult, setSavedResult] = useState<BatchLogResult | null>(null);
+  const requestId = useBatchRequestId();
+  const batch = useBatchScope({
+    logType: "feeding",
+    systems,
+    tanks,
+    animals,
+    lastSystemStorageKey: "ssl:last-feeding-system",
+    text: FEEDING_SCOPE_TEXT,
+    onEdit: requestId.reset,
+  });
   const schema = feedingLogSchema
     .pick({
       date: true,
       time: true,
-      animalId: true,
-      tankId: true,
       amount: true,
       amountUnit: true,
       notes: true,
@@ -90,40 +121,44 @@ export function FeedingLogForm({
   type FeedingInput = z.input<typeof schema>;
   type FeedingValues = z.output<typeof schema>;
 
+  const defaultValues = (): FeedingInput => ({
+    date: getPacificDateString(),
+    time: getPacificTimeString(),
+    catalogId: catalogs[0] ? String(catalogs[0].id) : "",
+    foodName: "",
+    amount: "",
+    amountUnit: catalogs[0]?.defaultUnit ?? DEFAULT_FOOD_UNIT,
+    notes: "",
+  });
+
   const {
     control,
     register,
     handleSubmit,
+    reset,
     watch,
     setError,
     setValue,
     formState: { errors, isSubmitting },
   } = useForm<FeedingInput, unknown, FeedingValues>({
     resolver: zodResolver(schema),
-    defaultValues: {
-      date: getPacificDateString(),
-      time: getPacificTimeString(),
-      animalId: "",
-      tankId: "",
-      catalogId: catalogs[0] ? String(catalogs[0].id) : "",
-      foodName: "",
-      amount: "",
-      amountUnit: catalogs[0]?.defaultUnit ?? DEFAULT_FOOD_UNIT,
-      notes: "",
-    },
+    defaultValues: defaultValues(),
   });
 
   const catalogId = watch("catalogId");
 
-  const onAnimalChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const animal = animals.find((a) => String(a.id) === e.target.value);
-    setValue("tankId", animal ? String(animal.tankId) : "", {
-      shouldValidate: true,
-    });
-  };
+  useEffect(() => {
+    const subscription = watch(() => requestId.reset());
+    return () => subscription.unsubscribe();
+  }, [requestId, watch]);
+
+  const includedCount = batch.includedIds.length;
 
   const onSubmit = async (values: FeedingValues) => {
     setServerError(null);
+    const { systemId, tankId, animalId } = batch.scope;
+    if (systemId === null || includedCount === 0) return;
+
     let fedAt: string;
     try {
       fedAt = pacificWallTimeToIso(values.date, values.time);
@@ -137,71 +172,107 @@ export function FeedingLogForm({
     const selectedFood = catalogs.find((item) => String(item.id) === values.catalogId);
     const hasAmount = values.amount.trim() !== "";
     const supabase = createClient();
-    const { error } = await supabase.from("feeding_logs").insert({
-      fed_at: fedAt,
-      animal_id: values.animalId,
-      tank_id: values.tankId,
-      food_catalog_id: selectedFood?.id ?? null,
-      ...(selectedFood ? {} : { food_name: normalizeSnapshot(values.foodName) }),
-      amount_value: hasAmount ? Number(values.amount.trim()) : null,
-      amount_unit: hasAmount ? normalizeSnapshot(values.amountUnit) : null,
-      notes: values.notes?.trim() ? values.notes.trim() : null,
-    });
-    if (error) {
-      setServerError(error.message);
+    const outcome = await runBatchSave(
+      () =>
+        supabase.rpc("create_feeding_batch", {
+          p_request_id: requestId.current(),
+          p_system_id: systemId,
+          p_tank_id: tankId,
+          p_animal_id: animalId,
+          p_included_animal_ids: batch.includedIds,
+          p_excluded_animal_ids: batch.excludedIds,
+          p_fed_at: fedAt,
+          p_food_catalog_id: selectedFood?.id ?? null,
+          p_food_name: selectedFood ? null : normalizeSnapshot(values.foodName),
+          p_amount_value: hasAmount ? Number(values.amount.trim()) : null,
+          p_amount_unit: hasAmount ? normalizeSnapshot(values.amountUnit) : null,
+          p_notes: values.notes?.trim() ? values.notes.trim() : null,
+        }),
+      FEEDING_SCOPE_TEXT.nounPlural,
+    );
+
+    if (!outcome.ok) {
+      const { kind, message } = outcome.error;
+      if (kind !== "unconfirmed") requestId.reset();
+      if (kind === "stale" || kind === "no-eligible") batch.refreshAfterStale();
+      if (kind === "missing-time") setError("time", { message });
+      setServerError(message);
       return;
     }
-    router.push("/protected/home");
+
+    requestId.reset();
+    batch.rememberSystem();
+    setSavedResult(outcome.result);
     router.refresh();
   };
+
+  const logAnother = () => {
+    reset(defaultValues());
+    requestId.reset();
+    batch.selectAnimal("");
+    setServerError(null);
+    setSavedResult(null);
+  };
+
+  if (savedResult) {
+    return (
+      <BatchSuccessCard
+        title={savedResult.created_count === 1 ? "Feeding saved" : "Feedings saved"}
+        result={savedResult}
+        animals={animals}
+        nounPlural={savedResult.created_count === 1 ? "feeding" : "feedings"}
+      >
+        <Button type="button" onClick={logAnother}>
+          Log another feeding
+        </Button>
+      </BatchSuccessCard>
+    );
+  }
 
   return (
     <Card className="w-full max-w-lg">
       <CardHeader>
         <CardTitle className="text-2xl">Feeding log</CardTitle>
-        <CardDescription>Log a feeding for an individual animal.</CardDescription>
+        <CardDescription>
+          Log a feeding for every animal in a system or tank, or for one animal.
+        </CardDescription>
       </CardHeader>
       <CardContent>
-        <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-6">
-          <input type="hidden" {...register("tankId")} />
-
+        <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-6" noValidate>
           <div className="grid gap-4 rounded-lg border border-input bg-muted/30 p-4 sm:grid-cols-2">
             <div className="grid content-start gap-2">
               <Label htmlFor="date">Date</Label>
-              <Input id="date" type="date" {...register("date")} />
+              <Input
+                id="date"
+                type="date"
+                aria-invalid={Boolean(errors.date)}
+                aria-describedby={errors.date ? "date-error" : undefined}
+                {...register("date")}
+              />
               {errors.date && (
-                <p className="text-sm text-red-500">{errors.date.message}</p>
+                <p id="date-error" className="text-sm text-red-500">
+                  {errors.date.message}
+                </p>
               )}
             </div>
             <div className="grid content-start gap-2">
               <Label htmlFor="time">Time</Label>
-              <Input id="time" type="time" {...register("time")} />
+              <Input
+                id="time"
+                type="time"
+                aria-invalid={Boolean(errors.time)}
+                aria-describedby={errors.time ? "time-error" : undefined}
+                {...register("time")}
+              />
               {errors.time && (
-                <p className="text-sm text-red-500">{errors.time.message}</p>
+                <p id="time-error" className="text-sm text-red-500">
+                  {errors.time.message}
+                </p>
               )}
             </div>
           </div>
 
-          <div className="grid gap-2">
-            <Label htmlFor="animalId">Animal</Label>
-            <select
-              id="animalId"
-              className={SELECT_CLASS}
-              {...register("animalId", { onChange: onAnimalChange })}
-            >
-              <option value="">Select an animal…</option>
-              {animals.map((a) => (
-                <option key={a.id} value={a.id}>
-                  {a.name}
-                </option>
-              ))}
-            </select>
-            {(errors.animalId || errors.tankId) && (
-              <p className="text-sm text-red-500">
-                {errors.animalId?.message ?? errors.tankId?.message}
-              </p>
-            )}
-          </div>
+          <BatchScopeFields batch={batch} idPrefix="feeding" disabled={isSubmitting} />
 
           <div
             role="group"
@@ -240,7 +311,9 @@ export function FeedingLogForm({
               </label>
             </div>
             {errors.catalogId && (
-              <p className="text-sm text-red-500">{errors.catalogId.message}</p>
+              <p className="text-sm text-red-500" role="alert">
+                {errors.catalogId.message}
+              </p>
             )}
           </div>
 
@@ -270,7 +343,7 @@ export function FeedingLogForm({
 
           <div className="grid items-start gap-4 sm:grid-cols-2">
             <div className="grid content-start gap-2">
-              <Label htmlFor="amount">Amount (optional)</Label>
+              <Label htmlFor="amount">Amount per animal (optional)</Label>
               <Input
                 id="amount"
                 inputMode="decimal"
@@ -310,17 +383,30 @@ export function FeedingLogForm({
               className={cn(
                 "flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-base shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring md:text-sm",
               )}
+              aria-invalid={Boolean(errors.notes)}
+              aria-describedby={errors.notes ? "notes-error" : undefined}
               {...register("notes")}
             />
             {errors.notes && (
-              <p className="text-sm text-red-500">{errors.notes.message}</p>
+              <p id="notes-error" className="text-sm text-red-500">
+                {errors.notes.message}
+              </p>
             )}
           </div>
 
-          {serverError && <p className="text-sm text-red-500">{serverError}</p>}
+          {serverError && (
+            <p className="text-sm text-red-500" role="alert">
+              {serverError}
+            </p>
+          )}
 
-          <Button type="submit" disabled={isSubmitting}>
-            {isSubmitting ? "Saving…" : "Save feeding"}
+          <Button
+            type="submit"
+            disabled={isSubmitting || batch.isRefreshing || includedCount === 0}
+          >
+            {isSubmitting
+              ? "Saving…"
+              : `Save ${includedCount} ${includedCount === 1 ? "feeding" : "feedings"}`}
           </Button>
         </form>
       </CardContent>
