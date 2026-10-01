@@ -15,7 +15,7 @@ import {
 import { getExpectedAuthRole, getRoleClaimAction, isPublicPath } from "../../../../lib/supabase/proxy";
 
 const SUPABASE_URL = process.env.SUPABASE_URL ?? "https://bqylxmsifagnztxhixyl.supabase.co";
-const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const SECRET_KEY = process.env.SUPABASE_SECRET_KEY;
 const inviteEmail = `e2e-invite-${RUN_TAG}@example.test`;
 const revokedEmail = `e2e-revoked-${RUN_TAG}@example.test`;
 const invitePassword = "Invite-password-123!";
@@ -97,11 +97,11 @@ test.describe("proxy role claim refresh policy", () => {
 
 test.describe("current invitation and Admin access lifecycle", () => {
   test.describe.configure({ mode: "serial" });
-  test.skip(!SERVICE_ROLE_KEY || !db, "requires SUPABASE_SERVICE_ROLE_KEY for cleanup and DB assertions");
+  test.skip(!SECRET_KEY || !db, "requires SUPABASE_SECRET_KEY for cleanup and DB assertions");
 
   test.afterAll(async () => {
-    if (!SERVICE_ROLE_KEY) return;
-    const privileged = createSupabaseClient(SUPABASE_URL, SERVICE_ROLE_KEY, { auth: { persistSession: false } });
+    if (!SECRET_KEY) return;
+    const privileged = createSupabaseClient(SUPABASE_URL, SECRET_KEY, { auth: { persistSession: false } });
     const adminRows = dbQuery(`select auth_user_id from core.profiles where email = ${sqlLiteral(ADMIN_EMAIL)}`);
     const adminAuthUserId = String(adminRows[0]?.auth_user_id ?? "");
     const createdEmails = [inviteEmail, revokedEmail];

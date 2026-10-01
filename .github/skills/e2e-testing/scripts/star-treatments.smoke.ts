@@ -226,13 +226,20 @@ test.describe("Star treatments: role visibility and no-access behavior", () => {
     const browserFailures = collectBrowserFailures(page);
     await loginAs(page, VIEWER_EMAIL, VIEWER_PASSWORD);
     await page.goto("/protected/daily-operations");
+    await expect(page.getByRole("heading", { name: "404" })).toBeVisible();
     await expect(page.getByRole("link", { name: "Star treatment" })).toHaveCount(0);
     await page.goto("/protected/star-treatments");
     await expect(page.getByRole("heading", { name: "404" })).toBeVisible();
     await expect(
       page.getByRole("heading", { name: "This page could not be found." }),
     ).toBeVisible();
-    expectNoUnexpectedRedirectFailures(browserFailures);
+    const expectedNotFound = [
+      /^response: 404 GET http:\/\/localhost:3000\/protected\/(daily-operations|star-treatments)/,
+      /^console: Failed to load resource: the server responded with a status of 404/,
+    ];
+    expectNoUnexpectedRedirectFailures(
+      browserFailures.filter((failure) => !expectedNotFound.some((pattern) => pattern.test(failure))),
+    );
   });
 
   test("signed-out access redirects to login", async ({ page }) => {

@@ -29,6 +29,7 @@ import {
   localTimeOf,
   PICKED_TIME,
   expectDefaultDateAndTime,
+  logSingleFeeding,
 } from "./helpers";
 
 function sqlLiteral(value: string) {
@@ -41,6 +42,8 @@ test.describe("e2e smoke", () => {
 
   let grahamSystemId: number;
   let ssl25AnimalId: number;
+  let ssl25TankId: number;
+  let ssl25SystemId: number;
   let diTraceCatalogId: number;
 
   test.beforeAll(async () => {
@@ -48,8 +51,13 @@ test.describe("e2e smoke", () => {
     // schema core" against the service-role client, see the gotcha in ../SKILL.md.
     const systemRows = dbQuery(`select id from core.systems where name = 'Graham'`);
     grahamSystemId = Number(systemRows[0]?.id);
-    const animalRows = dbQuery(`select id from core.animals where name = 'SSL25'`);
+    const animalRows = dbQuery(`select animal.id, animal.tank_id, tank.system_id
+      from core.animals animal
+      join core.tanks tank on tank.id = animal.tank_id
+      where animal.name = 'SSL25'`);
     ssl25AnimalId = Number(animalRows[0]?.id);
+    ssl25TankId = Number(animalRows[0]?.tank_id);
+    ssl25SystemId = Number(animalRows[0]?.system_id);
     const catalogRows = dbQuery(
       `select id from core.chemical_addition_catalog where name = 'DI-Trace'`,
     );
@@ -133,14 +141,16 @@ test.describe("e2e smoke", () => {
   test("feeding log for SSL25 lands in feeding_logs", async ({ page }) => {
     await login(page);
     await page.goto("/protected/daily-operations?type=feeding");
-    await page.getByLabel("Animal").selectOption(String(ssl25AnimalId));
     await expect(page.getByLabel("Food name")).toHaveCount(0);
-    await page.getByRole("radio", { name: "Krill", exact: true }).check();
-    await expect(page.getByLabel("Unit", { exact: true })).toHaveValue("pieces");
-    await page.getByLabel("Amount (optional)").fill("2.5");
-    await page.getByLabel("Notes").fill(`${RUN_TAG} feeding`);
-    await page.getByRole("button", { name: "Save feeding" }).click();
-    await expect(page).toHaveURL(/\/protected\/home/);
+    await logSingleFeeding(page, {
+      systemId: ssl25SystemId,
+      tankId: ssl25TankId,
+      animalId: ssl25AnimalId,
+      food: "Krill",
+      amount: "2.5",
+      unit: "pieces",
+      notes: `${RUN_TAG} feeding`,
+    });
 
     const rows = dbQuery(`
       select id, animal_id, food_catalog_id, food_name,
@@ -337,14 +347,11 @@ test.describe("e2e smoke", () => {
       /\/protected\/daily-operations\?type=health-observation/,
     );
 
-    if (db) {
-      const { data } = await db
-        .from("health_observations")
-        .select("id")
-        .eq("notes", `${RUN_TAG} health obs blocked`)
-        .maybeSingle();
-      expect(data).toBeNull();
-    }
+    expect(
+      dbQuery(
+        `select id from core.health_observations where notes = ${sqlLiteral(`${RUN_TAG} health obs blocked`)}`,
+      ),
+    ).toHaveLength(0);
   });
 
   test("health observation with photo stores multiple issues on the parent row and uploads to Storage", async ({
@@ -473,16 +480,12 @@ test.describe("e2e smoke", () => {
     await page.getByRole("button", { name: "Save check" }).click();
     await expect(page).toHaveURL(/\/protected\/home/);
 
-    if (db) {
-      const { data, error } = await db
-        .from("daily_checks")
-        .select("checked_at")
-        .eq("notes", `${RUN_TAG} AM check picked time`)
-        .maybeSingle();
-      expect(error).toBeNull();
-      expect(localDateOf(data?.checked_at)).toBe(todayDateString());
-      expect(localTimeOf(data?.checked_at)).toBe(PICKED_TIME);
-    }
+    const checkRows = dbQuery(
+      `select checked_at from core.daily_checks where notes = ${sqlLiteral(`${RUN_TAG} AM check picked time`)}`,
+    );
+    expect(checkRows).toHaveLength(1);
+    expect(localDateOf(String(checkRows[0].checked_at))).toBe(todayDateString());
+    expect(localTimeOf(String(checkRows[0].checked_at))).toBe(PICKED_TIME);
   });
 
   test("feeding log date/time box defaults correctly and a picked time is saved to feeding_logs.fed_at", async ({
@@ -492,23 +495,21 @@ test.describe("e2e smoke", () => {
     await page.goto("/protected/daily-operations?type=feeding");
     await expectDefaultDateAndTime(page);
     await page.getByLabel("Time").fill(PICKED_TIME);
-    await page.getByLabel("Animal").selectOption(String(ssl25AnimalId));
-    await page.getByRole("button", { name: "Krill" }).click();
-    await page.getByLabel("Amount").fill("2 krill");
-    await page.getByLabel("Notes").fill(`${RUN_TAG} feeding picked time`);
-    await page.getByRole("button", { name: "Save feeding" }).click();
-    await expect(page).toHaveURL(/\/protected\/home/);
+    await page.getByLabel("System", { exact: true }).selectOption(String(ssl25SystemId));
+    await page.getByLabel("Tank", { exact: true }).selectOption(String(ssl25TankId));
+    await page.getByLabel("Animal", { exact: true }).selectOption(String(ssl25AnimalId));
+    await page.getByRole("radio", { name: "Krill", exact: true }).check();
+    await page.getByLabel("Amount per animal (optional)", { exact: true }).fill("2");
+    await page.getByLabel("Notes", { exact: true }).fill(`${RUN_TAG} feeding picked time`);
+    await page.getByRole("button", { name: "Save 1 feeding", exact: true }).click();
+    await expect(page.getByText("1 feeding logged.", { exact: true })).toBeVisible();
 
-    if (db) {
-      const { data, error } = await db
-        .from("feeding_logs")
-        .select("fed_at")
-        .eq("notes", `${RUN_TAG} feeding picked time`)
-        .maybeSingle();
-      expect(error).toBeNull();
-      expect(localDateOf(data?.fed_at)).toBe(todayDateString());
-      expect(localTimeOf(data?.fed_at)).toBe(PICKED_TIME);
-    }
+    const feedingRows = dbQuery(
+      `select fed_at from core.feeding_logs where notes = ${sqlLiteral(`${RUN_TAG} feeding picked time`)}`,
+    );
+    expect(feedingRows).toHaveLength(1);
+    expect(localDateOf(String(feedingRows[0].fed_at))).toBe(todayDateString());
+    expect(localTimeOf(String(feedingRows[0].fed_at))).toBe(PICKED_TIME);
   });
 
   test("water quality date/time box defaults correctly and a picked time is saved to water_quality_readings.tested_at", async ({
@@ -527,16 +528,12 @@ test.describe("e2e smoke", () => {
     await page.getByRole("button", { name: "Save reading" }).click();
     await expect(page).toHaveURL(/\/protected\/home/);
 
-    if (db) {
-      const { data, error } = await db
-        .from("water_quality_readings")
-        .select("tested_at")
-        .eq("notes", `${RUN_TAG} water quality picked time`)
-        .maybeSingle();
-      expect(error).toBeNull();
-      expect(localDateOf(data?.tested_at)).toBe(todayDateString());
-      expect(localTimeOf(data?.tested_at)).toBe(PICKED_TIME);
-    }
+    const readingRows = dbQuery(
+      `select tested_at from core.water_quality_readings where notes = ${sqlLiteral(`${RUN_TAG} water quality picked time`)}`,
+    );
+    expect(readingRows).toHaveLength(1);
+    expect(localDateOf(String(readingRows[0].tested_at))).toBe(todayDateString());
+    expect(localTimeOf(String(readingRows[0].tested_at))).toBe(PICKED_TIME);
   });
 
   test("chemical addition date/time box defaults correctly and a picked time is saved to chemical_additions.added_at", async ({
@@ -670,7 +667,8 @@ test.describe("food catalog quick picks", () => {
 
     await login(page);
     await page.goto("/protected/daily-operations?type=feeding");
-    const radios = page.getByRole("group", { name: "Food quick pick" }).getByRole("radio");
+    const radios = page.getByRole("group", { name: "Food quick pick", exact: true }).getByRole("radio");
+    await expect(radios).toHaveCount(active.length + 1);
     const labels = await radios.evaluateAll((items) =>
       items.map((item) => item.parentElement?.textContent?.trim() ?? ""),
     );
@@ -690,26 +688,28 @@ test.describe("food catalog quick picks", () => {
     await login(page);
     await page.goto("/protected/daily-operations?type=feeding");
     const form = page.locator("form");
-    await form.getByLabel("Animal").selectOption(String(ssl25AnimalId));
+    await form.getByLabel("System", { exact: true }).selectOption(String(ssl25SystemId));
+    await form.getByLabel("Tank", { exact: true }).selectOption(String(ssl25TankId));
+    await form.getByLabel("Animal", { exact: true }).selectOption(String(ssl25AnimalId));
     await expect(form.getByLabel("Food name")).toHaveCount(0);
     await form.getByRole("radio", { name: "Other", exact: true }).check();
-    await form.getByRole("button", { name: "Save feeding" }).click();
+    await form.getByRole("button", { name: "Save 1 feeding", exact: true }).click();
     await expect(form.getByText("Enter a food name other than Other")).toBeVisible();
 
     await form.getByLabel("Food name").fill("Krill");
-    await form.getByLabel("Amount (optional)").fill("2 krill");
-    await form.getByRole("button", { name: "Save feeding" }).click();
+    await form.getByLabel("Amount per animal (optional)", { exact: true }).fill("2 krill");
+    await form.getByRole("button", { name: "Save 1 feeding", exact: true }).click();
     await expect(form.getByText("Enter a finite numeric amount")).toBeVisible();
     await expect(page).toHaveURL(/\/protected\/daily-operations\?type=feeding/);
     expect(dbQuery(`select id from core.feeding_logs
       where notes = ${sqlLiteral(`${notesPrefix} free-text krill`)}`)).toHaveLength(0);
 
-    await form.getByLabel("Amount (optional)").fill("0.75");
+    await form.getByLabel("Amount per animal (optional)", { exact: true }).fill("0.75");
     await expect(form.getByLabel("Unit", { exact: true })).toHaveValue("pieces");
-    await form.getByLabel("Notes").fill(`${notesPrefix} free-text krill`);
-    await form.getByRole("button", { name: "Save feeding" }).click();
+    await form.getByLabel("Notes", { exact: true }).fill(`${notesPrefix} free-text krill`);
+    await form.getByRole("button", { name: "Save 1 feeding", exact: true }).click();
     await expect(form.getByText("Select the matching quick pick instead")).toHaveCount(0);
-    await expect(page).toHaveURL(/\/protected\/home/);
+    await expect(page.getByText("1 feeding logged.", { exact: true })).toBeVisible();
 
     const rows = dbQuery(`select animal_id, food_catalog_id, food_name, amount,
         amount_value, amount_unit
@@ -728,25 +728,29 @@ test.describe("food catalog quick picks", () => {
   }) => {
     await login(page);
     await page.goto("/protected/daily-operations?type=feeding");
-    await page.getByLabel("Animal").selectOption(String(ssl25AnimalId));
+    await page.getByLabel("System", { exact: true }).selectOption(String(ssl25SystemId));
+    await page.getByLabel("Tank", { exact: true }).selectOption(String(ssl25TankId));
+    await page.getByLabel("Animal", { exact: true }).selectOption(String(ssl25AnimalId));
     await page.getByRole("radio", { name: "Other", exact: true }).check();
     await page.getByLabel("Food name").fill("  BRINE_shrimp ");
-    await page.getByLabel("Amount (optional)").fill("3");
+    await page.getByLabel("Amount per animal (optional)", { exact: true }).fill("3");
     await page.getByLabel("Unit", { exact: true }).selectOption("mL");
-    await page.getByLabel("Notes").fill(`${notesPrefix} normalized brine`);
-    await page.getByRole("button", { name: "Save feeding" }).click();
-    await expect(page).toHaveURL(/\/protected\/home/);
+    await page.getByLabel("Notes", { exact: true }).fill(`${notesPrefix} normalized brine`);
+    await page.getByRole("button", { name: "Save 1 feeding", exact: true }).click();
+    await expect(page.getByText("1 feeding logged.", { exact: true })).toBeVisible();
 
     await page.goto("/protected/daily-operations?type=feeding");
-    await page.getByLabel("Animal").selectOption(String(ssl25AnimalId));
+    await page.getByLabel("System", { exact: true }).selectOption(String(ssl25SystemId));
+    await page.getByLabel("Tank", { exact: true }).selectOption(String(ssl25TankId));
+    await page.getByLabel("Animal", { exact: true }).selectOption(String(ssl25AnimalId));
     await page.getByRole("radio", { name: "Other", exact: true }).check();
     await page.getByLabel("Food name").fill(`${RUN_TAG} copepods`);
-    await page.getByLabel("Amount (optional)").fill("1.25");
+    await page.getByLabel("Amount per animal (optional)", { exact: true }).fill("1.25");
     await page.getByLabel("Unit", { exact: true }).selectOption({ label: "Other" });
     await page.getByLabel("Other unit").fill("scoops");
-    await page.getByLabel("Notes").fill(`${notesPrefix} unmatched`);
-    await page.getByRole("button", { name: "Save feeding" }).click();
-    await expect(page).toHaveURL(/\/protected\/home/);
+    await page.getByLabel("Notes", { exact: true }).fill(`${notesPrefix} unmatched`);
+    await page.getByRole("button", { name: "Save 1 feeding", exact: true }).click();
+    await expect(page.getByText("1 feeding logged.", { exact: true })).toBeVisible();
 
     expect(dbQuery(`select notes, food_catalog_id, food_name, amount_value, amount_unit
       from core.feeding_logs
@@ -775,13 +779,15 @@ test.describe("food catalog quick picks", () => {
   }) => {
     await login(page);
     await page.goto("/protected/daily-operations?type=feeding");
-    await page.getByLabel("Animal").selectOption(String(ssl25AnimalId));
+    await page.getByLabel("System", { exact: true }).selectOption(String(ssl25SystemId));
+    await page.getByLabel("Tank", { exact: true }).selectOption(String(ssl25TankId));
+    await page.getByLabel("Animal", { exact: true }).selectOption(String(ssl25AnimalId));
     await page.getByRole("radio", { name: "Krill", exact: true }).check();
-    await expect(page.getByLabel("Amount (optional)")).toHaveValue("");
+    await expect(page.getByLabel("Amount per animal (optional)", { exact: true })).toHaveValue("");
     await expect(page.getByLabel("Unit", { exact: true })).toHaveValue("pieces");
-    await page.getByLabel("Notes").fill(`${notesPrefix} no amount`);
-    await page.getByRole("button", { name: "Save feeding" }).click();
-    await expect(page).toHaveURL(/\/protected\/home/);
+    await page.getByLabel("Notes", { exact: true }).fill(`${notesPrefix} no amount`);
+    await page.getByRole("button", { name: "Save 1 feeding", exact: true }).click();
+    await expect(page.getByText("1 feeding logged.", { exact: true })).toBeVisible();
     expect(dbQuery(`select food_catalog_id, amount, amount_value, amount_unit
       from core.feeding_logs where notes = ${sqlLiteral(`${notesPrefix} no amount`)}`))
       .toEqual([
@@ -834,14 +840,16 @@ test.describe("food catalog quick picks", () => {
       .toEqual([{ name: renamedName, default_unit: "L" }]);
 
     await page.goto("/protected/daily-operations?type=feeding");
-    await page.getByLabel("Animal").selectOption(String(ssl25AnimalId));
+    await page.getByLabel("System", { exact: true }).selectOption(String(ssl25SystemId));
+    await page.getByLabel("Tank", { exact: true }).selectOption(String(ssl25TankId));
+    await page.getByLabel("Animal", { exact: true }).selectOption(String(ssl25AnimalId));
     await page.getByRole("radio", { name: renamedName, exact: true }).check();
     await expect(page.getByLabel("Food name")).toHaveCount(0);
     await expect(page.getByLabel("Unit", { exact: true })).toHaveValue("L");
-    await page.getByLabel("Amount (optional)").fill("1.5");
-    await page.getByLabel("Notes").fill(feedingNotes);
-    await page.getByRole("button", { name: "Save feeding" }).click();
-    await expect(page).toHaveURL(/\/protected\/home/);
+    await page.getByLabel("Amount per animal (optional)", { exact: true }).fill("1.5");
+    await page.getByLabel("Notes", { exact: true }).fill(feedingNotes);
+    await page.getByRole("button", { name: "Save 1 feeding", exact: true }).click();
+    await expect(page.getByText("1 feeding logged.", { exact: true })).toBeVisible();
     expect(dbQuery(`select food_catalog_id, food_name, amount_value, amount_unit
       from core.feeding_logs where notes = ${sqlLiteral(feedingNotes)}`)).toEqual([
       { food_catalog_id: catalogId, food_name: renamedName, amount_value: 1.5, amount_unit: "L" },

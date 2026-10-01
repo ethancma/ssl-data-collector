@@ -14,6 +14,7 @@ import {
   TECH_PASSWORD,
   ADMIN_EMAIL,
   ADMIN_PASSWORD,
+  logSingleFeeding,
 } from "./helpers";
 
 // RLS/GRANT rebuild verification (native-role model, supabase/migrations/
@@ -26,7 +27,7 @@ import {
 // surfaces the raw PostgREST error — and (b) actually landed in schema `core`, read back
 // via the postgres-role dbQuery path (service_role can't read `core`; see ../SKILL.md).
 // Unlike the existing suites above, ID lookup here does NOT require a service-role client,
-// so it runs even when SUPABASE_SERVICE_ROLE_KEY is unset.
+// so it runs even when SUPABASE_SECRET_KEY is unset.
 function rlsRebuildWriteSuite(
   label: string,
   signIn: (page: Page) => Promise<void>,
@@ -37,14 +38,20 @@ function rlsRebuildWriteSuite(
 
     let grahamSystemId: number;
     let ssl25AnimalId: number;
+    let ssl25TankId: number;
+    let ssl25SystemId: number;
 
     test.beforeAll(async () => {
       grahamSystemId = Number(
         dbQuery(`select id from core.systems where name = 'Graham'`)[0]?.id,
       );
-      ssl25AnimalId = Number(
-        dbQuery(`select id from core.animals where name = 'SSL25'`)[0]?.id,
-      );
+      const ssl25 = dbQuery(`select animal.id, animal.tank_id, tank.system_id
+        from core.animals animal
+        join core.tanks tank on tank.id = animal.tank_id
+        where animal.name = 'SSL25'`)[0];
+      ssl25AnimalId = Number(ssl25?.id);
+      ssl25TankId = Number(ssl25?.tank_id);
+      ssl25SystemId = Number(ssl25?.system_id);
       expect(grahamSystemId).toBeGreaterThan(0);
       expect(ssl25AnimalId).toBeGreaterThan(0);
     });
@@ -79,12 +86,15 @@ function rlsRebuildWriteSuite(
     test(`${label} feeding INSERT lands in core.feeding_logs`, async ({ page }) => {
       await signIn(page);
       await page.goto("/protected/daily-operations?type=feeding");
-      await page.getByLabel("Animal").selectOption(String(ssl25AnimalId));
-      await page.getByRole("radio", { name: "Krill", exact: true }).check();
-      await page.getByLabel("Amount (optional)").fill("2");
-      await page.getByLabel("Notes").fill(`${tag} feeding`);
-      await page.getByRole("button", { name: "Save feeding" }).click();
-      await expect(page).toHaveURL(/\/protected\/home/);
+      await logSingleFeeding(page, {
+        systemId: ssl25SystemId,
+        tankId: ssl25TankId,
+        animalId: ssl25AnimalId,
+        food: "Krill",
+        amount: "2",
+        unit: "pieces",
+        notes: `${tag} feeding`,
+      });
 
       const rows = dbQuery(
         `select animal_id, food_catalog_id, food_name, amount, amount_value, consumption_status

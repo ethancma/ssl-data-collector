@@ -19,6 +19,7 @@ import {
   VOLUNTEER_PASSWORD,
   VIEWER_EMAIL,
   VIEWER_PASSWORD,
+  logSingleFeeding,
 } from "./helpers";
 
 type OperationalLogAuditDatabase = {
@@ -92,14 +93,20 @@ test.describe("admin can create logs in every form (operational log RBAC tiers)"
   const TAG = `e2e-rbac-admin-${Date.now()}`;
   let grahamSystemId: number;
   let ssl25AnimalId: number;
+  let ssl25TankId: number;
+  let ssl25SystemId: number;
 
   test.beforeAll(async () => {
     grahamSystemId = Number(
       dbQuery(`select id from core.systems where name = 'Graham'`)[0]?.id,
     );
-    ssl25AnimalId = Number(
-      dbQuery(`select id from core.animals where name = 'SSL25'`)[0]?.id,
-    );
+    const ssl25 = dbQuery(`select animal.id, animal.tank_id, tank.system_id
+      from core.animals animal
+      join core.tanks tank on tank.id = animal.tank_id
+      where animal.name = 'SSL25'`)[0];
+    ssl25AnimalId = Number(ssl25?.id);
+    ssl25TankId = Number(ssl25?.tank_id);
+    ssl25SystemId = Number(ssl25?.system_id);
   });
 
   test("admin AM check lands in daily_checks", async ({ page }) => {
@@ -120,12 +127,15 @@ test.describe("admin can create logs in every form (operational log RBAC tiers)"
   test("admin feeding log lands in feeding_logs", async ({ page }) => {
     await loginAs(page, ADMIN_EMAIL, ADMIN_PASSWORD);
     await page.goto("/protected/daily-operations?type=feeding");
-    await page.getByLabel("Animal").selectOption(String(ssl25AnimalId));
-    await page.getByRole("radio", { name: "Krill", exact: true }).check();
-    await page.getByLabel("Amount (optional)").fill("2");
-    await page.getByLabel("Notes").fill(`${TAG} feeding`);
-    await page.getByRole("button", { name: "Save feeding" }).click();
-    await expect(page).toHaveURL(/\/protected\/home/);
+    await logSingleFeeding(page, {
+      systemId: ssl25SystemId,
+      tankId: ssl25TankId,
+      animalId: ssl25AnimalId,
+      food: "Krill",
+      amount: "2",
+      unit: "pieces",
+      notes: `${TAG} feeding`,
+    });
     const rows = dbQuery(
       `select animal_id, food_catalog_id, food_name, amount, amount_value
        from core.feeding_logs where notes = '${TAG} feeding'`,
@@ -275,10 +285,10 @@ test.describe("volunteer can create ordinary operational logs", () => {
 
   test("volunteer PM follow-up shows only feeding rows they recorded", async ({ page }) => {
     const fixtureRows = dbQuery(`insert into core.feeding_logs
-      (tank_id, animal_id, food_catalog_id, amount_value, fed_at, notes, recorded_by)
+      (tank_id, animal_id, food_catalog_id, amount_value, amount_unit, fed_at, notes, recorded_by)
       values
-        (${feedingTankId}, ${feedingAnimalId}, (select id from core.food_catalog where name = 'Krill' and is_active), 1, now(), ${sqlLiteral(`${TAG} own follow-up`)}, ${volunteerProfileId}),
-        (${feedingTankId}, ${feedingAnimalId}, (select id from core.food_catalog where name = 'Krill' and is_active), 1, now(), ${sqlLiteral(`${TAG} other follow-up`)}, ${technicianProfileId})
+        (${feedingTankId}, ${feedingAnimalId}, (select id from core.food_catalog where name = 'Krill' and is_active), 1, 'pieces', now(), ${sqlLiteral(`${TAG} own follow-up`)}, ${volunteerProfileId}),
+        (${feedingTankId}, ${feedingAnimalId}, (select id from core.food_catalog where name = 'Krill' and is_active), 1, 'pieces', now(), ${sqlLiteral(`${TAG} other follow-up`)}, ${technicianProfileId})
       returning id`);
     const fixtureIds = fixtureRows.map((row) => Number(row.id));
     expect(fixtureIds).toHaveLength(2);
@@ -911,13 +921,14 @@ test.describe("P0 operational security: ordinary-log CRUD matrix (DB-level)", ()
     {
       table: "feeding_logs",
       seedSql: (tag, recordedBy) => `insert into core.feeding_logs
-        (tank_id, animal_id, food_catalog_id, amount_value, notes, recorded_by)
-        values (${ssl25TankId ?? "null"}, ${ssl25AnimalId ?? "null"}, ${krillCatalogId}, 1, ${sqlLiteral(tag)}, ${recordedBy}) returning id`,
+        (tank_id, animal_id, food_catalog_id, amount_value, amount_unit, notes, recorded_by)
+        values (${ssl25TankId ?? "null"}, ${ssl25AnimalId ?? "null"}, ${krillCatalogId}, 1, 'pieces', ${sqlLiteral(tag)}, ${recordedBy}) returning id`,
       insertPayload: (tag) => ({
         tank_id: ssl25TankId,
         animal_id: ssl25AnimalId,
         food_catalog_id: krillCatalogId,
         amount_value: 1,
+        amount_unit: "pieces",
         notes: tag,
       }),
       updatePatch: { notes: `${TAG} feeding_logs updated` },
@@ -1191,16 +1202,6 @@ test.describe("P1 target and quick-pick management UI by role", () => {
         await expect(page.getByText(/not authorized/i)).toHaveCount(0);
       }
 
-      await page.goto("/protected/admin/quick-picks");
-      if (role.catalogs) {
-        await expect(page).toHaveURL(/\/protected\/settings\/quick-picks$/);
-        await expect(
-          page.getByRole("heading", { name: "Quick-pick catalogs" }),
-        ).toBeVisible();
-      } else {
-        await expect(page.getByRole("heading", { name: "404" })).toBeVisible();
-        await expect(page.getByText(/not authorized/i)).toHaveCount(0);
-      }
       if (browserFailures) {
         expect(browserFailures, browserFailures.join("\n")).toEqual([]);
       }

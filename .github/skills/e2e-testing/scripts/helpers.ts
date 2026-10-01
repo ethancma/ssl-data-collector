@@ -10,7 +10,7 @@
  * trusting the UI alone. Committed dev/test account defaults target the hosted test
  * accounts and may be overridden via env:
  *   SUPABASE_URL                  (defaults to the app's hosted project URL)
- *   SUPABASE_SERVICE_ROLE_KEY     (required only for service-role Supabase-js
+ *   SUPABASE_SECRET_KEY           (required only for service-role Supabase-js
  *                                  assertions; linked dbQuery still works without it)
  *   E2E_TEST_TECH_EMAIL / E2E_TEST_TECH_PASSWORD — seeded technician test account
  *   (see ../references/test-accounts.md)
@@ -27,7 +27,7 @@ loadEnvConfig(process.cwd());
 
 const SUPABASE_URL =
   process.env.SUPABASE_URL ?? "https://bqylxmsifagnztxhixyl.supabase.co";
-const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const SECRET_KEY = process.env.SUPABASE_SECRET_KEY;
 export const TECH_EMAIL = process.env.E2E_TEST_TECH_EMAIL ?? "test-tech@ssl.dev";
 export const TECH_PASSWORD = process.env.E2E_TEST_TECH_PASSWORD ?? "password";
 export const ADMIN_EMAIL = process.env.E2E_TEST_ADMIN_EMAIL ?? "test-admin@ssl.dev";
@@ -36,15 +36,15 @@ export const ADMIN_PASSWORD = process.env.E2E_TEST_ADMIN_PASSWORD ?? "password";
 export const VOLUNTEER_EMAIL = process.env.E2E_TEST_VOLUNTEER_EMAIL ?? "test-volunteer@ssl.dev";
 export const VOLUNTEER_PASSWORD = process.env.E2E_TEST_VOLUNTEER_PASSWORD ?? "password";
 export const VIEWER_EMAIL = process.env.E2E_TEST_VIEWER_EMAIL ?? "test-viewer@ssl.dev";
-export const VIEWER_PASSWORD = process.env.E2E_TEST_VIEWER_PASSWORD ?? "password";
+export const VIEWER_PASSWORD = process.env.E2E_TEST_VIEWER_PASSWORD ?? "Password123!";
 // Public anon/publishable key — safe to default here the same way SUPABASE_URL is above.
 const PUBLISHABLE_KEY =
   process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ??
   "sb_publishable_KTInkuFFvOLUgENAzAul1w_o0MfJmX3";
 
-if (!SERVICE_ROLE_KEY) {
+if (!SECRET_KEY) {
   console.warn(
-    "SUPABASE_SERVICE_ROLE_KEY not set — service-role Supabase-js assertions " +
+    "SUPABASE_SECRET_KEY not set — service-role Supabase-js assertions " +
       "will be skipped; linked dbQuery assertions remain available.",
   );
 }
@@ -103,8 +103,8 @@ export function localTimeOf(timestamp: string | null | undefined): string | null
   return pacificDateTimeParts(new Date(timestamp)).time;
 }
 
-export const db = SERVICE_ROLE_KEY
-  ? createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
+export const db = SECRET_KEY
+  ? createClient(SUPABASE_URL, SECRET_KEY, {
       db: { schema: "core" },
       auth: { persistSession: false },
     })
@@ -126,6 +126,37 @@ export async function loginAs(page: Page, email: string, password: string) {
   await page.getByLabel("Password").fill(password);
   await page.getByRole("button", { name: /login/i }).click();
   await expect(page).toHaveURL(/\/protected/, { timeout: 15_000 });
+}
+
+export async function logSingleFeeding(
+  page: Page,
+  {
+    systemId,
+    tankId,
+    animalId,
+    food,
+    amount,
+    unit,
+    notes,
+  }: {
+    systemId: number;
+    tankId: number;
+    animalId: number;
+    food: string;
+    amount: string;
+    unit: string;
+    notes: string;
+  },
+) {
+  await page.getByLabel("System", { exact: true }).selectOption(String(systemId));
+  await page.getByLabel("Tank", { exact: true }).selectOption(String(tankId));
+  await page.getByLabel("Animal", { exact: true }).selectOption(String(animalId));
+  await page.getByRole("radio", { name: food, exact: true }).check();
+  await page.getByLabel("Amount per animal (optional)", { exact: true }).fill(amount);
+  await page.getByLabel("Unit", { exact: true }).selectOption(unit);
+  await page.getByLabel("Notes", { exact: true }).fill(notes);
+  await page.getByRole("button", { name: "Save 1 feeding", exact: true }).click();
+  await expect(page.getByText("1 feeding logged.", { exact: true })).toBeVisible();
 }
 
 // Authenticated (RLS-respecting, NOT service-role) client for a given role, used to
