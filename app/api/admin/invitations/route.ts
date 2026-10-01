@@ -103,6 +103,33 @@ export async function POST(request: NextRequest) {
   }
   if (!body || typeof body !== "object" || Array.isArray(body)) return errorResponse("Invalid request.");
 
+  if (body.action === "restore") {
+    if (!Number.isSafeInteger(body.id) || !body.id) return errorResponse("Invalid user.");
+    if (!PROFILE_ROLES.includes(body.role as ProfileRole)) return errorResponse("Invalid role.");
+    if (body.role === "admin" && !body.confirmAdmin) return errorResponse("Confirm Admin access.");
+
+    const { data: target, error: lookupError } = await admin.supabase
+      .from("profiles")
+      .select("id, auth_user_id, status")
+      .eq("id", body.id)
+      .maybeSingle();
+    if (lookupError || !target) return errorResponse("User not available.");
+    if (target.auth_user_id === admin.user.id) return errorResponse("You cannot change your own access.");
+    if (target.status !== "denied") return errorResponse("Only denied users can have access restored.");
+
+    try {
+      const { error } = await createServiceRoleClient().rpc("reactivate_profile", {
+        p_admin_auth_user_id: admin.user.id,
+        p_profile_id: target.id,
+        p_role: body.role,
+      });
+      if (error) return rpcErrorResponse(error);
+      return successResponse();
+    } catch {
+      return errorResponse("Invitations are not configured. Contact the site administrator.", 503);
+    }
+  }
+
   if (body.action === "deny" || body.action === "role" || body.action === "remove") {
     if (!Number.isSafeInteger(body.id) || !body.id) return errorResponse("Invalid user.");
     const { data: target, error: lookupError } = await admin.supabase

@@ -54,15 +54,16 @@ function UserRow({ profile, currentProfileId }: {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  async function update(action: "deny" | "role" | "remove") {
+  async function update(action: "deny" | "role" | "remove" | "restore") {
     if (action === "role" && role === "admin" && !window.confirm(`Grant Admin access to ${profile.email}?`)) return;
-    if (action === "remove" && !window.confirm(`Remove access for ${profile.email}? Their historical entries will remain, but future login will be blocked.`)) return;
+    if (action === "remove" && !window.confirm(`Remove access for ${profile.email}? Access will be blocked and can be restored later by an Admin.`)) return;
+    if (action === "restore" && !window.confirm(`Restore access for ${profile.email} as ${role}?`)) return;
     setError(null);
     setIsSubmitting(true);
     try {
       await postAction(action === "remove"
         ? { action, id: profile.id }
-        : { action, id: profile.id, role, confirmAdmin: action === "role" && role === "admin" });
+        : { action, id: profile.id, role, confirmAdmin: (action === "role" || action === "restore") && role === "admin" });
       router.refresh();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Could not change access.");
@@ -108,6 +109,9 @@ function UserRow({ profile, currentProfileId }: {
         )}
         {profile.status === "active" && profile.id !== currentProfileId && (
           <Button type="button" size="sm" variant="destructive" disabled={isSubmitting} onClick={() => void update("remove")}>Remove access</Button>
+        )}
+        {profile.status === "denied" && profile.id !== currentProfileId && (
+          <Button type="button" size="sm" variant="outline" disabled={isSubmitting} onClick={() => void update("restore")}>Restore access</Button>
         )}
         {profile.status === "active" && (
           <Button type="button" size="sm" variant="outline" disabled={isSubmitting} onClick={() => void copyResetLink()}>Copy reset link</Button>

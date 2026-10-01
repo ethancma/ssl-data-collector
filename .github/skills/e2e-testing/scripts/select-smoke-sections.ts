@@ -73,8 +73,11 @@ const rules: SelectionRule[] = [
     description: "authentication or Admin user management",
     matches: (file) =>
       /^app\/auth\//.test(file) ||
+      /^app\/invite\//.test(file) ||
+      /^app\/api\/admin\//.test(file) ||
+      /^supabase\/migrations\//.test(file) ||
       file === "app/protected/admin/page.tsx" ||
-      /^components\/(admin-users-table|auth-button|login-form|logout-button)\.tsx$/.test(
+      /^components\/(admin-[^/]+|auth-button|login-form|logout-button)\.tsx$/.test(
         file,
       ),
     sections: ["auth-admin"],

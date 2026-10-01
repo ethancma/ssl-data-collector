@@ -16,15 +16,15 @@ test("selects the narrow daily-operations section for a form change", () => {
 });
 
 test("selects daily operations and star treatments for quick-pick management", () => {
-  for (const file of [
-    "components/quick-pick-catalog-manager.tsx",
-    "app/protected/admin/quick-picks/page.tsx",
-  ]) {
-    assert.deepEqual(selectedIds([file]), [
-      "daily-operations",
-      "star-treatments",
-    ]);
-  }
+  assert.deepEqual(selectedIds(["components/quick-pick-catalog-manager.tsx"]), [
+    "daily-operations",
+    "star-treatments",
+  ]);
+  assert.deepEqual(selectedIds(["app/protected/admin/quick-picks/page.tsx"]), [
+    "daily-operations",
+    "operational-rbac",
+    "star-treatments",
+  ]);
 });
 
 test("selects daily operations for water-quality target management", () => {
