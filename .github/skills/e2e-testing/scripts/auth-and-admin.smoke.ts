@@ -4,7 +4,7 @@
  */
 import { execFileSync } from "node:child_process";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect, type Browser, type Page } from "@playwright/test";
 import {
   collectBrowserFailures,
   loginAs,
@@ -49,43 +49,6 @@ test.describe("local invitation auth", () => {
       .toEqual([{ total: 0 }]);
   });
 
-  test("registration without an active Admin leaves the local profile pending", async () => {
-    const local = JSON.parse(execFileSync("supabase", ["status", "-o", "json"], { encoding: "utf8" }));
-    expect(local.API_URL).toMatch(/^http:\/\/(127\.0\.0\.1|localhost):54321$/);
-    const privileged = createSupabaseClient(local.API_URL, local.SERVICE_ROLE_KEY, {
-      db: { schema: "core" }, auth: { persistSession: false },
-    });
-    const email = `e2e-rejected-invite-${RUN_TAG}@ssl.dev`;
-    let inviteeId: string | undefined;
-    const profileRows = () => localQuery(
-      `select status, role, invited_at from core.profiles where auth_user_id = ${sqlLiteral(inviteeId!)}`,
-    );
-
-    try {
-      const { data, error } = await privileged.auth.admin.createUser({
-        email, password: "Test-password-123!", email_confirm: true,
-        app_metadata: { ssl_invited_by_admin: true },
-      });
-      expect(error).toBeNull();
-      expect(data.user).toBeTruthy();
-      inviteeId = data.user!.id;
-      expect(profileRows()).toEqual([{ status: "pending", role: null, invited_at: null }]);
-
-      const { error: registerError } = await privileged.rpc("register_invitation", {
-        p_admin_auth_user_id: "00000000-0000-0000-0000-000000000000",
-        p_invitee_auth_user_id: inviteeId,
-        p_role: "viewer",
-      });
-      expect(registerError?.code).toBe("42501");
-      expect(profileRows()).toEqual([{ status: "pending", role: null, invited_at: null }]);
-    } finally {
-      if (inviteeId) {
-        const { error } = await privileged.auth.admin.deleteUser(inviteeId);
-        expect(error).toBeNull();
-        expect(profileRows()).toEqual([]);
-      }
-    }
-  });
 });
 
 test.describe("proxy role claim refresh policy", () => {
@@ -123,11 +86,11 @@ test.describe("proxy role claim refresh policy", () => {
   });
 });
 
-// Explicit opt-in only with a migrated local Supabase and a port-3000 app using
-// the same local URL/key. Never exercise the hosted invitation API here.
+// Explicit opt-in only with a migrated local Supabase, Mailpit, and a port-3000
+// app using the same local URL/key. Never exercise the hosted invitation API here.
 test.describe("local Admin invitation lifecycle", () => {
   test.describe.configure({ mode: "serial" });
-  test.skip(process.env.E2E_RUN_LOCAL_INVITE_UI !== "1", "requires an explicitly configured local app and Admin");
+  test.skip(process.env.E2E_RUN_LOCAL_INVITE_UI !== "1", "requires an explicitly configured local app, Mailpit, and Admin");
 
   const adminEmail = process.env.E2E_LOCAL_ADMIN_EMAIL;
   const adminPassword = process.env.E2E_LOCAL_ADMIN_PASSWORD;
@@ -136,12 +99,21 @@ test.describe("local Admin invitation lifecycle", () => {
   const adminInviteEmail = `e2e-invite-admin-${RUN_TAG}@ssl.dev`;
   const disposableEmails = [viewerEmail, reissueEmail, adminInviteEmail];
   const newPassword = "New-local-password-123!";
-  let local: { API_URL: string; ANON_KEY: string; SERVICE_ROLE_KEY: string };
+  let local: { API_URL: string; ANON_KEY: string; SERVICE_ROLE_KEY: string; SECRET_KEY: string; MAILPIT_URL: string };
   let adminProfileId: number;
 
   function profile(email: string) {
-    const rows = localQuery(`select id, auth_user_id, status, role, invited_by, invited_at, credential_changed_at
+    const rows = localQuery(`select id, auth_user_id, status, role, invited_by, invited_at,
+      invite_auth_sent_at, credential_changed_at
       from core.profiles where email = ${sqlLiteral(email)}`);
+    expect(rows).toHaveLength(1);
+    return rows[0];
+  }
+
+  function authUser(email: string) {
+    const rows = localQuery(`select id, invited_at, email_confirmed_at is not null as confirmed,
+      nullif(encrypted_password, '') is not null as has_password
+      from auth.users where email = ${sqlLiteral(email)}`);
     expect(rows).toHaveLength(1);
     return rows[0];
   }
@@ -168,14 +140,71 @@ test.describe("local Admin invitation lifecycle", () => {
     if (role === "admin") page.once("dialog", (dialog) => dialog.accept());
     const responsePromise = page.waitForResponse((response) =>
       response.url().endsWith("/api/admin/invitations") && response.request().method() === "POST");
-    await page.getByRole("button", { name: "Invite", exact: true }).click();
+    await page.getByRole("button", { name: "Send invite" }).click();
     const response = await responsePromise;
     expect(response.status()).toBe(200);
     expect(response.headers()["cache-control"]).toContain("no-store");
-    const password = await page.getByLabel("One-time temporary password").inputValue();
-    expect(password.length).toBeGreaterThan(32);
-    expect((await response.json()).password === password).toBe(true);
-    return password;
+    expect(await response.json()).toEqual({
+      ok: true, message: "Invitation accepted for email delivery. Receipt is not guaranteed.",
+    });
+    await expect(page.getByRole("status")).toContainText(email);
+  }
+
+  async function reissue(page: Page, email: string, button: "Reissue email" | "Try reissue") {
+    const responsePromise = page.waitForResponse((response) =>
+      response.url().endsWith("/api/admin/invitations") && response.request().method() === "POST");
+    await row(page, email).getByRole("button", { name: button }).click();
+    const response = await responsePromise;
+    expect(response.status()).toBe(200);
+    expect(await response.json()).toEqual({
+      ok: true, message: "Invitation accepted for email delivery. Receipt is not guaranteed.",
+    });
+  }
+
+  async function capturedInvite(browser: Browser, email: string, previousId?: string) {
+    let messageId = "";
+    await expect.poll(async () => {
+      const response = await fetch(`${local.MAILPIT_URL}/api/v1/messages?limit=100`);
+      expect(response.ok).toBe(true);
+      const inbox = await response.json() as {
+        messages: { ID: string; To: { Address: string }[] }[];
+      };
+      messageId = inbox.messages.find((message) => message.ID !== previousId
+        && message.To.some((recipient) => recipient.Address.toLowerCase() === email))?.ID ?? "";
+      return messageId;
+    }, { timeout: 10_000 }).not.toBe("");
+
+    const response = await fetch(`${local.MAILPIT_URL}/api/v1/message/${messageId}`);
+    expect(response.ok).toBe(true);
+    const message = await response.json() as { HTML: string };
+    const mailPage = await browser.newPage();
+    try {
+      await mailPage.setContent(message.HTML);
+      const href = await mailPage.getByRole("link", { name: "Accept invitation" }).getAttribute("href");
+      expect(href).toBeTruthy();
+      const url = new URL(href!, "http://localhost:3000");
+      expect(url.origin).toBe("http://localhost:3000");
+      expect(url.pathname).toBe("/auth/accept");
+      expect(url.searchParams.get("type")).toBe("invite");
+      expect(url.searchParams.get("token_hash")).toMatch(/^[a-zA-Z0-9_-]{20,256}$/);
+      return { url: url.toString(), messageId };
+    } finally {
+      await mailPage.close();
+    }
+  }
+
+  async function acceptInvite(page: Page, url: string) {
+    await page.goto(url);
+    await expect(page.getByRole("button", { name: "Accept invitation" })).toBeVisible();
+    await page.getByRole("button", { name: "Accept invitation" }).click();
+    await expect(page.getByText("Set your password", { exact: true })).toBeVisible();
+  }
+
+  async function setPassword(page: Page) {
+    await page.getByLabel("New password", { exact: true }).fill(newPassword);
+    await page.getByLabel("Confirm new password").fill(newPassword);
+    await page.getByRole("button", { name: "Set password and continue" }).click();
+    await expect(page.getByRole("heading", { name: "Home" })).toBeVisible();
   }
 
   function localRoleClient() {
@@ -187,9 +216,11 @@ test.describe("local Admin invitation lifecycle", () => {
   test.beforeAll(async () => {
     local = JSON.parse(execFileSync("supabase", ["status", "-o", "json"], { encoding: "utf8" }));
     expect(local.API_URL).toMatch(/^http:\/\/(127\.0\.0\.1|localhost):54321$/);
+    expect(local.MAILPIT_URL).toMatch(/^http:\/\/(127\.0\.0\.1|localhost):54324$/);
     expect(process.env.NEXT_PUBLIC_SUPABASE_URL).toBe(local.API_URL);
-    expect(Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY &&
-      process.env.SUPABASE_SERVICE_ROLE_KEY === local.SERVICE_ROLE_KEY && !process.env.SUPABASE_SECRET_KEY)).toBe(true);
+    expect(Boolean((process.env.SUPABASE_SECRET_KEY && process.env.SUPABASE_SECRET_KEY === local.SECRET_KEY)
+      || (process.env.SUPABASE_SERVICE_ROLE_KEY
+        && process.env.SUPABASE_SERVICE_ROLE_KEY === local.SERVICE_ROLE_KEY))).toBe(true);
     expect(Boolean(adminEmail && adminPassword)).toBe(true);
     const { data, error } = await localRoleClient().auth.signInWithPassword({
       email: adminEmail!, password: adminPassword!,
@@ -208,29 +239,41 @@ test.describe("local Admin invitation lifecycle", () => {
       auth: { persistSession: false },
     });
     for (const email of disposableEmails) {
-      const rows = localQuery(`select auth_user_id from core.profiles where email = ${sqlLiteral(email)}`);
+      const rows = localQuery(`select id from auth.users where email = ${sqlLiteral(email)}`);
       for (const record of rows) {
-        const { error } = await privileged.auth.admin.deleteUser(String(record.auth_user_id));
+        const { error } = await privileged.auth.admin.deleteUser(String(record.id));
         expect(error).toBeNull();
       }
       expect(localQuery(`select id from core.profiles where email = ${sqlLiteral(email)}`)).toEqual([]);
+      expect(localQuery(`select id from auth.users where email = ${sqlLiteral(email)}`)).toEqual([]);
     }
   });
 
-  test("Admin invites Viewer once; first password change activates and retires temporary credentials", async ({ page, browser }) => {
+  test("Admin email invite stays blocked until explicit acceptance and recipient password", async ({ page, browser }) => {
     const failures = collectBrowserFailures(page);
     await loginLocalAdmin(page);
-    const temporaryPassword = await invite(page, viewerEmail, "viewer");
+    await invite(page, viewerEmail, "viewer");
+    const link = await capturedInvite(browser, viewerEmail);
     const invited = profile(viewerEmail);
-    expect(invited).toMatchObject({ status: "invited", role: "viewer", invited_by: adminProfileId, credential_changed_at: null });
+    expect(invited).toMatchObject({ status: "invited", role: "viewer", invited_by: adminProfileId,
+      credential_changed_at: null });
     expect(invited.invited_at).toBeTruthy();
+    expect(invited.invite_auth_sent_at).toBeTruthy();
+    expect(authUser(viewerEmail)).toMatchObject({ id: invited.auth_user_id, confirmed: false, has_password: false });
     await expect(row(page, viewerEmail).getByText("invited", { exact: true })).toBeVisible();
-    await page.reload();
-    await expect(page.getByLabel("One-time temporary password")).toHaveCount(0);
 
     const invitee = await browser.newPage();
     try {
-      await loginAs(invitee, viewerEmail, temporaryPassword);
+      await invitee.goto("/protected/home");
+      await expect(invitee).toHaveURL(/\/auth\/login/);
+      await invitee.goto(link.url);
+      await expect(invitee.getByRole("button", { name: "Accept invitation" })).toBeVisible();
+      await invitee.reload();
+      expect(profile(viewerEmail)).toMatchObject({ id: invited.id, status: "invited", credential_changed_at: null });
+      expect(authUser(viewerEmail)).toMatchObject({ confirmed: false, has_password: false });
+      await acceptInvite(invitee, link.url);
+      expect(profile(viewerEmail)).toMatchObject({ id: invited.id, status: "invited", credential_changed_at: null });
+      expect(authUser(viewerEmail)).toMatchObject({ confirmed: true, has_password: false });
       await expect(invitee.getByText("Set your password", { exact: true })).toBeVisible();
       await invitee.goto("/protected/home");
       await expect(invitee.getByText("Set your password", { exact: true })).toBeVisible();
@@ -238,11 +281,7 @@ test.describe("local Admin invitation lifecycle", () => {
       await invitee.goto("/protected/admin");
       await expect(invitee.getByText("Set your password", { exact: true })).toBeVisible();
       await expect(invitee.getByRole("heading", { name: "Admin" })).toHaveCount(0);
-      await invitee.getByLabel("Temporary password").fill(temporaryPassword);
-      await invitee.getByLabel("New password", { exact: true }).fill(newPassword);
-      await invitee.getByLabel("Confirm new password").fill(newPassword);
-      await invitee.getByRole("button", { name: "Set password and continue" }).click();
-      await expect(invitee.getByRole("heading", { name: "Home" })).toBeVisible();
+      await setPassword(invitee);
       await expect(invitee.getByRole("link", { name: "Admin" })).toHaveCount(0);
       await invitee.goto("/protected/admin");
       await expect(invitee.getByText(/not authorized/i)).toBeVisible();
@@ -252,54 +291,64 @@ test.describe("local Admin invitation lifecycle", () => {
     const active = profile(viewerEmail);
     expect(active).toMatchObject({ id: invited.id, status: "active", role: "viewer", invited_by: adminProfileId });
     expect(active.credential_changed_at).toBeTruthy();
-    const { data, error } = await localRoleClient().auth.signInWithPassword({ email: viewerEmail, password: temporaryPassword });
-    expect(Boolean(error)).toBe(true);
-    expect(data.session).toBeNull();
+    expect(authUser(viewerEmail)).toMatchObject({ confirmed: true, has_password: true });
+    const { error } = await localRoleClient().auth.signInWithPassword({ email: viewerEmail, password: newPassword });
+    expect(error).toBeNull();
+    const replay = await browser.newPage();
+    try {
+      await replay.goto(link.url);
+      await replay.getByRole("button", { name: "Accept invitation" }).click();
+      await expect(replay).toHaveURL(/\/auth\/error/);
+    } finally {
+      await replay.close();
+    }
+    expect(profile(adminEmail!)).toMatchObject({ id: adminProfileId, status: "active", role: "admin" });
+    await page.reload();
+    await expect(page.getByRole("heading", { name: "Admin" })).toBeVisible();
     expect(failures, failures.join("\n")).toEqual([]);
   });
 
-  test("Admin denies and reissues invited and denied accounts with a new role and password", async ({ page, browser }) => {
+  test("reissue invalidates old links; denied unconfirmed invite can be reissued", async ({ page, browser }) => {
     await loginLocalAdmin(page);
-    const firstPassword = await invite(page, reissueEmail, "viewer");
+    await invite(page, reissueEmail, "viewer");
+    const firstLink = await capturedInvite(browser, reissueEmail);
     const first = profile(reissueEmail);
     await expect(row(page, reissueEmail).getByText("invited", { exact: true })).toBeVisible();
     await row(page, reissueEmail).getByLabel(`Role for ${reissueEmail}`).selectOption("technician");
-    await row(page, reissueEmail).getByRole("button", { name: "Reissue invite" }).click();
-    const secondPassword = await page.getByLabel("One-time temporary password").inputValue();
-    expect(secondPassword.length).toBeGreaterThan(32);
-    expect(secondPassword === firstPassword).toBe(false);
+    await reissue(page, reissueEmail, "Reissue email");
+    const secondLink = await capturedInvite(browser, reissueEmail, firstLink.messageId);
+    expect(secondLink.url).not.toBe(firstLink.url);
     expect(profile(reissueEmail)).toMatchObject({ id: first.id, status: "invited", role: "technician", invited_by: adminProfileId });
-    const { error: obsoleteError } = await localRoleClient().auth.signInWithPassword({ email: reissueEmail, password: firstPassword });
-    expect(Boolean(obsoleteError)).toBe(true);
+    const stale = await browser.newPage();
+    try {
+      await stale.goto(firstLink.url);
+      await stale.getByRole("button", { name: "Accept invitation" }).click();
+      await expect(stale).toHaveURL(/\/auth\/error/);
+    } finally {
+      await stale.close();
+    }
+    expect(authUser(reissueEmail)).toMatchObject({ confirmed: false, has_password: false });
 
     await row(page, reissueEmail).getByRole("button", { name: "Deny" }).click();
     await expect(row(page, reissueEmail).getByText("denied", { exact: true })).toBeVisible();
     expect(profile(reissueEmail)).toMatchObject({ id: first.id, status: "denied", role: "technician" });
-    const deniedInvitee = await browser.newPage();
-    try {
-      await loginAs(deniedInvitee, reissueEmail, secondPassword);
-      await expect(deniedInvitee.getByText(/does not have access/i)).toBeVisible();
-      await expect(deniedInvitee.getByRole("heading", { name: "Home" })).toHaveCount(0);
-    } finally {
-      await deniedInvitee.close();
-    }
-
-    await row(page, reissueEmail).getByRole("button", { name: "Reissue invite" }).click();
-    const thirdPassword = await page.getByLabel("One-time temporary password").inputValue();
-    expect(thirdPassword.length).toBeGreaterThan(32);
-    expect(thirdPassword === secondPassword).toBe(false);
+    await reissue(page, reissueEmail, "Try reissue");
+    const thirdLink = await capturedInvite(browser, reissueEmail, secondLink.messageId);
+    expect(thirdLink.url).not.toBe(secondLink.url);
     await expect(row(page, reissueEmail).getByText("invited", { exact: true })).toBeVisible();
     expect(profile(reissueEmail)).toMatchObject({ id: first.id, status: "invited", role: "technician", invited_by: adminProfileId, credential_changed_at: null });
-    const { error: deniedPasswordError } = await localRoleClient().auth.signInWithPassword({ email: reissueEmail, password: secondPassword });
-    expect(Boolean(deniedPasswordError)).toBe(true);
+    const obsolete = await browser.newPage();
+    try {
+      await obsolete.goto(secondLink.url);
+      await obsolete.getByRole("button", { name: "Accept invitation" }).click();
+      await expect(obsolete).toHaveURL(/\/auth\/error/);
+    } finally {
+      await obsolete.close();
+    }
     const technician = await browser.newPage();
     try {
-      await loginAs(technician, reissueEmail, thirdPassword);
-      await technician.getByLabel("Temporary password").fill(thirdPassword);
-      await technician.getByLabel("New password", { exact: true }).fill(newPassword);
-      await technician.getByLabel("Confirm new password").fill(newPassword);
-      await technician.getByRole("button", { name: "Set password and continue" }).click();
-      await expect(technician.getByRole("heading", { name: "Home" })).toBeVisible();
+      await acceptInvite(technician, thirdLink.url);
+      await setPassword(technician);
       await expect(technician.getByRole("link", { name: "Daily Operations" })).toBeVisible();
       await expect(technician.getByRole("link", { name: "Admin" })).toHaveCount(0);
     } finally {
@@ -307,21 +356,27 @@ test.describe("local Admin invitation lifecycle", () => {
     }
     expect(profile(reissueEmail)).toMatchObject({ id: first.id, status: "active", role: "technician", invited_by: adminProfileId });
     expect(profile(reissueEmail).credential_changed_at).toBeTruthy();
+    await page.reload();
+    await expect(row(page, reissueEmail).getByText("active", { exact: true })).toBeVisible();
+    const responsePromise = page.waitForResponse((response) => response.url().endsWith("/api/admin/invitations")
+      && response.request().method() === "POST");
+    await page.getByLabel("Email").fill(reissueEmail);
+    await page.getByRole("button", { name: "Send invite" }).click();
+    expect((await responsePromise).status()).toBe(400);
+    await expect(page.getByRole("alert")).toContainText("already active");
+    expect(profile(reissueEmail)).toMatchObject({ id: first.id, status: "active", role: "technician" });
   });
 
-  test("stale Admin and Viewer tokens lose direct PostgREST access after role change and denial", async ({ page }) => {
+  test("active Admin invite, role downgrade, and removal revoke stale PostgREST access", async ({ page, browser }) => {
     await loginLocalAdmin(page);
-    const temporaryPassword = await invite(page, adminInviteEmail, "admin");
+    await invite(page, adminInviteEmail, "admin");
+    const link = await capturedInvite(browser, adminInviteEmail);
     const invited = profile(adminInviteEmail);
     expect(invited).toMatchObject({ status: "invited", role: "admin", invited_by: adminProfileId });
-    const invitee = await page.context().browser()!.newPage();
+    const invitee = await browser.newPage();
     try {
-      await loginAs(invitee, adminInviteEmail, temporaryPassword);
-      await expect(invitee.getByText("Set your password", { exact: true })).toBeVisible();
-      await invitee.getByLabel("Temporary password").fill(temporaryPassword);
-      await invitee.getByLabel("New password", { exact: true }).fill(newPassword);
-      await invitee.getByLabel("Confirm new password").fill(newPassword);
-      await invitee.getByRole("button", { name: "Set password and continue" }).click();
+      await acceptInvite(invitee, link.url);
+      await setPassword(invitee);
       await expect(invitee.getByRole("link", { name: "Admin" })).toBeVisible();
       expect(profile(adminInviteEmail)).toMatchObject({ id: invited.id, status: "active", role: "admin" });
 
@@ -355,15 +410,19 @@ test.describe("local Admin invitation lifecycle", () => {
       const visible = await freshViewer.from("profiles").select("id").eq("auth_user_id", String(invited.auth_user_id));
       expect(visible.error).toBeNull();
       expect(visible.data).toEqual([{ id: invited.id }]);
-      expect(localQuery(`update core.profiles set status = 'denied'
-        where auth_user_id = ${sqlLiteral(String(invited.auth_user_id))} returning status`))
-        .toEqual([{ status: "denied" }]);
+      page.once("dialog", (dialog) => dialog.accept());
+      await row(page, adminInviteEmail).getByRole("button", { name: "Remove access" }).click();
+      await expect(row(page, adminInviteEmail).getByText("denied", { exact: true })).toBeVisible();
       const denied = await freshViewer.from("profiles").select("id").eq("auth_user_id", String(invited.auth_user_id));
       expect(denied.error).toBeNull();
       expect(denied.data).toEqual([]);
       await invitee.goto("/protected/home");
       await expect(invitee.getByText(/does not have access/i)).toBeVisible();
       expect(profile(adminInviteEmail)).toMatchObject({ id: invited.id, status: "denied", role: "viewer" });
+      await row(page, adminInviteEmail).getByRole("button", { name: "Try reissue" }).click();
+      await expect(row(page, adminInviteEmail).getByRole("alert")).toContainText("already confirmed");
+      expect(profile(adminInviteEmail)).toMatchObject({ id: invited.id, status: "denied", role: "viewer" });
+      expect(profile(adminEmail!)).toMatchObject({ id: adminProfileId, status: "active", role: "admin" });
     } finally {
       await invitee.close();
     }

@@ -74,7 +74,7 @@ const rules: SelectionRule[] = [
     matches: (file) =>
       /^app\/auth\//.test(file) ||
       file === "app/protected/admin/page.tsx" ||
-      /^components\/(admin-users-table|auth-button|login-form|logout-button|sign-up-form)\.tsx$/.test(
+      /^components\/(admin-users-table|auth-button|login-form|logout-button)\.tsx$/.test(
         file,
       ),
     sections: ["auth-admin"],

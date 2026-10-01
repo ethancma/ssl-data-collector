@@ -1,7 +1,6 @@
 import { ProtectedShell } from "@/components/protected-shell";
+import { LogoutButton } from "@/components/logout-button";
 import { getCurrentProfile } from "@/lib/supabase/current-profile";
-import { InfoIcon } from "lucide-react";
-import { Suspense } from "react";
 
 export default async function ProtectedLayout({
   children,
@@ -9,6 +8,18 @@ export default async function ProtectedLayout({
   children: React.ReactNode;
 }) {
   const profile = await getCurrentProfile();
+  if (!profile || profile.status !== "active") {
+    return (
+      <main className="flex min-h-svh flex-col items-center justify-center gap-4 p-6 text-center">
+        <p role="status" className="text-sm text-muted-foreground">
+          {profile?.status === "denied"
+            ? "This account does not have access. Contact an administrator for a new invitation."
+            : "This account does not have access to the lab. Ask an Admin for an invitation."}
+        </p>
+        <LogoutButton />
+      </main>
+    );
+  }
   const showAdmin = profile?.role === "admin" && profile?.status === "active";
   const showDailyOperations =
     profile?.status === "active" &&
@@ -25,45 +36,7 @@ export default async function ProtectedLayout({
       userEmail={profile?.email}
       userRole={profile?.role}
     >
-      <Suspense
-        fallback={
-          <div className="w-full flex flex-col rounded-md border p-4 text-sm text-muted-foreground">
-            Loading…
-          </div>
-        }
-      >
-        <ApprovalGate>{children}</ApprovalGate>
-      </Suspense>
+      {children}
     </ProtectedShell>
-  );
-}
-
-async function ApprovalGate({ children }: { children: React.ReactNode }) {
-  const profile = await getCurrentProfile();
-
-  if (!profile || profile.status === "active") {
-    return <>{children}</>;
-  }
-
-  if (profile.status === "denied") {
-    return (
-      <div className="w-full">
-        <div className="bg-accent text-sm p-3 px-5 rounded-md text-foreground flex gap-3 items-center">
-          <InfoIcon size="16" strokeWidth={2} />
-          Your account request was denied. Contact an admin if you believe
-          this is a mistake.
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="w-full">
-      <div className="bg-accent text-sm p-3 px-5 rounded-md text-foreground flex gap-3 items-center">
-        <InfoIcon size="16" strokeWidth={2} />
-        Your account ({profile.email}) is pending admin approval. Check back
-        once an admin has approved your account.
-      </div>
-    </div>
   );
 }

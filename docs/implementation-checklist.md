@@ -22,6 +22,9 @@
 - [x] Private attachment storage bucket and initial health-photo workflow.
 - [x] Email/password auth, pending-account gate, Admin approval/denial, role assignment,
       and Admin user-management UI.
+- [ ] Invite-only onboarding (Admin invite links, password or Google sign-in, public
+      sign-up disabled): architecture proposed in
+      [auth-invitations.md](auth-invitations.md); implementation pending decisions.
 - [x] Eight systems and the current species list are seeded, including the confirmed
       **Snack Shack** spelling. Graham tank categories and SSL25 are also seeded.
 - [x] Daily Operations hub with URL-backed selection and persisted forms for AM/PM checks,
@@ -168,6 +171,14 @@ The full context for these questions is in
 
 ## Rollout And Operations
 
+- [ ] Rehearse the invite-link migration on scratch/staging, covering password and
+      Google acceptance, expired/revoked/reused links, re-invite, and all four roles.
+      Do not apply an untested migration directly to production.
+- [ ] Configure the server-only Supabase secret key on the app host, the Google OAuth
+      provider, and the redirect allowlist; keep public sign-up disabled in hosted Auth.
+      The local config alone does not change hosted Auth.
+- [ ] Run the full Tier 3 e2e suite on the staged/preview invite flow and inspect
+      Auth users, profiles, invitations, and RLS directly before opening a PR.
 - [ ] Tablet/mobile QA at real lab stations.
 - [ ] Pilot with one or two systems for a week.
 - [ ] Hands-on training and station QR-code placement.

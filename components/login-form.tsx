@@ -12,7 +12,6 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
@@ -24,6 +23,7 @@ export function LoginForm({
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const router = useRouter();
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -38,12 +38,27 @@ export function LoginForm({
         password,
       });
       if (error) throw error;
-      // Update this route to redirect to an authenticated route. The user already has an active session.
-      router.push("/protected");
+      router.replace("/protected/home");
+      router.refresh();
     } catch (error: unknown) {
       setError(error instanceof Error ? error.message : "An error occurred");
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleGoogleLogin = async () => {
+    const supabase = createClient();
+    setIsGoogleLoading(true);
+    setError(null);
+
+    const { error: oauthError } = await supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: { redirectTo: `${window.location.origin}/auth/callback` },
+    });
+    if (oauthError) {
+      setError(oauthError.message);
+      setIsGoogleLoading(false);
     }
   };
 
@@ -86,16 +101,19 @@ export function LoginForm({
               <Button type="submit" className="w-full" disabled={isLoading}>
                 {isLoading ? "Logging in..." : "Login"}
               </Button>
-            </div>
-            <div className="mt-4 text-center text-sm">
-              Don&apos;t have an account?{" "}
-              <Link
-                href="/auth/sign-up"
-                className="underline underline-offset-4"
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full"
+                disabled={isLoading || isGoogleLoading}
+                onClick={() => void handleGoogleLogin()}
               >
-                Sign up
-              </Link>
+                {isGoogleLoading ? "Connecting..." : "Continue with Google"}
+              </Button>
             </div>
+            <p className="mt-4 text-center text-sm text-muted-foreground">
+              Access is by administrator invitation only.
+            </p>
           </form>
         </CardContent>
       </Card>

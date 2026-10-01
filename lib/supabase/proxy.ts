@@ -12,7 +12,13 @@ type AuthoritativeProfile = {
 };
 
 export function isPublicPath(pathname: string) {
-  return pathname === "/" || pathname === "/auth" || pathname.startsWith("/auth/");
+  return (
+    pathname === "/" ||
+    pathname === "/auth" ||
+    pathname.startsWith("/auth/") ||
+    pathname === "/invite" ||
+    pathname.startsWith("/invite/")
+  );
 }
 
 export function getExpectedAuthRole(

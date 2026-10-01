@@ -6,13 +6,7 @@ import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import {
-  PROFILE_ROLES,
-  PROFILE_STATUSES,
-  type ProfileRole,
-  type ProfileStatus,
-} from "@/lib/config/reference-data";
-import { createClient } from "@/lib/supabase/client";
+import { PROFILE_ROLES, type ProfileRole, type ProfileStatus } from "@/lib/config/reference-data";
 
 type ProfileRow = {
   id: number;
@@ -24,125 +18,105 @@ type ProfileRow = {
 };
 
 const STATUS_BADGE_VARIANT: Record<ProfileStatus, "secondary" | "default" | "destructive"> = {
-  pending: "secondary",
-  active: "default",
-  denied: "destructive",
+  pending: "secondary", active: "default", denied: "destructive",
 };
 
-export function AdminUsersTable({ profiles }: { profiles: ProfileRow[] }) {
+async function postAction(body: object): Promise<{ ok: boolean; message?: string }> {
+  const response = await fetch("/api/admin/invitations", {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+  });
+  const result = await response.json();
+  if (!response.ok) throw new Error(result.error || "Request failed. Refresh and retry.");
+  return result;
+}
+
+export function AdminUsersTable({ profiles, currentProfileId }: { profiles: ProfileRow[]; currentProfileId: number | null }) {
   return (
-    <Card className="w-full">
-      <CardHeader>
-        <CardTitle className="text-2xl">Users</CardTitle>
-      </CardHeader>
-      <CardContent>
-        <div className="flex flex-col divide-y rounded-md border">
-          {profiles.map((profile) => (
-            <UserRow key={profile.id} profile={profile} />
-          ))}
-        </div>
-      </CardContent>
-    </Card>
+    <div className="flex w-full flex-col gap-6">
+      <Card>
+        <CardHeader><CardTitle className="text-xl">Users</CardTitle></CardHeader>
+        <CardContent>
+          <div className="flex flex-col divide-y rounded-md border">
+            {profiles.map((profile) => <UserRow key={profile.id} profile={profile} currentProfileId={currentProfileId} />)}
+          </div>
+        </CardContent>
+      </Card>
+    </div>
   );
 }
 
-function UserRow({ profile }: { profile: ProfileRow }) {
+function UserRow({ profile, currentProfileId }: {
+  profile: ProfileRow;
+  currentProfileId: number | null;
+}) {
   const router = useRouter();
-  const [role, setRole] = useState<ProfileRole | "">(profile.role ?? "");
-  const [status, setStatus] = useState<ProfileStatus>(profile.status);
+  const [role, setRole] = useState<ProfileRole>(profile.role ?? "volunteer");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const updateProfile = async (nextStatus: ProfileStatus) => {
+  async function update(action: "deny" | "role" | "remove") {
+    if (action === "role" && role === "admin" && !window.confirm(`Grant Admin access to ${profile.email}?`)) return;
+    if (action === "remove" && !window.confirm(`Remove access for ${profile.email}? Their historical entries will remain, but future login will be blocked.`)) return;
     setError(null);
     setIsSubmitting(true);
     try {
-      const supabase = createClient();
-      const { data, error: updateError } = await supabase
-        .from("profiles")
-        .update({ role: role || null, status: nextStatus })
-        .eq("id", profile.id)
-        .select("id")
-        .maybeSingle();
-
-      if (updateError) throw updateError;
-      if (!data || data.id !== profile.id) {
-        throw new Error("No matching profile was updated.");
-      }
-
-      setStatus(nextStatus);
+      await postAction(action === "remove"
+        ? { action, id: profile.id }
+        : { action, id: profile.id, role, confirmAdmin: action === "role" && role === "admin" });
       router.refresh();
     } catch (cause) {
-      const detail = cause instanceof Error ? cause.message : "Unexpected error";
-      setError(`Could not update user: ${detail} Refresh and retry; if this continues, sign in again or contact an administrator.`);
+      setError(cause instanceof Error ? cause.message : "Could not change access.");
     } finally {
       setIsSubmitting(false);
     }
-  };
+  }
+
+  async function copyResetLink() {
+    setError(null);
+    setIsSubmitting(true);
+    try {
+      const response = await fetch(`/api/admin/users/${profile.id}/reset-link`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "Could not generate a reset link.");
+      await navigator.clipboard.writeText(result.link);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Could not copy the reset link.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
 
   return (
     <div className="flex flex-wrap items-center justify-between gap-3 p-3 px-4">
-      <div className="flex flex-col">
+      <div className="flex min-w-0 flex-col">
         <span className="font-medium">{profile.display_name || profile.email}</span>
-        <span className="text-xs text-muted-foreground">{profile.email}</span>
+        <span className="break-all text-xs text-muted-foreground">{profile.email}</span>
       </div>
-
       <div className="flex flex-wrap items-center gap-2">
-        <select
-          className="flex h-9 rounded-md border border-input bg-transparent px-3 py-1 text-base shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring md:text-sm"
-          value={role}
-          disabled={isSubmitting}
-          onChange={(e) => setRole(e.target.value as ProfileRole | "")}
-        >
-          <option value="">No role</option>
-          {PROFILE_ROLES.map((r) => (
-            <option key={r} value={r}>
-              {r}
-            </option>
-          ))}
-        </select>
-
-        <select
-          className="flex h-9 rounded-md border border-input bg-transparent px-3 py-1 text-base shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring md:text-sm"
-          value={status}
-          disabled={isSubmitting}
-          onChange={(e) => updateProfile(e.target.value as ProfileStatus)}
-        >
-          {PROFILE_STATUSES.map((s) => (
-            <option key={s} value={s}>
-              {s}
-            </option>
-          ))}
-        </select>
-
-        <Badge variant={STATUS_BADGE_VARIANT[status]}>{status}</Badge>
-
-        <span className="text-xs text-muted-foreground">
-          {new Date(profile.created_at).toLocaleDateString()}
-        </span>
-
-        <Button
-          type="button"
-          size="sm"
-          variant="outline"
-          disabled={!role || isSubmitting}
-          onClick={() => updateProfile("active")}
-        >
-          Approve
-        </Button>
-        <Button
-          type="button"
-          size="sm"
-          variant="outline"
-          disabled={isSubmitting}
-          onClick={() => updateProfile("denied")}
-        >
-          Deny
-        </Button>
+        {(profile.status === "active" || profile.status === "denied") && (
+          <select aria-label={`Role for ${profile.email}`} className="flex h-9 rounded-md border border-input bg-transparent px-3 text-sm" value={role} disabled={isSubmitting} onChange={(event) => setRole(event.target.value as ProfileRole)}>
+            {PROFILE_ROLES.map((option) => <option key={option} value={option}>{option}</option>)}
+          </select>
+        )}
+        <Badge variant={STATUS_BADGE_VARIANT[profile.status]}>{profile.status}</Badge>
+        <span className="text-xs text-muted-foreground">{new Date(profile.created_at).toLocaleDateString()}</span>
+        {profile.status === "active" && role !== profile.role && (
+          <Button type="button" size="sm" variant="outline" disabled={isSubmitting} onClick={() => void update("role")}>Save role</Button>
+        )}
+        {profile.status === "active" && profile.id !== currentProfileId && (
+          <Button type="button" size="sm" variant="destructive" disabled={isSubmitting} onClick={() => void update("remove")}>Remove access</Button>
+        )}
+        {profile.status === "active" && (
+          <Button type="button" size="sm" variant="outline" disabled={isSubmitting} onClick={() => void copyResetLink()}>Copy reset link</Button>
+        )}
+        {profile.status !== "active" && profile.status !== "denied" && (
+          <Button type="button" size="sm" variant="outline" disabled={isSubmitting} onClick={() => void update("deny")}>Deny</Button>
+        )}
       </div>
-
-      {isSubmitting && <p role="status" className="w-full text-sm text-muted-foreground">Saving change…</p>}
-      {error && <p role="alert" className="w-full text-sm text-red-500">{error}</p>}
+      {error && <p role="alert" className="w-full text-sm text-destructive">{error}</p>}
     </div>
   );
 }

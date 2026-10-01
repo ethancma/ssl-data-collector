@@ -2,23 +2,11 @@
 
 import { zodResolver } from "@hookform/resolvers/zod";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useCallback, useEffect, useState } from "react";
 import { Controller, useForm } from "react-hook-form";
 import { z } from "zod";
 
-import {
-  BatchScopeFields,
-  BatchSuccessCard,
-  useBatchRequestId,
-  useBatchScope,
-} from "@/components/daily-operations/batch-scope-checklist";
-import {
-  runBatchSave,
-  type BatchLogResult,
-  type BatchScopeAnimal,
-  type BatchScopeSystem,
-  type BatchScopeTank,
-} from "@/components/daily-operations/batch-selection";
 import {
   getPacificDateString,
   getPacificTimeString,
@@ -35,6 +23,7 @@ import {
   QUICK_PICK_HEADING_CLASS,
   QUICK_PICK_LABEL_CLASS,
   QUICK_PICK_OPTION_CLASS,
+  SELECT_CLASS,
 } from "@/components/daily-operations/form-classes";
 import { Button } from "@/components/ui/button";
 import {
@@ -51,13 +40,28 @@ import { MEASUREMENT_UNITS } from "@/lib/config/reference-data";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 
-const STAR_SCOPE_TEXT = {
-  legend: "Stars treated",
-  animalLabel: "Treated star",
-  allAnimalsOption: "All stars in tank",
-  checklistLabel: "Stars to log",
-  nounPlural: "stars",
+export type StarTreatmentSystemOption = { id: number; name: string };
+export type StarTreatmentTankOption = {
+  id: number;
+  name: string;
+  systemId: number;
 };
+export type StarTreatmentAnimalOption = {
+  id: number;
+  name: string;
+  tankId: number;
+  speciesName: string;
+};
+
+const LAST_SYSTEM_STORAGE_KEY = "ssl:last-star-treatment-system";
+
+const requiredId = (message: string) =>
+  z
+    .string()
+    .min(1, message)
+    .regex(/^\d+$/, message)
+    .transform(Number)
+    .pipe(z.number().int().positive(message));
 
 const optionalPositiveNumber = z.string().refine((value) => {
   if (value.trim() === "") return true;
@@ -74,6 +78,9 @@ const starTreatmentSchema = z
     time: z
       .string()
       .regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Enter a valid time"),
+    systemId: requiredId("Select a system"),
+    tankId: requiredId("Select a tank"),
+    animalId: requiredId("Select a star"),
     catalogId: z
       .string()
       .refine((value) => value === "" || /^\d+$/.test(value), "Select a quick pick"),
@@ -135,38 +142,30 @@ export function StarTreatmentForm({
   catalogs,
   catalogLoadError,
 }: {
-  systems: BatchScopeSystem[];
-  tanks: BatchScopeTank[];
-  stars: BatchScopeAnimal[];
+  systems: StarTreatmentSystemOption[];
+  tanks: StarTreatmentTankOption[];
+  stars: StarTreatmentAnimalOption[];
   catalogs: StarTreatmentCatalogItem[];
   catalogLoadError?: string;
 }) {
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const [serverError, setServerError] = useState<string | null>(null);
-  const [savedResult, setSavedResult] = useState<BatchLogResult | null>(null);
-  const requestId = useBatchRequestId();
-  const batch = useBatchScope({
-    logType: "star-treatment",
-    systems,
-    tanks,
-    animals: stars,
-    lastSystemStorageKey: "ssl:last-star-treatment-system",
-    text: STAR_SCOPE_TEXT,
-    onEdit: requestId.reset,
-  });
+  const [filterMessage, setFilterMessage] = useState("");
+  const [savedStarName, setSavedStarName] = useState<string | null>(null);
+
+  const rawSystemId = searchParams.get("system") ?? "";
+  const rawTankId = searchParams.get("tank") ?? "";
+  const rawAnimalId = searchParams.get("animal") ?? "";
+  const validSystem = systems.find((system) => String(system.id) === rawSystemId);
+  const validTank = tanks.find(
+    (tank) => String(tank.id) === rawTankId && tank.systemId === validSystem?.id,
+  );
+  const validStar = stars.find(
+    (star) => String(star.id) === rawAnimalId && star.tankId === validTank?.id,
+  );
   const defaultCatalog = catalogs[0] ?? null;
   const defaultTreatment = selectStarTreatmentCatalogItem(defaultCatalog);
-  const defaultValues = (): StarTreatmentFormInput => ({
-    date: getPacificDateString(),
-    time: getPacificTimeString(),
-    catalogId:
-      defaultTreatment.catalogId === null ? "" : String(defaultTreatment.catalogId),
-    treatmentName: defaultTreatment.name,
-    amount: "",
-    unit: defaultTreatment.amountUnit,
-    concentration: "",
-    concentrationUnit: defaultTreatment.concentrationUnit,
-    notes: "",
-  });
 
   const {
     control,
@@ -179,16 +178,120 @@ export function StarTreatmentForm({
     formState: { errors, isSubmitting },
   } = useForm<StarTreatmentFormInput, unknown, StarTreatmentFormValues>({
     resolver: zodResolver(starTreatmentSchema),
-    defaultValues: defaultValues(),
+    defaultValues: {
+      date: getPacificDateString(),
+      time: getPacificTimeString(),
+      systemId: validSystem ? String(validSystem.id) : "",
+      tankId: validTank ? String(validTank.id) : "",
+      animalId: validStar ? String(validStar.id) : "",
+      catalogId:
+        defaultTreatment.catalogId === null ? "" : String(defaultTreatment.catalogId),
+      treatmentName: defaultTreatment.name,
+      amount: "",
+      unit: defaultTreatment.amountUnit,
+      concentration: "",
+      concentrationUnit: defaultTreatment.concentrationUnit,
+      notes: "",
+    },
   });
 
+  const systemId = watch("systemId");
+  const tankId = watch("tankId");
   const catalogId = watch("catalogId");
-  const includedCount = batch.includedIds.length;
+
+  const filteredTanks = tanks.filter((tank) => String(tank.systemId) === systemId);
+  const filteredStars = stars.filter((star) => String(star.tankId) === tankId);
+
+  const replaceFilters = useCallback(
+    (updates: Record<string, string | null>) => {
+      const nextParams = new URLSearchParams(searchParams.toString());
+      nextParams.set("type", "star-treatment");
+      for (const [key, value] of Object.entries(updates)) {
+        if (value) nextParams.set(key, value);
+        else nextParams.delete(key);
+      }
+      router.replace(`/protected/daily-operations?${nextParams.toString()}`, {
+        scroll: false,
+      });
+    },
+    [router, searchParams],
+  );
 
   useEffect(() => {
-    const subscription = watch(() => requestId.reset());
-    return () => subscription.unsubscribe();
-  }, [requestId, watch]);
+    if (!rawSystemId) {
+      const storedSystemId = window.localStorage.getItem(LAST_SYSTEM_STORAGE_KEY);
+      if (systems.some((system) => String(system.id) === storedSystemId)) {
+        replaceFilters({ system: storedSystemId, tank: null, animal: null });
+        setValue("systemId", storedSystemId ?? "");
+      }
+      return;
+    }
+
+    if (!validSystem) {
+      setFilterMessage("The linked system is unavailable. Select a system to continue.");
+      replaceFilters({ system: null, tank: null, animal: null });
+      setValue("systemId", "");
+      setValue("tankId", "");
+      setValue("animalId", "");
+      return;
+    }
+
+    setValue("systemId", String(validSystem.id));
+    if (rawTankId && !validTank) {
+      setFilterMessage("The linked tank is not available in that system.");
+      replaceFilters({ tank: null, animal: null });
+      setValue("tankId", "");
+      setValue("animalId", "");
+      return;
+    }
+
+    setValue("tankId", validTank ? String(validTank.id) : "");
+    if (rawAnimalId && !validStar) {
+      setFilterMessage("The linked star is not available in that tank.");
+      replaceFilters({ animal: null });
+      setValue("animalId", "");
+      return;
+    }
+
+    setValue("animalId", validStar ? String(validStar.id) : "");
+  }, [
+    rawAnimalId,
+    rawSystemId,
+    rawTankId,
+    replaceFilters,
+    setValue,
+    systems,
+    validStar,
+    validSystem,
+    validTank,
+  ]);
+
+  const onSystemChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
+    const nextSystemId = event.target.value;
+    setFilterMessage("");
+    setSavedStarName(null);
+    setValue("systemId", nextSystemId, { shouldValidate: true });
+    setValue("tankId", "");
+    setValue("animalId", "");
+    replaceFilters({ system: nextSystemId || null, tank: null, animal: null });
+  };
+
+  const onTankChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
+    const nextTankId = event.target.value;
+    setFilterMessage("");
+    setSavedStarName(null);
+    setValue("tankId", nextTankId, { shouldValidate: true });
+    setValue("animalId", "");
+    replaceFilters({ tank: nextTankId || null, animal: null });
+  };
+
+  const onStarChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
+    const nextAnimalId = event.target.value;
+    setFilterMessage("");
+    setSavedStarName(null);
+    setValue("animalId", nextAnimalId, { shouldValidate: true });
+    replaceFilters({ animal: nextAnimalId || null });
+  };
 
   const onTreatmentCatalogChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const selectedCatalog = catalogs.find(
@@ -209,8 +312,11 @@ export function StarTreatmentForm({
 
   const onSubmit = async (values: StarTreatmentFormValues) => {
     setServerError(null);
-    const { systemId, tankId, animalId } = batch.scope;
-    if (systemId === null || includedCount === 0) return;
+    const selectedStar = stars.find((star) => star.id === values.animalId);
+    if (!selectedStar || selectedStar.tankId !== values.tankId) {
+      setError("animalId", { message: "Select a star in the selected tank" });
+      return;
+    }
 
     let administeredAt: string;
     try {
@@ -233,67 +339,76 @@ export function StarTreatmentForm({
     const amountValue = nullableNumber(values.amount);
     const concentrationValue = nullableNumber(values.concentration);
     const supabase = createClient();
-    const outcome = await runBatchSave(
-      () =>
-        supabase.rpc("create_star_treatment_batch", {
-          p_request_id: requestId.current(),
-          p_system_id: systemId,
-          p_tank_id: tankId,
-          p_animal_id: animalId,
-          p_included_animal_ids: batch.includedIds,
-          p_excluded_animal_ids: batch.excludedIds,
-          p_administered_at: administeredAt,
-          p_amount: amountValue,
-          p_unit: amountValue === null ? null : values.unit.trim(),
-          p_concentration: concentrationValue,
-          p_concentration_unit:
-            concentrationValue === null ? null : values.concentrationUnit.trim(),
-          p_treatment_type: treatmentType,
-          p_notes: values.notes.trim() || null,
-          p_catalog_id: catalogId,
-        }),
-      STAR_SCOPE_TEXT.nounPlural,
-    );
+    const { error } = await supabase.rpc("create_star_treatment", {
+      p_animal_id: values.animalId,
+      p_tank_id: selectedStar.tankId,
+      p_amount: amountValue,
+      p_unit: amountValue === null ? null : values.unit.trim(),
+      p_concentration: concentrationValue,
+      p_concentration_unit:
+        concentrationValue === null ? null : values.concentrationUnit.trim(),
+      p_treatment_type: treatmentType,
+      p_notes: values.notes.trim() || null,
+      p_administered_at: administeredAt,
+      p_catalog_id: catalogId,
+    });
 
-    if (!outcome.ok) {
-      const { kind, message } = outcome.error;
-      if (kind !== "unconfirmed") requestId.reset();
-      if (kind === "stale" || kind === "no-eligible") batch.refreshAfterStale();
-      if (kind === "missing-time") setError("time", { message });
-      setServerError(message);
+    if (error) {
+      setServerError(error.message);
       return;
     }
 
-    requestId.reset();
-    batch.rememberSystem();
-    setSavedResult(outcome.result);
+    window.localStorage.setItem(LAST_SYSTEM_STORAGE_KEY, String(values.systemId));
+    setSavedStarName(selectedStar.name);
+    replaceFilters({
+      animal: null,
+      health: null,
+      "health-observation": null,
+      healthObservation: null,
+    });
   };
 
   const logAnother = () => {
-    reset(defaultValues());
-    requestId.reset();
-    batch.selectAnimal("");
+    const retainedSystemId = systemId;
+    const retainedTankId = tankId;
+    reset({
+      date: getPacificDateString(),
+      time: getPacificTimeString(),
+      systemId: retainedSystemId,
+      tankId: retainedTankId,
+      animalId: "",
+      catalogId:
+        defaultTreatment.catalogId === null ? "" : String(defaultTreatment.catalogId),
+      treatmentName: defaultTreatment.name,
+      amount: "",
+      unit: defaultTreatment.amountUnit,
+      concentration: "",
+      concentrationUnit: defaultTreatment.concentrationUnit,
+      notes: "",
+    });
+    setSavedStarName(null);
     setServerError(null);
-    setSavedResult(null);
+    replaceFilters({ animal: null });
   };
 
-  if (savedResult) {
+  if (savedStarName) {
     return (
-      <BatchSuccessCard
-        title={
-          savedResult.created_count === 1 ? "Star treatment saved" : "Star treatments saved"
-        }
-        result={savedResult}
-        animals={stars}
-        nounPlural={savedResult.created_count === 1 ? "treatment" : "treatments"}
-      >
-        <Button type="button" onClick={logAnother}>
-          Log another treatment
-        </Button>
-        <Button asChild variant="outline">
-          <Link href="/protected/star-treatments">View treatments</Link>
-        </Button>
-      </BatchSuccessCard>
+      <Card className="w-full max-w-lg">
+        <CardHeader>
+          <CardTitle className="text-2xl">Star treatment saved</CardTitle>
+          <CardDescription role="status" aria-live="polite">
+            Treatment recorded for {savedStarName}.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-wrap gap-3">
+          <Button type="button" onClick={logAnother}>
+            Log another treatment
+          </Button>
+          <Button asChild variant="outline">
+            <Link href="/protected/star-treatments">View treatments</Link>
+          </Button>
+        </CardContent>
+      </Card>
     );
   }
 
@@ -302,8 +417,7 @@ export function StarTreatmentForm({
       <CardHeader>
         <CardTitle className="text-2xl">Star treatment</CardTitle>
         <CardDescription>
-          Record a treatment for every individually tracked star in a system or tank, or for
-          one star.
+          Record treatment administered to one individually tracked star.
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -343,11 +457,84 @@ export function StarTreatmentForm({
             </div>
           </div>
 
-          <BatchScopeFields
-            batch={batch}
-            idPrefix="star-treatment"
-            disabled={isSubmitting}
-          />
+          <div className="grid gap-2">
+            <Label htmlFor="star-treatment-system">System</Label>
+            <select
+              id="star-treatment-system"
+              className={SELECT_CLASS}
+              aria-describedby={errors.systemId ? "star-treatment-system-error" : undefined}
+              aria-invalid={Boolean(errors.systemId)}
+              {...register("systemId", { onChange: onSystemChange })}
+            >
+              <option value="">Select a system…</option>
+              {systems.map((system) => (
+                <option key={system.id} value={system.id}>
+                  {system.name}
+                </option>
+              ))}
+            </select>
+            {errors.systemId && (
+              <p id="star-treatment-system-error" className="text-sm text-red-500">
+                {errors.systemId.message}
+              </p>
+            )}
+          </div>
+
+          <div className="grid gap-2">
+            <Label htmlFor="star-treatment-tank">Tank</Label>
+            <select
+              id="star-treatment-tank"
+              className={SELECT_CLASS}
+              disabled={!systemId}
+              aria-describedby={errors.tankId ? "star-treatment-tank-error" : undefined}
+              aria-invalid={Boolean(errors.tankId)}
+              {...register("tankId", { onChange: onTankChange })}
+            >
+              <option value="">Select a tank…</option>
+              {filteredTanks.map((tank) => (
+                <option key={tank.id} value={tank.id}>
+                  {tank.name}
+                </option>
+              ))}
+            </select>
+            {errors.tankId && (
+              <p id="star-treatment-tank-error" className="text-sm text-red-500">
+                {errors.tankId.message}
+              </p>
+            )}
+          </div>
+
+          <div className="grid gap-2">
+            <Label htmlFor="star-treatment-animal">Treated star</Label>
+            <select
+              id="star-treatment-animal"
+              className={SELECT_CLASS}
+              disabled={!tankId}
+              aria-describedby={errors.animalId ? "star-treatment-animal-error" : undefined}
+              aria-invalid={Boolean(errors.animalId)}
+              {...register("animalId", { onChange: onStarChange })}
+            >
+              <option value="">Select a star…</option>
+              {filteredStars.map((star) => (
+                <option key={star.id} value={star.id}>
+                  {star.name} — {star.speciesName}
+                </option>
+              ))}
+            </select>
+            {errors.animalId && (
+              <p id="star-treatment-animal-error" className="text-sm text-red-500">
+                {errors.animalId.message}
+              </p>
+            )}
+            {/* sr-only while empty keeps the live region mounted without adding an extra gap-6 row. */}
+            <p
+              className="text-sm text-muted-foreground empty:sr-only"
+              role="status"
+              aria-live="polite"
+            >
+              {filterMessage}
+            </p>
+          </div>
 
           <div
             role="group"
@@ -407,7 +594,7 @@ export function StarTreatmentForm({
 
           <div className="grid items-start gap-4 sm:grid-cols-2">
             <div className="grid content-start gap-2">
-              <Label htmlFor="star-treatment-amount">Amount per star</Label>
+              <Label htmlFor="star-treatment-amount">Amount</Label>
               <Input
                 id="star-treatment-amount"
                 type="text"
@@ -505,13 +692,8 @@ export function StarTreatmentForm({
           )}
 
           <div className="flex flex-wrap gap-3">
-            <Button
-              type="submit"
-              disabled={isSubmitting || batch.isRefreshing || includedCount === 0}
-            >
-              {isSubmitting
-                ? "Saving…"
-                : `Save ${includedCount} ${includedCount === 1 ? "treatment" : "treatments"}`}
+            <Button type="submit" disabled={isSubmitting}>
+              {isSubmitting ? "Saving…" : "Save star treatment"}
             </Button>
             <Button asChild variant="outline">
               <Link href="/protected/star-treatments">View treatments</Link>
