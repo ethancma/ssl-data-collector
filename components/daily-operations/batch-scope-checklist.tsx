@@ -254,7 +254,7 @@ export function BatchScopeFields({
 
   return (
     <fieldset className="min-w-0" disabled={disabled}>
-      <legend className="mb-4 text-sm font-medium leading-none">{text.legend}</legend>
+      <legend className="sr-only">{text.legend}</legend>
       <div className="grid gap-6">
         <div className="grid gap-2">
           <Label htmlFor={`${idPrefix}-system`}>System</Label>

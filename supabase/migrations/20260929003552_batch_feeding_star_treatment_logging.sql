@@ -14,9 +14,9 @@
 create table core.operational_batch_requests (
 	request_id uuid primary key,
 	operation text not null,
-	system_id int not null references core.systems (id) on delete restrict,
-	tank_id int references core.tanks (id) on delete restrict,
-	animal_id int references core.animals (id) on delete restrict,
+	scope_system_id int not null references core.systems (id) on delete restrict,
+	scope_tank_id int references core.tanks (id) on delete restrict,
+	scope_animal_id int references core.animals (id) on delete restrict,
 	payload jsonb not null,
 	included_animal_ids int[] not null,
 	excluded_animal_ids int[] not null,
@@ -25,18 +25,18 @@ create table core.operational_batch_requests (
 	result jsonb not null,
 	constraint operational_batch_requests_operation_check
 		check (operation in ('feeding', 'star_treatment')),
-	constraint operational_batch_requests_scope_check
-		check (animal_id is null or tank_id is not null),
+	constraint operational_batch_requests_scope_animal_check
+		check (scope_animal_id is null or scope_tank_id is not null),
 	constraint operational_batch_requests_included_check
 		check (pg_catalog.cardinality(included_animal_ids) > 0)
 );
 
-create index operational_batch_requests_system_created_idx
-	on core.operational_batch_requests (system_id, created_at desc);
-create index operational_batch_requests_tank_id_idx
-	on core.operational_batch_requests (tank_id);
-create index operational_batch_requests_animal_id_idx
-	on core.operational_batch_requests (animal_id);
+create index operational_batch_requests_scope_system_created_idx
+	on core.operational_batch_requests (scope_system_id, created_at desc);
+create index operational_batch_requests_scope_tank_id_idx
+	on core.operational_batch_requests (scope_tank_id);
+create index operational_batch_requests_scope_animal_id_idx
+	on core.operational_batch_requests (scope_animal_id);
 create index operational_batch_requests_actor_created_idx
 	on core.operational_batch_requests (actor_profile_id, created_at desc);
 
@@ -44,6 +44,12 @@ comment on table core.operational_batch_requests is
 	'Append-only batch Feeding/Star treatment request ledger written by the batch RPCs; result.records links the request to its log rows. Readable by active Admin and Technician profiles only.';
 comment on column core.operational_batch_requests.payload is
 	'Canonical shared form values (including notes) compared on request-ID replay.';
+comment on column core.operational_batch_requests.scope_system_id is
+	'Requested scope; NULL means not narrowed to this level. Each created log row''s tank snapshot is in result.records[].tank_id and the log table.';
+comment on column core.operational_batch_requests.scope_tank_id is
+	'Requested scope; NULL means not narrowed to this level. Each created log row''s tank snapshot is in result.records[].tank_id and the log table.';
+comment on column core.operational_batch_requests.scope_animal_id is
+	'Requested scope; NULL means not narrowed to this level. Each created log row''s tank snapshot is in result.records[].tank_id and the log table.';
 comment on column core.operational_batch_requests.result is
 	'RPC result returned verbatim (with replayed = true) when the same request ID is retried.';
 
@@ -356,9 +362,9 @@ begin
 	if found then
 		if existing_request.operation <> p_operation
 				or existing_request.actor_profile_id <> batch_actor_profile_id
-				or existing_request.system_id is distinct from p_system_id
-				or existing_request.tank_id is distinct from p_tank_id
-				or existing_request.animal_id is distinct from p_animal_id
+				or existing_request.scope_system_id is distinct from p_system_id
+				or existing_request.scope_tank_id is distinct from p_tank_id
+				or existing_request.scope_animal_id is distinct from p_animal_id
 				or existing_request.payload is distinct from p_payload
 				or existing_request.included_animal_ids is distinct from sorted_included_ids
 				or existing_request.excluded_animal_ids is distinct from sorted_excluded_ids then
@@ -595,9 +601,9 @@ begin
 	insert into core.operational_batch_requests (
 		request_id,
 		operation,
-		system_id,
-		tank_id,
-		animal_id,
+		scope_system_id,
+		scope_tank_id,
+		scope_animal_id,
 		payload,
 		included_animal_ids,
 		excluded_animal_ids,
@@ -765,9 +771,9 @@ begin
 	insert into core.operational_batch_requests (
 		request_id,
 		operation,
-		system_id,
-		tank_id,
-		animal_id,
+		scope_system_id,
+		scope_tank_id,
+		scope_animal_id,
 		payload,
 		included_animal_ids,
 		excluded_animal_ids,
