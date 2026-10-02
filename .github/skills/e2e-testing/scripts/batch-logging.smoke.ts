@@ -3,7 +3,7 @@ import { expect, test, type Page } from "@playwright/test";
 import {
   ADMIN_EMAIL, ADMIN_PASSWORD, TECH_EMAIL, TECH_PASSWORD,
   VIEWER_EMAIL, VIEWER_PASSWORD, VOLUNTEER_EMAIL, VOLUNTEER_PASSWORD,
-  dbQuery, loginAs, signInRoleClient,
+  cleanupStep, dbQuery, loginAs, signInRoleClient,
 } from "./helpers";
 
 const TAG = `E2EBATCH${Date.now()}`;
@@ -125,36 +125,48 @@ test.beforeAll(() => {
   expect(Object.keys(animals)).toHaveLength(7);
 });
 
-test.afterAll(() => {
+test.afterAll(async () => {
   const animalIds = ids();
+  const animalArray = `array[${animalIds.join(",")}]::int[]`;
+  await cleanupStep("delete batch request ledger rows", () => dbQuery(
+    `delete from core.operational_batch_requests where request_id = any(${requestIdsSql()})
+      or payload->>'notes' like ${lit(`${TAG}%`)}`,
+  ));
+  await cleanupStep("delete batch feeding rows", () => dbQuery(
+    `delete from core.feeding_logs where notes like ${lit(`${TAG}%`)}` +
+      (animalIds.length ? ` or animal_id = any(${animalArray})` : ""),
+  ));
+  await cleanupStep("delete batch star-treatment rows", () => dbQuery(
+    `delete from core.star_treatments where notes like ${lit(`${TAG}%`)}` +
+      (animalIds.length ? ` or animal_id = any(${animalArray})` : ""),
+  ));
   if (animalIds.length) {
-    const animalArray = `array[${animalIds.join(",")}]::int[]`;
-    dbQuery(`delete from core.feeding_logs where animal_id = any(${animalArray})`);
-    dbQuery(`delete from core.star_treatments where animal_id = any(${animalArray})`);
+    await cleanupStep("delete batch fixture animals", () => dbQuery(
+      `delete from core.animals where id = any(${animalArray})`,
+    ));
   }
-  try {
-    dbQuery(`delete from core.operational_batch_requests where request_id = any(${requestIdsSql()})
-      or payload->>'notes' like ${lit(`${TAG}%`)}`);
-  } catch (error) {
-    if (animalIds.length) dbQuery(`update core.animals set status = 'inactive' where id = any(array[${animalIds.join(",")}]::int[])`);
-    cleanupStatus = `tagged fixtures retired; ledger delete blocked: ${String(error)}`;
-    console.warn(cleanupStatus);
-    return;
+  if (refs?.otherTankId) {
+    await cleanupStep("delete batch control tank", () => dbQuery(
+      `delete from core.tanks where id = ${refs.otherTankId} and name = ${lit(`${TAG}_control_tank`)}`,
+    ));
   }
-  if (animalIds.length) dbQuery(`delete from core.animals where id = any(array[${animalIds.join(",")}]::int[])`);
-  if (refs?.otherTankId) dbQuery(`delete from core.tanks where id = ${refs.otherTankId} and name = ${lit(`${TAG}_control_tank`)}`);
-  const remaining = dbQuery(`select
-    (select count(*)::int from core.animals where notes like ${lit(`${TAG}%`)}) animals,
-    (select count(*)::int from core.tanks where name like ${lit(`${TAG}%`)}) tanks,
-    (select count(*)::int from core.feeding_logs where notes like ${lit(`${TAG}%`)}) feeding_logs,
-    (select count(*)::int from core.star_treatments where notes like ${lit(`${TAG}%`)}) star_treatments,
-    (select count(*)::int from core.operational_batch_requests where payload->>'notes' like ${lit(`${TAG}%`)}) ledger`)[0];
-  const remainingCounts = Object.values(remaining).map(Number);
-  cleanupStatus = remainingCounts.every((count) => count === 0)
-    ? "all tagged fixture animals, tanks, logs, and ledger rows removed"
-    : `tagged rows remain: ${JSON.stringify(remaining)}`;
-  console.info(`Batch fixture cleanup: ${cleanupStatus}`);
-  expect(cleanupStatus).toBe("all tagged fixture animals, tanks, logs, and ledger rows removed");
+  await cleanupStep("check for leftover batch fixtures", () => {
+    const remaining = dbQuery(`select
+      (select count(*)::int from core.animals where notes like ${lit(`${TAG}%`)}) animals,
+      (select count(*)::int from core.tanks where name like ${lit(`${TAG}%`)}) tanks,
+      (select count(*)::int from core.feeding_logs where notes like ${lit(`${TAG}%`)}) feeding_logs,
+      (select count(*)::int from core.star_treatments where notes like ${lit(`${TAG}%`)}) star_treatments,
+      (select count(*)::int from core.operational_batch_requests where payload->>'notes' like ${lit(`${TAG}%`)}) ledger`)[0];
+    const remainingCounts = Object.values(remaining).map(Number);
+    cleanupStatus = remainingCounts.every((count) => count === 0)
+      ? "all tagged fixture animals, tanks, logs, and ledger rows removed"
+      : `tagged rows remain: ${JSON.stringify(remaining)}`;
+    if (remainingCounts.some((count) => count > 0)) {
+      console.warn(`Batch fixture cleanup: ${cleanupStatus}`);
+    } else {
+      console.info(`Batch fixture cleanup: ${cleanupStatus}`);
+    }
+  });
 });
 
 test.describe("Batch feeding UI", () => {

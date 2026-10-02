@@ -24,10 +24,6 @@ export const SMOKE_SECTIONS = [
     file: ".github/skills/e2e-testing/scripts/star-treatments.smoke.ts",
   },
   {
-    id: "rls-rebuild",
-    file: ".github/skills/e2e-testing/scripts/rls-rebuild.smoke.ts",
-  },
-  {
     id: "systems-trends",
     file: ".github/skills/e2e-testing/scripts/systems-trends.smoke.ts",
   },

@@ -103,6 +103,20 @@ export function ChemicalAdditionForm({
   });
   const catalogId = watch("catalogId");
 
+  const onChemicalCatalogChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const selectedCatalog = catalogs.find(
+      (item) => String(item.id) === event.target.value,
+    );
+    if (selectedCatalog) {
+      const selection = selectChemicalCatalogItem(selectedCatalog);
+      setValue("chemicalName", selection.name, { shouldValidate: true });
+      setValue("unit", selection.unit, { shouldValidate: true });
+      return;
+    }
+    setValue("chemicalName", "", { shouldValidate: true });
+    setValue("unit", "", { shouldValidate: true });
+  };
+
   const onSubmit = async (values: SystemChemicalAdditionFormValues) => {
     setServerError(null);
     let addedAt: string;
@@ -196,13 +210,7 @@ export function ChemicalAdditionForm({
                   <input
                     type="radio"
                     value={item.id}
-                    {...register("catalogId", {
-                      onChange: () => {
-                        const selection = selectChemicalCatalogItem(item);
-                        setValue("chemicalName", selection.name, { shouldValidate: true });
-                        setValue("unit", selection.unit, { shouldValidate: true });
-                      },
-                    })}
+                    {...register("catalogId", { onChange: onChemicalCatalogChange })}
                   />
                   <span className={QUICK_PICK_LABEL_CLASS}>{item.name}</span>
                 </label>
@@ -211,12 +219,7 @@ export function ChemicalAdditionForm({
                 <input
                   type="radio"
                   value=""
-                  {...register("catalogId", {
-                    onChange: () => {
-                      setValue("chemicalName", "", { shouldValidate: true });
-                      setValue("unit", "", { shouldValidate: true });
-                    },
-                  })}
+                  {...register("catalogId", { onChange: onChemicalCatalogChange })}
                 />
                 <span className={QUICK_PICK_LABEL_CLASS}>Other</span>
               </label>

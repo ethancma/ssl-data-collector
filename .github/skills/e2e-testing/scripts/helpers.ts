@@ -128,6 +128,25 @@ export async function loginAs(page: Page, email: string, password: string) {
   await expect(page).toHaveURL(/\/protected/, { timeout: 15_000 });
 }
 
+// Form events fired before hydration are dropped, so wait for the page to go idle first.
+export async function gotoHydrated(page: Page, url: string) {
+  await page.goto(url);
+  await page.waitForLoadState("networkidle");
+}
+
+// A select change fired before hydration is dropped, so retry until Tank enables.
+export async function selectBatchScope(
+  page: Page,
+  { systemId, tankId, animalId }: { systemId: number; tankId: number; animalId: number },
+) {
+  await expect(async () => {
+    await page.getByLabel("System", { exact: true }).selectOption(String(systemId));
+    await expect(page.getByLabel("Tank", { exact: true })).toBeEnabled({ timeout: 1_000 });
+  }).toPass({ timeout: 15_000 });
+  await page.getByLabel("Tank", { exact: true }).selectOption(String(tankId));
+  await page.getByLabel("Animal", { exact: true }).selectOption(String(animalId));
+}
+
 export async function logSingleFeeding(
   page: Page,
   {
@@ -148,9 +167,7 @@ export async function logSingleFeeding(
     notes: string;
   },
 ) {
-  await page.getByLabel("System", { exact: true }).selectOption(String(systemId));
-  await page.getByLabel("Tank", { exact: true }).selectOption(String(tankId));
-  await page.getByLabel("Animal", { exact: true }).selectOption(String(animalId));
+  await selectBatchScope(page, { systemId, tankId, animalId });
   await page.getByRole("radio", { name: food, exact: true }).check();
   await page.getByLabel("Amount per animal (optional)", { exact: true }).fill(amount);
   await page.getByLabel("Unit", { exact: true }).selectOption(unit);
@@ -243,10 +260,47 @@ export async function expectDefaultDateAndTime(page: Page) {
 export function dbQuery(sql: string): Record<string, unknown>[] {
   const file = path.join(mkdtempSync(path.join(tmpdir(), "e2e-sql-")), "query.sql");
   writeFileSync(file, sql);
-  const out = execFileSync(
-    "supabase",
-    ["db", "query", "-f", file, "--linked", "-o", "json"],
-    { encoding: "utf8" },
-  );
+  let out = "";
+  for (let attempt = 1; ; attempt++) {
+    try {
+      out = execFileSync(
+        "supabase",
+        ["db", "query", "-f", file, "--linked", "-o", "json"],
+        { encoding: "utf8" },
+      );
+      break;
+    } catch (error) {
+      // The login-role handshake fails before any SQL runs, so a retry is safe.
+      if (attempt >= 3 || !String(error).includes("TransportError")) throw error;
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 2_000);
+    }
+  }
   return (JSON.parse(out).rows as Record<string, unknown>[]) ?? [];
+}
+
+export function sqlLiteral(value: string): string {
+  return `'${value.replaceAll("'", "''")}'`;
+}
+
+// Cleanup actions are idempotent deletes, so retry transient CLI transport errors.
+async function retryTransient<T>(action: () => T | Promise<T>): Promise<T> {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await action();
+    } catch (error) {
+      if (attempt >= 3) throw error;
+      await new Promise((resolve) => setTimeout(resolve, 2_000));
+    }
+  }
+}
+
+export async function cleanupStep<T>(
+  label: string,
+  action: () => T | Promise<T>,
+): Promise<void> {
+  try {
+    await retryTransient(action);
+  } catch (error) {
+    console.warn(`E2E cleanup failed (${label}); continuing:`, error);
+  }
 }

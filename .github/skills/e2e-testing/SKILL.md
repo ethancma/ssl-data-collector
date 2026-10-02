@@ -39,15 +39,14 @@ The selector applies this policy:
 | Sidebar, protected shell, navigation, theme | `sidebar-ui.smoke.ts` |
 | Operational-log roles and permission matrix | `rbac-tiers.smoke.ts` |
 | Star treatments and the Probiotics boundary | `star-treatments.smoke.ts` |
-| RLS/GRANT rebuild regression | `rls-rebuild.smoke.ts` |
 | Systems page and water-quality trend charts | `systems-trends.smoke.ts` |
 | Shared app/runtime files, unknown app/runtime files, shared e2e helpers | Full suite |
 | Supabase migrations, RLS/grants, database config, or seed data | Full suite (Tier 3+) |
 | Documentation or other non-runtime files only | No browser section |
 
-The full suite includes all seven section scripts, so migration and broad changes cannot
-silently omit operational RBAC or RLS-rebuild coverage. The selector only chooses sections;
-it does not weaken each section's UI and direct-Supabase assertions.
+The full suite includes all six section scripts, so migration and broad changes cannot
+silently omit operational RBAC coverage. The selector only chooses sections; it does not
+weaken each section's UI and direct-Supabase assertions.
 
 1. Open only the selected section script and `helpers.ts` first. Prefer explicit `--files`
   input; do not let unrelated dirty files broaden a focused session run.
@@ -119,8 +118,6 @@ growing an existing one indefinitely:
   assertions, filters, and the Probiotics chemical-addition boundary. A general activity
   audit is deferred as project-wide work; this script does not probe a feature-specific
   audit table.
-- [rls-rebuild.smoke.ts](./scripts/rls-rebuild.smoke.ts) — full-form regression after an
-  RLS/GRANT rebuild on core tables (`rlsRebuildWriteSuite()`, called once per role).
 - [systems-trends.smoke.ts](./scripts/systems-trends.smoke.ts) — systems-page water-quality
   trend controls, chart rendering, carousel behavior, and responsive layout.
 

@@ -23,6 +23,7 @@ export const chemicalAdditionSchema = z.object({
     .pipe(z.number().int().positive("Select a system")),
   chemicalName: z
     .string()
+    .trim()
     .min(1, "Enter a chemical name")
     .max(200, "Keep the chemical name under 200 characters"),
   amount: z

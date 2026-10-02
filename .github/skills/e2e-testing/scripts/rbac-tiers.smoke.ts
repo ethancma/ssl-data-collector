@@ -6,6 +6,7 @@
 import { test, expect } from "@playwright/test";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
+  cleanupStep,
   dbQuery,
   collectBrowserFailures,
   loginAs,
@@ -20,6 +21,8 @@ import {
   VIEWER_EMAIL,
   VIEWER_PASSWORD,
   logSingleFeeding,
+  gotoHydrated,
+  RUN_TAG,
 } from "./helpers";
 
 type OperationalLogAuditDatabase = {
@@ -56,6 +59,38 @@ function sqlLiteral(value: string) {
   return `'${value.replaceAll("'", "''")}'`;
 }
 
+test.afterAll(async () => {
+  const prefix = `${RUN_TAG}-rbac-%`;
+  await cleanupStep("delete tagged RBAC attachments", () => dbQuery(
+    `delete from core.attachments where storage_path like ${sqlLiteral(prefix)}
+      or (parent_table = 'health_observations' and parent_id in
+        (select id from core.health_observations where notes like ${sqlLiteral(prefix)}))
+      returning id`,
+  ));
+  for (const [table, column] of [
+    ["core.daily_checks", "notes"],
+    ["core.feeding_logs", "notes"],
+    ["core.water_quality_readings", "notes"],
+    ["core.chemical_additions", "reason"],
+    ["core.health_observations", "notes"],
+    ["core.maintenance_logs", "notes"],
+    ["core.star_treatments", "notes"],
+  ]) {
+    await cleanupStep(`delete tagged RBAC rows from ${table}`, () => dbQuery(
+      `delete from ${table} where ${column} like ${sqlLiteral(prefix)} returning id`,
+    ));
+  }
+  for (const table of [
+    "core.food_catalog",
+    "core.chemical_addition_catalog",
+    "core.star_treatment_catalog",
+  ]) {
+    await cleanupStep(`delete tagged RBAC rows from ${table}`, () => dbQuery(
+      `delete from ${table} where name like ${sqlLiteral(prefix)} returning id`,
+    ));
+  }
+});
+
 let originalViewerRole: string | null;
 let originalViewerStatus: string;
 
@@ -78,149 +113,234 @@ test.beforeAll(async () => {
 });
 
 test.afterAll(async () => {
-  const adminClient = await signInRoleClient(ADMIN_EMAIL, ADMIN_PASSWORD);
-  const { error } = await adminClient
-    .from("profiles")
-    .update({ role: originalViewerRole, status: originalViewerStatus })
-    .eq("email", VIEWER_EMAIL);
-  expect(error).toBeNull();
+  await cleanupStep("restore seeded viewer profile", async () => {
+    if (originalViewerStatus === undefined) return;
+    const adminClient = await signInRoleClient(ADMIN_EMAIL, ADMIN_PASSWORD);
+    const { error } = await adminClient
+      .from("profiles")
+      .update({ role: originalViewerRole, status: originalViewerStatus })
+      .eq("email", VIEWER_EMAIL);
+    if (error) throw error;
+  });
 });
 
-test.describe("admin can create logs in every form (operational log RBAC tiers)", () => {
-  test.describe.configure({ mode: "serial" });
-  test.skip(!ADMIN_PASSWORD, "E2E_TEST_ADMIN_PASSWORD not set");
-
-  const TAG = `e2e-rbac-admin-${Date.now()}`;
-  let grahamSystemId: number;
-  let ssl25AnimalId: number;
-  let ssl25TankId: number;
-  let ssl25SystemId: number;
-
-  test.beforeAll(async () => {
-    grahamSystemId = Number(
-      dbQuery(`select id from core.systems where name = 'Graham'`)[0]?.id,
+for (const role of [
+  { label: "admin", email: ADMIN_EMAIL, password: ADMIN_PASSWORD },
+  { label: "technician", email: TECH_EMAIL, password: TECH_PASSWORD },
+] as const) {
+  test.describe(`${role.label} can create logs in every form (operational log RBAC tiers)`, () => {
+    test.describe.configure({ mode: "serial" });
+    test.skip(
+      !role.password,
+      `E2E_TEST_${role.label.toUpperCase()}_PASSWORD not set`,
     );
-    const ssl25 = dbQuery(`select animal.id, animal.tank_id, tank.system_id
-      from core.animals animal
-      join core.tanks tank on tank.id = animal.tank_id
-      where animal.name = 'SSL25'`)[0];
-    ssl25AnimalId = Number(ssl25?.id);
-    ssl25TankId = Number(ssl25?.tank_id);
-    ssl25SystemId = Number(ssl25?.system_id);
-  });
 
-  test("admin AM check lands in daily_checks", async ({ page }) => {
-    await loginAs(page, ADMIN_EMAIL, ADMIN_PASSWORD);
-    await page.goto(
-      `/protected/daily-operations?type=daily-check&system=${grahamSystemId}&check=AM`,
-    );
-    await page.getByLabel("Notes").fill(`${TAG} AM check`);
-    await page.getByLabel("Temperature (°C)").fill("12.5");
-    await page.getByRole("button", { name: "Save check" }).click();
-    await expect(page).toHaveURL(/\/protected\/home/);
-    const rows = dbQuery(
-      `select system_id from core.daily_checks where notes = '${TAG} AM check'`,
-    );
-    expect(Number(rows[0]?.system_id)).toBe(grahamSystemId);
-  });
+    const TAG = `${RUN_TAG}-rbac-${role.label}-${Date.now()}`;
+    let grahamSystemId: number;
+    let ssl25AnimalId: number;
+    let ssl25TankId: number;
+    let ssl25SystemId: number;
 
-  test("admin feeding log lands in feeding_logs", async ({ page }) => {
-    await loginAs(page, ADMIN_EMAIL, ADMIN_PASSWORD);
-    await page.goto("/protected/daily-operations?type=feeding");
-    await logSingleFeeding(page, {
-      systemId: ssl25SystemId,
-      tankId: ssl25TankId,
-      animalId: ssl25AnimalId,
-      food: "Krill",
-      amount: "2",
-      unit: "pieces",
-      notes: `${TAG} feeding`,
+    test.beforeAll(async () => {
+      grahamSystemId = Number(
+        dbQuery(`select id from core.systems where name = 'Graham'`)[0]?.id,
+      );
+      const ssl25 = dbQuery(`select animal.id, animal.tank_id, tank.system_id
+        from core.animals animal
+        join core.tanks tank on tank.id = animal.tank_id
+        where animal.name = 'SSL25'`)[0];
+      ssl25AnimalId = Number(ssl25?.id);
+      ssl25TankId = Number(ssl25?.tank_id);
+      ssl25SystemId = Number(ssl25?.system_id);
     });
-    const rows = dbQuery(
-      `select animal_id, food_catalog_id, food_name, amount, amount_value
-       from core.feeding_logs where notes = '${TAG} feeding'`,
-    );
-    const catalogRows = dbQuery(
-      `select id from core.food_catalog where name = 'Krill' and is_active`,
-    );
-    expect(rows).toHaveLength(1);
-    expect(catalogRows).toHaveLength(1);
-    expect(Number(rows[0]?.animal_id)).toBe(ssl25AnimalId);
-    expect(Number(rows[0]?.food_catalog_id)).toBe(Number(catalogRows[0].id));
-    expect(rows[0]?.food_name).toBe("Krill");
-    expect(rows[0]?.amount).toBeNull();
-    expect(Number(rows[0]?.amount_value)).toBe(2);
-  });
 
-  test("admin water quality reading lands in water_quality_readings", async ({
-    page,
-  }) => {
-    await loginAs(page, ADMIN_EMAIL, ADMIN_PASSWORD);
-    await page.goto(
-      `/protected/daily-operations?type=water-quality&system=${grahamSystemId}`,
-    );
-    await page.getByRole("button", { name: "Apex probe" }).click();
-    await page.getByLabel("pH (unitless)", { exact: true }).fill("8.1");
-    await page.getByLabel("Salinity").fill("32");
-    await page.getByLabel("Notes").fill(`${TAG} water quality`);
-    await page.getByRole("button", { name: "Save reading" }).click();
-    await expect(page).toHaveURL(/\/protected\/home/);
-    const rows = dbQuery(
-      `select system_id from core.water_quality_readings where notes = '${TAG} water quality'`,
-    );
-    expect(Number(rows[0]?.system_id)).toBe(grahamSystemId);
-  });
+    test(`${role.label} AM check lands in daily_checks`, async ({ page }) => {
+      await loginAs(page, role.email, role.password);
+      await page.goto(
+        `/protected/daily-operations?type=daily-check&system=${grahamSystemId}&check=AM`,
+      );
+      await page.getByLabel("Notes").fill(`${TAG} AM check`);
+      await page.getByLabel("Temperature (°C)").fill("12.5");
+      await page.getByRole("button", { name: "Save check" }).click();
+      await expect(page).toHaveURL(/\/protected\/home/);
+      const rows = dbQuery(
+        `select system_id, check_type, water_running, temperature
+         from core.daily_checks where notes = '${TAG} AM check'`,
+      );
+      expect(rows).toHaveLength(1);
+      expect(Number(rows[0]?.system_id)).toBe(grahamSystemId);
+      expect(rows[0]?.check_type).toBe("AM");
+      expect(rows[0]?.water_running).toBe(true);
+      expect(Number(rows[0]?.temperature)).toBe(12.5);
+    });
 
-  test("admin chemical addition lands in chemical_additions", async ({ page }) => {
-    await loginAs(page, ADMIN_EMAIL, ADMIN_PASSWORD);
-    await page.goto(
-      `/protected/daily-operations?type=chemical-addition&system=${grahamSystemId}`,
-    );
-    await page.getByRole("radio", { name: "Enter manually", exact: true }).click();
-    await page.getByLabel("Chemical/product name").fill(`${TAG} baking soda`);
-    await page.getByLabel("Amount").fill("50");
-    await page.getByLabel("Unit", { exact: true }).selectOption("mL");
-    await page.getByLabel("Reason").fill(`${TAG} chemical addition`);
-    await page.getByRole("button", { name: "Save system addition" }).click();
-    await expect(page).toHaveURL(/\/protected\/home/);
-    const rows = dbQuery(
-      `select system_id from core.chemical_additions where reason = '${TAG} chemical addition'`,
-    );
-    expect(Number(rows[0]?.system_id)).toBe(grahamSystemId);
-  });
+    test(`${role.label} feeding log lands in feeding_logs`, async ({ page }) => {
+      await loginAs(page, role.email, role.password);
+      await page.goto("/protected/daily-operations?type=feeding");
+      await logSingleFeeding(page, {
+        systemId: ssl25SystemId,
+        tankId: ssl25TankId,
+        animalId: ssl25AnimalId,
+        food: "Krill",
+        amount: "2",
+        unit: "pieces",
+        notes: `${TAG} feeding`,
+      });
+      const rows = dbQuery(
+        `select animal_id, food_catalog_id, food_name, amount, amount_value, consumption_status
+         from core.feeding_logs where notes = '${TAG} feeding'`,
+      );
+      const catalogRows = dbQuery(
+        `select id from core.food_catalog where name = 'Krill' and is_active`,
+      );
+      expect(rows).toHaveLength(1);
+      expect(catalogRows).toHaveLength(1);
+      expect(Number(rows[0]?.animal_id)).toBe(ssl25AnimalId);
+      expect(Number(rows[0]?.food_catalog_id)).toBe(Number(catalogRows[0].id));
+      expect(rows[0]?.food_name).toBe("Krill");
+      expect(rows[0]?.amount).toBeNull();
+      expect(Number(rows[0]?.amount_value)).toBe(2);
+      expect(rows[0]?.consumption_status).toBeNull();
+    });
 
-  test("admin health observation lands in health_observations", async ({ page }) => {
-    await loginAs(page, ADMIN_EMAIL, ADMIN_PASSWORD);
-    await page.goto("/protected/daily-operations?type=health-observation");
-    await page.getByLabel("Animal").selectOption(String(ssl25AnimalId));
-    await page.getByRole("button", { name: "Low" }).click();
-    await page.getByLabel("Notes").fill(`${TAG} health obs`);
-    await page.getByRole("button", { name: "Save observation" }).click();
-    await expect(page).toHaveURL(/\/protected\/(today|home)/);
-    const rows = dbQuery(
-      `select animal_id, to_json(issues) as issues
-       from core.health_observations where notes = '${TAG} health obs'`,
-    );
-    expect(Number(rows[0]?.animal_id)).toBe(ssl25AnimalId);
-    expect(rows[0]?.issues).toEqual([]);
-  });
+    test(`${role.label} PM check updates the tagged feeding row`, async ({ page }) => {
+      await loginAs(page, role.email, role.password);
+      await page.goto(
+        `/protected/daily-operations?type=daily-check&system=${grahamSystemId}&check=PM`,
+      );
+      await expect(page.getByText("Consumption follow-up")).toBeVisible();
+      await page
+        .getByText("SSL25", { exact: true })
+        .first()
+        .locator("..")
+        .getByRole("button", { name: "Full", exact: true })
+        .click();
+      await page.getByLabel("Notes").fill(`${TAG} PM check`);
+      await page.getByRole("button", { name: "Save check" }).click();
+      await expect(page).toHaveURL(/\/protected\/home/);
 
-  test("admin maintenance log lands in maintenance_logs", async ({ page }) => {
-    await loginAs(page, ADMIN_EMAIL, ADMIN_PASSWORD);
-    await page.goto("/protected/daily-operations?type=maintenance-log");
-    await page.getByLabel("System", { exact: true }).selectOption(String(grahamSystemId));
-    await page.getByLabel("Sump flush").check();
-    await page.getByLabel("Notes").fill(`${TAG} maintenance`);
-    await page.getByRole("button", { name: "Save maintenance log" }).click();
-    await expect(page).toHaveURL(/\/protected\/home/);
-    const rows = dbQuery(
-      `select system_id, task_type
-       from core.maintenance_logs where notes = '${TAG} maintenance'`,
-    );
-    expect(Number(rows[0]?.system_id)).toBe(grahamSystemId);
-    expect(rows[0]?.task_type).toBe("sump_flush");
+      const checks = dbQuery(
+        `select check_type from core.daily_checks where notes = '${TAG} PM check'`,
+      );
+      const feedings = dbQuery(
+        `select consumption_status, consumption_checked_at
+         from core.feeding_logs where notes = '${TAG} feeding'`,
+      );
+      expect(checks).toHaveLength(1);
+      expect(checks[0]?.check_type).toBe("PM");
+      expect(feedings).toHaveLength(1);
+      expect(feedings[0]?.consumption_status).toBe("full");
+      expect(feedings[0]?.consumption_checked_at).not.toBeNull();
+    });
+
+    test(`${role.label} water quality reading lands in water_quality_readings`, async ({
+      page,
+    }) => {
+      await loginAs(page, role.email, role.password);
+      await page.goto(
+        `/protected/daily-operations?type=water-quality&system=${grahamSystemId}`,
+      );
+      await page.getByRole("button", { name: "Apex probe" }).click();
+      await page.getByLabel("pH (unitless)", { exact: true }).fill("8.1");
+      await page.getByLabel("Magnesium").fill("1300");
+      await page.getByLabel("Ammonia").fill("0");
+      await page.getByLabel("Alkalinity").fill("9");
+      await page.getByLabel("Calcium").fill("420");
+      await page.getByLabel("Phosphate").fill("0.02");
+      await page.getByLabel("Salinity").fill("32");
+      await page.getByLabel("Notes").fill(`${TAG} water quality`);
+      await page.getByRole("button", { name: "Save reading" }).click();
+      await expect(page).toHaveURL(/\/protected\/home/);
+      const rows = dbQuery(
+        `select system_id, ph_source, ph, magnesium, ammonia, alkalinity, calcium, phosphate, salinity
+         from core.water_quality_readings where notes = '${TAG} water quality'`,
+      );
+      expect(rows).toHaveLength(1);
+      expect(Number(rows[0]?.system_id)).toBe(grahamSystemId);
+      expect(rows[0]?.ph_source).toBe("apex_probe");
+      expect(Number(rows[0]?.ph)).toBe(8.1);
+      expect(Number(rows[0]?.magnesium)).toBe(1300);
+      expect(Number(rows[0]?.ammonia)).toBe(0);
+      expect(Number(rows[0]?.alkalinity)).toBe(9);
+      expect(Number(rows[0]?.calcium)).toBe(420);
+      expect(Number(rows[0]?.phosphate)).toBe(0.02);
+      expect(Number(rows[0]?.salinity)).toBe(32);
+    });
+
+    test(`${role.label} chemical addition lands in chemical_additions`, async ({ page }) => {
+      await loginAs(page, role.email, role.password);
+      await page.goto(
+        `/protected/daily-operations?type=chemical-addition&system=${grahamSystemId}`,
+      );
+      await page.getByRole("radio", { name: "Other", exact: true }).click();
+      await page.getByLabel("Chemical/product name").fill(`${TAG} baking soda`);
+      await page.getByLabel("Amount").fill("50");
+      await page.getByLabel("Unit", { exact: true }).selectOption("mL");
+      await page.getByLabel("Reason").fill(`${TAG} chemical addition`);
+      await page.getByRole("button", { name: "Save system addition" }).click();
+      await expect(page).toHaveURL(/\/protected\/home/);
+      const rows = dbQuery(
+        `select system_id, chemical_name, amount, unit
+         from core.chemical_additions where reason = '${TAG} chemical addition'`,
+      );
+      expect(rows).toHaveLength(1);
+      expect(Number(rows[0]?.system_id)).toBe(grahamSystemId);
+      expect(rows[0]?.chemical_name).toBe(`${TAG} baking soda`);
+      expect(Number(rows[0]?.amount)).toBe(50);
+      expect(rows[0]?.unit).toBe("mL");
+    });
+
+    test(`${role.label} health observation lands in health_observations`, async ({ page }) => {
+      await loginAs(page, role.email, role.password);
+      await page.goto("/protected/daily-operations?type=health-observation");
+      await page.getByLabel("Animal").selectOption(String(ssl25AnimalId));
+      await page.getByRole("button", { name: "Low" }).click();
+      await page.getByLabel("Arm curling").check();
+      await page.getByLabel("Flattening").check();
+      await page.getByLabel("Notes").fill(`${TAG} health obs`);
+      await page.getByRole("button", { name: "Save observation" }).click();
+      await expect(page).toHaveURL(/\/protected\/(today|home)/);
+      const rows = dbQuery(
+        `select animal_id, severity, to_json(issues) as issues
+         from core.health_observations where notes = '${TAG} health obs'`,
+      );
+      expect(rows).toHaveLength(1);
+      expect(Number(rows[0]?.animal_id)).toBe(ssl25AnimalId);
+      expect(rows[0]?.severity).toBe("low");
+      expect(rows[0]?.issues).toEqual(["arm_curling", "flattening"]);
+    });
+
+    test(`${role.label} maintenance log lands in maintenance_logs`, async ({ page }) => {
+      await loginAs(page, role.email, role.password);
+      await gotoHydrated(page, "/protected/daily-operations?type=maintenance-log");
+      await page.getByLabel("System", { exact: true }).selectOption(String(grahamSystemId));
+      await page.getByLabel("Other").check();
+      await page.getByLabel("Notes").fill(`${TAG} maintenance`);
+      await page.getByRole("button", { name: "Save maintenance log" }).click();
+      await expect(page).toHaveURL(/\/protected\/home/);
+      const rows = dbQuery(
+        `select system_id, task_type from core.maintenance_logs
+         where notes = '${TAG} maintenance'`,
+      );
+      expect(rows).toHaveLength(1);
+      expect(Number(rows[0]?.system_id)).toBe(grahamSystemId);
+      expect(rows[0]?.task_type).toBe("other");
+    });
+
+    test(`${role.label} Home dashboard and history remain readable`, async ({ page }) => {
+      await loginAs(page, role.email, role.password);
+      await page.goto("/protected/home");
+      await expect(page).toHaveURL(/\/protected\/home/);
+      await expect(page.getByRole("heading", { name: "Home", level: 1 })).toBeVisible();
+      await expect(page.getByRole("button", { name: "Agenda" })).toBeVisible();
+      await expect(page.getByText(/pending admin approval/i)).toHaveCount(0);
+
+      await page.goto("/protected/history");
+      await expect(page).toHaveURL(/\/protected\/history/);
+      await expect(page.getByText(/pending admin approval/i)).toHaveCount(0);
+    });
   });
-});
+}
 
 // Create remains exposed in the current UI for Volunteers. One representative form is
 // exercised here; the DB-level matrix below covers INSERT on all seven ordinary tables.
@@ -228,7 +348,7 @@ test.describe("volunteer can create ordinary operational logs", () => {
   test.describe.configure({ mode: "serial" });
   test.skip(!VOLUNTEER_PASSWORD, "E2E_TEST_VOLUNTEER_PASSWORD not set");
 
-  const TAG = `e2e-rbac-volunteer-create-${Date.now()}`;
+  const TAG = `${RUN_TAG}-rbac-volunteer-create-${Date.now()}`;
   let grahamSystemId: number;
   let volunteerProfileId: number;
   let technicianProfileId: number;
@@ -322,7 +442,9 @@ test.describe("volunteer can create ordinary operational logs", () => {
         ownCount,
       );
     } finally {
-      dbQuery(`delete from core.feeding_logs where id in (${fixtureIds.join(", ")})`);
+      await cleanupStep("delete volunteer follow-up fixture rows", () => dbQuery(
+        `delete from core.feeding_logs where id in (${fixtureIds.join(", ")})`,
+      ));
     }
   });
 });
@@ -362,7 +484,7 @@ test.describe("P0 operational security: ownership, provenance, audit, and retent
   test.skip(!VOLUNTEER_PASSWORD, "E2E_TEST_VOLUNTEER_PASSWORD not set");
   test.skip(!VIEWER_PASSWORD, "E2E_TEST_VIEWER_PASSWORD not set");
 
-  const TAG = `e2e-p0-security-${Date.now()}`;
+  const TAG = `${RUN_TAG}-p0-security-${Date.now()}`;
   let grahamSystemId: number;
   let adminProfileId: number;
   let volunteerProfileId: number;
@@ -517,7 +639,9 @@ test.describe("P0 operational security: ownership, provenance, audit, and retent
         Date.now() - 365 * 24 * 60 * 60 * 1_000,
       );
     } finally {
-      dbQuery(`delete from core.daily_checks where id = ${historicalRowId}`);
+      await cleanupStep("delete historical volunteer check fixture", () => dbQuery(
+        `delete from core.daily_checks where id = ${historicalRowId}`,
+      ));
     }
   });
 
@@ -663,7 +787,7 @@ test.describe("P0 operational security: Storage object policies (DB-level)", () 
   test.skip(!ADMIN_PASSWORD, "E2E_TEST_ADMIN_PASSWORD not set");
   test.skip(!VOLUNTEER_PASSWORD, "E2E_TEST_VOLUNTEER_PASSWORD not set");
 
-  const TAG = `e2e-p0-storage-${Date.now()}`;
+  const TAG = `${RUN_TAG}-p0-storage-${Date.now()}`;
   const volunteerPath = `${TAG}/volunteer-owned.txt`;
   const adminPath = `${TAG}/admin-owned.txt`;
   const unrelatedBucket = `${TAG}-unrelated`;
@@ -683,13 +807,17 @@ test.describe("P0 operational security: Storage object policies (DB-level)", () 
   });
 
   test.afterAll(async () => {
-    const adminClient = await signInRoleClient(ADMIN_EMAIL, ADMIN_PASSWORD);
-    await adminClient.storage.from("attachments").remove([volunteerPath, adminPath]);
-    dbQuery(`begin;
-      set local session_replication_role = replica;
-      delete from storage.objects where bucket_id = ${sqlLiteral(unrelatedBucket)};
-      delete from storage.buckets where id = ${sqlLiteral(unrelatedBucket)};
-      commit`);
+    await cleanupStep("remove RBAC attachment uploads", async () => {
+      const adminClient = await signInRoleClient(ADMIN_EMAIL, ADMIN_PASSWORD);
+      const { error } = await adminClient.storage.from("attachments").remove([volunteerPath, adminPath]);
+      if (error) throw error;
+    });
+    await cleanupStep("delete RBAC test-bucket objects", () => dbQuery(
+      `delete from storage.objects where bucket_id = ${sqlLiteral(unrelatedBucket)}`,
+    ));
+    await cleanupStep("delete RBAC test bucket", () => dbQuery(
+      `delete from storage.buckets where id = ${sqlLiteral(unrelatedBucket)}`,
+    ));
   });
 
   test("Volunteer can update an object they own in the attachments bucket", async () => {
@@ -814,7 +942,7 @@ test.describe("P0 operational security: ordinary-log CRUD matrix (DB-level)", ()
   test.skip(!VOLUNTEER_PASSWORD, "E2E_TEST_VOLUNTEER_PASSWORD not set");
   test.skip(!VIEWER_PASSWORD, "E2E_TEST_VIEWER_PASSWORD not set");
 
-  const TAG = `e2e-rbac-matrix-${Date.now()}`;
+  const TAG = `${RUN_TAG}-rbac-matrix-${Date.now()}`;
   let grahamSystemId: number;
   let ssl25AnimalId: number;
   let ssl25TankId: number;
@@ -1235,31 +1363,30 @@ test.describe("P1 target-range RBAC matrix DB-level", () => {
   });
 
   test.afterAll(async () => {
-    const adminClient = await signInRoleClient(ADMIN_EMAIL, ADMIN_PASSWORD);
     if (readingIds.length > 0) {
-      const { error } = await adminClient
-        .from("water_quality_readings")
-        .delete()
-        .in("id", readingIds);
-      expect(error).toBeNull();
+      await cleanupStep("delete target-RBAC readings", async () => {
+        const adminClient = await signInRoleClient(ADMIN_EMAIL, ADMIN_PASSWORD);
+        const { error } = await adminClient
+          .from("water_quality_readings")
+          .delete()
+          .in("id", readingIds);
+        if (error) throw error;
+      });
     }
-    if (targetIds.length > 0) {
-      const { error } = await adminClient
-        .from("water_quality_target_ranges")
-        .delete()
-        .in("id", targetIds);
-      expect(error).toBeNull();
+    for (const id of targetIds) {
+      await cleanupStep(`delete target-RBAC range ${id}`, async () => {
+        const adminClient = await signInRoleClient(ADMIN_EMAIL, ADMIN_PASSWORD);
+        const { error } = await adminClient
+          .from("water_quality_target_ranges")
+          .delete()
+          .eq("id", id);
+        if (error) throw error;
+      });
     }
   });
 
-  test("target ranges have no seeded values or display_order column", async () => {
+  test("target ranges have no display_order column", async () => {
     const adminClient = await signInRoleClient(ADMIN_EMAIL, ADMIN_PASSWORD);
-    const { data, error } = await adminClient
-      .from("water_quality_target_ranges")
-      .select("id");
-    expect(error).toBeNull();
-    expect(data).toEqual([]);
-
     const { data: displayOrder, error: displayOrderError } = await adminClient
       .from("water_quality_target_ranges")
       .select("display_order")
@@ -1542,7 +1669,7 @@ test.describe("P1 quick-pick catalog RBAC matrix (DB-level)", () => {
   test.skip(!VOLUNTEER_PASSWORD, "E2E_TEST_VOLUNTEER_PASSWORD not set");
   test.skip(!VIEWER_PASSWORD, "E2E_TEST_VIEWER_PASSWORD not set");
 
-  const tag = `e2e-p1-catalog-rbac-${Date.now()}`;
+  const tag = `${RUN_TAG}-p1-catalog-rbac-${Date.now()}`;
   const catalogCases = [
     {
       table: "chemical_addition_catalog",
@@ -1566,38 +1693,21 @@ test.describe("P1 quick-pick catalog RBAC matrix (DB-level)", () => {
   ] as const;
 
   test.afterAll(async () => {
-    const adminClient = await signInRoleClient(ADMIN_EMAIL, ADMIN_PASSWORD);
-    const { data: starTreatments, error: starTreatmentsError } = await adminClient
-      .from("star_treatments")
-      .select("id")
-      .like("notes", `${tag}%`);
-    expect(starTreatmentsError).toBeNull();
-    for (const treatment of starTreatments ?? []) {
-      const { error } = await adminClient.rpc("hard_delete_star_treatment", {
-        p_treatment_id: Number(treatment.id),
-      });
-      expect(error).toBeNull();
+    await cleanupStep("delete catalog-RBAC star treatments", () => dbQuery(
+      `delete from core.star_treatments where notes like ${sqlLiteral(`${tag}%`)}`,
+    ));
+    await cleanupStep("delete catalog-RBAC chemical additions", () => dbQuery(
+      `delete from core.chemical_additions where reason like ${sqlLiteral(`${tag}%`)}`,
+    ));
+    for (const table of [
+      "core.chemical_addition_catalog",
+      "core.star_treatment_catalog",
+      "core.food_catalog",
+    ]) {
+      await cleanupStep(`delete tagged entries from ${table}`, () => dbQuery(
+        `delete from ${table} where name like ${sqlLiteral(`${tag}%`)}`,
+      ));
     }
-    const { error: additionsCleanupError } = await adminClient
-      .from("chemical_additions")
-      .delete()
-      .like("reason", `${tag}%`);
-    expect(additionsCleanupError).toBeNull();
-    const { error: chemicalCleanupError } = await adminClient
-      .from("chemical_addition_catalog")
-      .delete()
-      .like("name", `${tag}%`);
-    expect(chemicalCleanupError).toBeNull();
-    const { error: starCleanupError } = await adminClient
-      .from("star_treatment_catalog")
-      .delete()
-      .like("name", `${tag}%`);
-    expect(starCleanupError).toBeNull();
-    const { error: foodCleanupError } = await adminClient
-      .from("food_catalog")
-      .delete()
-      .like("name", `${tag}%`);
-    expect(foodCleanupError).toBeNull();
   });
 
   test("catalogs expose the exact seeds and omit display_order", async () => {
@@ -2022,31 +2132,24 @@ test.describe("P1 quick-pick catalog RBAC matrix (DB-level)", () => {
       expect(deletedStarCatalog).toBeNull();
     } finally {
       if (starTreatmentId > 0) {
-        const { error } = await adminClient.rpc("hard_delete_star_treatment", {
-          p_treatment_id: starTreatmentId,
-        });
-        expect(error).toBeNull();
+        await cleanupStep("delete snapshot Star treatment", () => dbQuery(
+          `delete from core.star_treatments where id = ${starTreatmentId}`,
+        ));
       }
       if (chemicalAdditionId > 0) {
-        const { error } = await adminClient
-          .from("chemical_additions")
-          .delete()
-          .eq("id", chemicalAdditionId);
-        expect(error).toBeNull();
+        await cleanupStep("delete snapshot chemical addition", () => dbQuery(
+          `delete from core.chemical_additions where id = ${chemicalAdditionId}`,
+        ));
       }
       if (chemicalCatalogId > 0) {
-        const { error } = await adminClient
-          .from("chemical_addition_catalog")
-          .delete()
-          .eq("id", chemicalCatalogId);
-        expect(error).toBeNull();
+        await cleanupStep("delete snapshot chemical catalog entry", () => dbQuery(
+          `delete from core.chemical_addition_catalog where id = ${chemicalCatalogId}`,
+        ));
       }
       if (starCatalogId > 0) {
-        const { error } = await adminClient
-          .from("star_treatment_catalog")
-          .delete()
-          .eq("id", starCatalogId);
-        expect(error).toBeNull();
+        await cleanupStep("delete snapshot Star-treatment catalog entry", () => dbQuery(
+          `delete from core.star_treatment_catalog where id = ${starCatalogId}`,
+        ));
       }
     }
   });

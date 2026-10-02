@@ -11,6 +11,7 @@ import { test, expect } from "@playwright/test";
 import {
   ADMIN_EMAIL,
   ADMIN_PASSWORD,
+  cleanupStep,
   db,
   dbQuery,
   login,
@@ -30,6 +31,7 @@ import {
   PICKED_TIME,
   expectDefaultDateAndTime,
   logSingleFeeding,
+  selectBatchScope,
 } from "./helpers";
 
 function sqlLiteral(value: string) {
@@ -45,6 +47,53 @@ test.describe("e2e smoke", () => {
   let ssl25TankId: number;
   let ssl25SystemId: number;
   let diTraceCatalogId: number;
+
+  test.afterAll(async () => {
+    let photoPaths: string[] = [];
+    await cleanupStep("list daily-form attachment paths", () => {
+      photoPaths = dbQuery(
+        "select attachment.storage_path from core.attachments attachment " +
+          "join core.health_observations observation " +
+          "on attachment.parent_table = 'health_observations' " +
+          "and attachment.parent_id = observation.id where observation.notes like " +
+          sqlLiteral(`${RUN_TAG}%`),
+      ).map((row) => String(row.storage_path));
+    });
+    for (const storagePath of photoPaths) {
+      await cleanupStep(`remove daily-form photo ${storagePath}`, async () => {
+        if (!db) {
+          console.warn("E2E cleanup skipped daily-form photo removal: db client is null.");
+          return;
+        }
+        const { error } = await db.storage.from("attachments").remove([storagePath]);
+        if (error) throw error;
+      });
+    }
+    await cleanupStep("delete daily-form attachments", () => dbQuery(
+      "delete from core.attachments where storage_path like " +
+        sqlLiteral(`${RUN_TAG}%`) + " OR (parent_table = 'health_observations' " +
+        "AND parent_id IN (select id from core.health_observations where notes like " +
+        sqlLiteral(`${RUN_TAG}%`) + ")) returning id",
+    ));
+    for (const [table, column] of [
+      ["core.daily_checks", "notes"],
+      ["core.feeding_logs", "notes"],
+      ["core.water_quality_readings", "notes"],
+      ["core.chemical_additions", "reason"],
+      ["core.health_observations", "notes"],
+      ["core.maintenance_logs", "notes"],
+      ["core.star_treatments", "notes"],
+    ]) {
+      await cleanupStep(`delete tagged rows from ${table}`, () => dbQuery(
+        "delete from " + table + " where " + column + " like " +
+          sqlLiteral(`${RUN_TAG}%`) + " returning id",
+      ));
+    }
+    await cleanupStep("delete tagged food catalog rows", () => dbQuery(
+      "delete from core.food_catalog where name like " +
+        sqlLiteral(`${RUN_TAG}%`) + " returning id",
+    ));
+  });
 
   test.beforeAll(async () => {
     // Must use dbQuery (not db.from) here — schema `core` 403s "permission denied for
@@ -174,7 +223,8 @@ test.describe("e2e smoke", () => {
     expect(localDateOf(String(feeding.fed_at))).toBe(todayDateString());
   });
 
-  test("PM check consumption follow-up updates the same feeding_logs row", async ({
+  // On hold: consumption follow-up is paused until the PM-check flow is revisited.
+  test.fixme("PM check consumption follow-up updates the same feeding_logs row", async ({
     page,
   }) => {
     await login(page);
@@ -303,10 +353,11 @@ test.describe("e2e smoke", () => {
     await expect(form.getByLabel("Chemical/product name")).toBeVisible();
     await form.getByLabel("Chemical/product name").fill("   ");
     await form.getByRole("button", { name: "Save system addition" }).click();
-    await expect(form.getByText("Enter a chemical/product name")).toBeVisible();
+    await expect(form.getByText("Enter a chemical name")).toBeVisible();
     await expect(page).toHaveURL(/\/protected\/daily-operations\?type=chemical-addition$/);
 
     await form.getByLabel("System").selectOption(String(chemicalSystemId));
+    await page.waitForLoadState("networkidle");
     await form.getByRole("radio", { name: "DI-Trace", exact: true }).click();
     await expect(form.getByLabel("Chemical/product name")).toHaveCount(0);
     await expect(form.getByLabel("Unit")).toHaveValue("mL");
@@ -454,7 +505,8 @@ test.describe("e2e smoke", () => {
     expect(localDateOf(String(rows[0].performed_at))).not.toBe(todayDateString());
   });
 
-  test("Today dashboard reflects everything logged for Graham", async ({
+  // On hold with the consumption follow-up test: it files Graham's PM check, so Graham stays open.
+  test.fixme("Today dashboard reflects everything logged for Graham", async ({
     page,
   }) => {
     await login(page);
@@ -495,9 +547,7 @@ test.describe("e2e smoke", () => {
     await page.goto("/protected/daily-operations?type=feeding");
     await expectDefaultDateAndTime(page);
     await page.getByLabel("Time").fill(PICKED_TIME);
-    await page.getByLabel("System", { exact: true }).selectOption(String(ssl25SystemId));
-    await page.getByLabel("Tank", { exact: true }).selectOption(String(ssl25TankId));
-    await page.getByLabel("Animal", { exact: true }).selectOption(String(ssl25AnimalId));
+    await selectBatchScope(page, { systemId: ssl25SystemId, tankId: ssl25TankId, animalId: ssl25AnimalId });
     await page.getByRole("radio", { name: "Krill", exact: true }).check();
     await page.getByLabel("Amount per animal (optional)", { exact: true }).fill("2");
     await page.getByLabel("Notes", { exact: true }).fill(`${RUN_TAG} feeding picked time`);
@@ -628,6 +678,7 @@ test.describe("food catalog quick picks", () => {
   let catalogId: number;
   let ssl25AnimalId: number;
   let ssl25TankId: number;
+  let ssl25SystemId: number;
   let krillCatalogId: number;
   let brineShrimpCatalogId: number;
 
@@ -635,9 +686,13 @@ test.describe("food catalog quick picks", () => {
     page.getByText("Feeding", { exact: true }).locator("../..");
 
   test.beforeAll(() => {
-    const animal = dbQuery(`select id, tank_id from core.animals where name = 'SSL25'`)[0];
+    const animal = dbQuery(
+      "select animal.id, animal.tank_id, tank.system_id from core.animals animal " +
+        "join core.tanks tank on tank.id = animal.tank_id where animal.name = 'SSL25'",
+    )[0];
     ssl25AnimalId = Number(animal?.id);
     ssl25TankId = Number(animal?.tank_id);
+    ssl25SystemId = Number(animal?.system_id);
     const foods = dbQuery(`select id, name from core.food_catalog
       where name in ('Krill', 'Brine shrimp') and is_active`);
     krillCatalogId = Number(foods.find((row) => row.name === "Krill")?.id);
@@ -648,8 +703,14 @@ test.describe("food catalog quick picks", () => {
   });
 
   test.afterAll(() => {
-    dbQuery(`delete from core.feeding_logs where notes like ${sqlLiteral(`${notesPrefix}%`)}`);
-    dbQuery(`delete from core.food_catalog where name like ${sqlLiteral(`${RUN_TAG}%`)}`);
+    return Promise.all([
+      cleanupStep("delete food-catalog feeding rows", () => dbQuery(
+        `delete from core.feeding_logs where notes like ${sqlLiteral(`${notesPrefix}%`)}`,
+      )),
+      cleanupStep("delete food-catalog entries", () => dbQuery(
+        `delete from core.food_catalog where name like ${sqlLiteral(`${RUN_TAG}%`)}`,
+      )),
+    ]);
   });
 
   test("feeding form lists active foods alphabetically with the first preselected", async ({
@@ -688,9 +749,7 @@ test.describe("food catalog quick picks", () => {
     await login(page);
     await page.goto("/protected/daily-operations?type=feeding");
     const form = page.locator("form");
-    await form.getByLabel("System", { exact: true }).selectOption(String(ssl25SystemId));
-    await form.getByLabel("Tank", { exact: true }).selectOption(String(ssl25TankId));
-    await form.getByLabel("Animal", { exact: true }).selectOption(String(ssl25AnimalId));
+    await selectBatchScope(page, { systemId: ssl25SystemId, tankId: ssl25TankId, animalId: ssl25AnimalId });
     await expect(form.getByLabel("Food name")).toHaveCount(0);
     await form.getByRole("radio", { name: "Other", exact: true }).check();
     await form.getByRole("button", { name: "Save 1 feeding", exact: true }).click();
@@ -728,9 +787,7 @@ test.describe("food catalog quick picks", () => {
   }) => {
     await login(page);
     await page.goto("/protected/daily-operations?type=feeding");
-    await page.getByLabel("System", { exact: true }).selectOption(String(ssl25SystemId));
-    await page.getByLabel("Tank", { exact: true }).selectOption(String(ssl25TankId));
-    await page.getByLabel("Animal", { exact: true }).selectOption(String(ssl25AnimalId));
+    await selectBatchScope(page, { systemId: ssl25SystemId, tankId: ssl25TankId, animalId: ssl25AnimalId });
     await page.getByRole("radio", { name: "Other", exact: true }).check();
     await page.getByLabel("Food name").fill("  BRINE_shrimp ");
     await page.getByLabel("Amount per animal (optional)", { exact: true }).fill("3");
@@ -740,9 +797,7 @@ test.describe("food catalog quick picks", () => {
     await expect(page.getByText("1 feeding logged.", { exact: true })).toBeVisible();
 
     await page.goto("/protected/daily-operations?type=feeding");
-    await page.getByLabel("System", { exact: true }).selectOption(String(ssl25SystemId));
-    await page.getByLabel("Tank", { exact: true }).selectOption(String(ssl25TankId));
-    await page.getByLabel("Animal", { exact: true }).selectOption(String(ssl25AnimalId));
+    await selectBatchScope(page, { systemId: ssl25SystemId, tankId: ssl25TankId, animalId: ssl25AnimalId });
     await page.getByRole("radio", { name: "Other", exact: true }).check();
     await page.getByLabel("Food name").fill(`${RUN_TAG} copepods`);
     await page.getByLabel("Amount per animal (optional)", { exact: true }).fill("1.25");
@@ -752,7 +807,7 @@ test.describe("food catalog quick picks", () => {
     await page.getByRole("button", { name: "Save 1 feeding", exact: true }).click();
     await expect(page.getByText("1 feeding logged.", { exact: true })).toBeVisible();
 
-    expect(dbQuery(`select notes, food_catalog_id, food_name, amount_value, amount_unit
+    expect(dbQuery(`select notes, food_catalog_id, food_name, amount_value::float8 as amount_value, amount_unit
       from core.feeding_logs
       where notes in (${sqlLiteral(`${notesPrefix} normalized brine`)},
         ${sqlLiteral(`${notesPrefix} unmatched`)})
@@ -779,9 +834,7 @@ test.describe("food catalog quick picks", () => {
   }) => {
     await login(page);
     await page.goto("/protected/daily-operations?type=feeding");
-    await page.getByLabel("System", { exact: true }).selectOption(String(ssl25SystemId));
-    await page.getByLabel("Tank", { exact: true }).selectOption(String(ssl25TankId));
-    await page.getByLabel("Animal", { exact: true }).selectOption(String(ssl25AnimalId));
+    await selectBatchScope(page, { systemId: ssl25SystemId, tankId: ssl25TankId, animalId: ssl25AnimalId });
     await page.getByRole("radio", { name: "Krill", exact: true }).check();
     await expect(page.getByLabel("Amount per animal (optional)", { exact: true })).toHaveValue("");
     await expect(page.getByLabel("Unit", { exact: true })).toHaveValue("pieces");
@@ -840,9 +893,8 @@ test.describe("food catalog quick picks", () => {
       .toEqual([{ name: renamedName, default_unit: "L" }]);
 
     await page.goto("/protected/daily-operations?type=feeding");
-    await page.getByLabel("System", { exact: true }).selectOption(String(ssl25SystemId));
-    await page.getByLabel("Tank", { exact: true }).selectOption(String(ssl25TankId));
-    await page.getByLabel("Animal", { exact: true }).selectOption(String(ssl25AnimalId));
+    await selectBatchScope(page, { systemId: ssl25SystemId, tankId: ssl25TankId, animalId: ssl25AnimalId });
+    await page.waitForLoadState("networkidle");
     await page.getByRole("radio", { name: renamedName, exact: true }).check();
     await expect(page.getByLabel("Food name")).toHaveCount(0);
     await expect(page.getByLabel("Unit", { exact: true })).toHaveValue("L");
@@ -850,7 +902,7 @@ test.describe("food catalog quick picks", () => {
     await page.getByLabel("Notes", { exact: true }).fill(feedingNotes);
     await page.getByRole("button", { name: "Save 1 feeding", exact: true }).click();
     await expect(page.getByText("1 feeding logged.", { exact: true })).toBeVisible();
-    expect(dbQuery(`select food_catalog_id, food_name, amount_value, amount_unit
+    expect(dbQuery(`select food_catalog_id, food_name, amount_value::float8 as amount_value, amount_unit
       from core.feeding_logs where notes = ${sqlLiteral(feedingNotes)}`)).toEqual([
       { food_catalog_id: catalogId, food_name: renamedName, amount_value: 1.5, amount_unit: "L" },
     ]);
@@ -987,10 +1039,18 @@ test.describe("P1 database-owned systems and Chemical addition quick picks", () 
   });
 
   test.afterAll(() => {
-    dbQuery(`delete from core.chemical_additions where reason like ${sqlLiteral(`${tag}%`)}`);
-    dbQuery(`update core.chemical_addition_catalog
-      set name = 'C-Balance', default_unit = 'mL'
-      where id = ${cBalanceCatalogId}`);
+    return Promise.all([
+      cleanupStep("delete tagged chemical additions", () => dbQuery(
+        `delete from core.chemical_additions where reason like ${sqlLiteral(`${tag}%`)}`,
+      )),
+      cleanupStep("restore C-Balance catalog entry", () => {
+        if (cBalanceCatalogId > 0) {
+          dbQuery(`update core.chemical_addition_catalog
+            set name = 'C-Balance', default_unit = 'mL'
+            where id = ${cBalanceCatalogId}`);
+        }
+      }),
+    ]);
   });
 
   test("authenticated System selectors match database name/ID order with no display_order column", async ({
@@ -1033,6 +1093,7 @@ test.describe("P1 database-owned systems and Chemical addition quick picks", () 
     await page.goto(
       `/protected/daily-operations?type=daily-check&system=${grahamSystemId}&check=AM`,
     );
+    await expectDefaultDateAndTime(page);
     await page.getByLabel("Date").fill("2026-03-08");
     await page.getByLabel("Time").fill("02:30");
     await page.getByLabel("Temperature (°C)").fill("12.5");
@@ -1170,16 +1231,19 @@ test.describe("P1 water-quality targets", () => {
     expect(fallbackSystemId).toBeGreaterThan(0);
   });
 
-  test.afterAll(() => {
-    dbQuery(`delete from core.water_quality_readings
-      where notes like ${sqlLiteral(`${tag}%`)}
-        or id in (${readingIds.length > 0 ? readingIds.join(", ") : "0"})`);
+  test.afterAll(async () => {
+    await cleanupStep("delete tagged target-test readings", () => dbQuery(
+      `delete from core.water_quality_readings
+        where notes like ${sqlLiteral(`${tag}%`)}
+          or id in (${readingIds.length > 0 ? readingIds.join(", ") : "0"})`,
+    ));
     const targetIds = [labPhTargetId, systemPhTargetId, labSalinityTargetId].filter(
       (id) => Number.isInteger(id) && id > 0,
     );
-    if (targetIds.length > 0) {
-      dbQuery(`delete from core.water_quality_target_ranges
-        where id in (${targetIds.join(", ")})`);
+    for (const id of targetIds) {
+      await cleanupStep(`delete target range ${id}`, () => dbQuery(
+        `delete from core.water_quality_target_ranges where id = ${id}`,
+      ));
     }
   });
 

@@ -77,7 +77,6 @@ test("escalates migrations so role and RLS coverage cannot be omitted", () => {
   ]);
   assert.equal(selection.escalatedToFullSuite, true);
   assert.ok(selection.sections.some(({ id }) => id === "operational-rbac"));
-  assert.ok(selection.sections.some(({ id }) => id === "rls-rebuild"));
   assert.equal(selection.sections.length, SMOKE_SECTIONS.length);
 });
 

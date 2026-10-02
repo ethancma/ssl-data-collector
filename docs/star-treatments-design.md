@@ -211,7 +211,7 @@ Recommended field order:
 1. Administered date and time.
 2. System.
 3. Tank.
-4. Treated star.
+4. Treated star (defaults to **All stars in tank**; pick one star for a single-star entry).
 5. Treatment type, defaulting to **Probiotics** with **Reef dip** and **Other** options.
 6. Amount and unit, with `mL` selected by default.
 7. Concentration and concentration unit, with `ppm` selected by default.
@@ -230,7 +230,9 @@ server/database and must not be editable or client-overridable for live entry.
 - Star choices show the animal name and species.
 - Invalid system clears system/tank/star. Invalid tank clears tank/star. Invalid star
   clears only star. Each case shows a clear inline message.
-- Star selection is single-select.
+- Star selection narrows the batch: system selects every eligible star in it, tank selects
+  every star in that tank, and a single star selects only that one. A checklist lets staff
+  uncheck individual stars, and one treatment row is saved per checked star.
 - Choosing **Other** treatment type reveals a required text box for the custom treatment.
 - After success, clear the star before another submission to prevent accidental duplicates.
 - After success, retain valid system/tank filters, remove `animal` and any health-link
@@ -249,7 +251,7 @@ server/database and must not be editable or client-overridable for live entry.
 - Revalidate active status, tank membership, species eligibility, and individual tracking
   on the server at submission time.
 - Prevent double submit and translate database errors into actionable form messages.
-- Show a success summary naming the treated star.
+- Show a success summary naming the treated stars.
 - Offer **Log another treatment** and **View system activity** after success.
 
 ### Mobile and accessibility

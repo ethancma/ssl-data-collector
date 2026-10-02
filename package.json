@@ -9,7 +9,8 @@
     "check:dead-code": "knip --reporter compact",
     "test:unit": "tsx --test tests/unit/*.test.ts",
     "test:e2e:plan": "tsx .github/skills/e2e-testing/scripts/select-smoke-sections.ts",
-    "test:e2e:full": "playwright test"
+    "test:e2e:full": "playwright test",
+    "test:e2e:cleanup": "tsx .github/skills/e2e-testing/scripts/global-teardown.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.9.1",

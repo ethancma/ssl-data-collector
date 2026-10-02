@@ -38,8 +38,10 @@ Individual animals (stars, urchins, abalone) are identified by a **nickname** (e
 "Sitara", "Titan"), not a numbered tag — labels on the physical tubs identify the
 tank, and each animal within a tub keeps its own name. Multiple named animals can
 share one tub; every feeding, consumption-check, and health-observation entry is
-logged per individual animal, never bulk-logged for the tub, so one star going off
-its food or developing a symptom doesn't get lost among tankmates. Names must be
+stored as its own row per individual animal, so one star going off its food or
+developing a symptom doesn't get lost among tankmates. Feeding is entered through a
+batch form: choose a system, a tank, or a single animal, uncheck any animal that was
+not fed, and one row is saved per checked animal. Names must be
 unique lab-wide (not just within a tank). Whether a name is ever reused after an
 animal dies or is transferred out is still open (see §7).
 

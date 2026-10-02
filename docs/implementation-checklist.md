@@ -28,8 +28,8 @@
 - [x] Eight systems and the current species list are seeded, including the confirmed
       **Snack Shack** spelling. Graham tank categories and SSL25 are also seeded.
 - [x] Daily Operations hub with URL-backed selection and persisted forms for AM/PM checks,
-      individual feeding, same-day PM consumption, water quality, System chemical
-      additions, health observations/photos, maintenance, and Star treatments.
+      batch feeding (system, tank, or single-animal scope), same-day PM consumption, water quality, System chemical
+      additions, health observations/photos, maintenance, and batch Star treatments.
 - [x] Home dashboard with daily AM/PM, feeding, water-quality, recent-health, and activity
       summaries.
 - [x] Systems dashboard with system selection, chemistry charts, comparisons, status, and

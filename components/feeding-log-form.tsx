@@ -154,6 +154,18 @@ export function FeedingLogForm({
 
   const includedCount = batch.includedIds.length;
 
+  const onFoodCatalogChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const selectedCatalog = catalogs.find(
+      (item) => String(item.id) === event.target.value,
+    );
+    if (selectedCatalog) {
+      setValue("foodName", "");
+      setValue("amountUnit", selectedCatalog.defaultUnit, { shouldValidate: true });
+      return;
+    }
+    setValue("amountUnit", DEFAULT_FOOD_UNIT, { shouldValidate: true });
+  };
+
   const onSubmit = async (values: FeedingValues) => {
     setServerError(null);
     const { systemId, tankId, animalId } = batch.scope;
@@ -288,12 +300,7 @@ export function FeedingLogForm({
                   <input
                     type="radio"
                     value={item.id}
-                    {...register("catalogId", {
-                      onChange: () => {
-                        setValue("foodName", "");
-                        setValue("amountUnit", item.defaultUnit, { shouldValidate: true });
-                      },
-                    })}
+                    {...register("catalogId", { onChange: onFoodCatalogChange })}
                   />
                   <span className={QUICK_PICK_LABEL_CLASS}>{item.name}</span>
                 </label>
@@ -302,10 +309,7 @@ export function FeedingLogForm({
                 <input
                   type="radio"
                   value=""
-                  {...register("catalogId", {
-                    onChange: () =>
-                      setValue("amountUnit", DEFAULT_FOOD_UNIT, { shouldValidate: true }),
-                  })}
+                  {...register("catalogId", { onChange: onFoodCatalogChange })}
                 />
                 <span className={QUICK_PICK_LABEL_CLASS}>Other</span>
               </label>

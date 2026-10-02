@@ -14,13 +14,15 @@ import {
   VIEWER_PASSWORD,
   VOLUNTEER_EMAIL,
   VOLUNTEER_PASSWORD,
+  cleanupStep,
   collectBrowserFailures,
   dbQuery,
   loginAs,
+  RUN_TAG,
   signInRoleClient,
 } from "./helpers";
 
-const TAG = `e2e-star-treatment-${Date.now()}`;
+const TAG = `${RUN_TAG}-star-treatment-${Date.now()}`;
 const LAB_TIME_ZONE = "America/Los_Angeles";
 const PICKED_TIME = "05:37";
 const EXPECTED_NEXT_REDIRECT_FAILURES = new Set([
@@ -28,6 +30,7 @@ const EXPECTED_NEXT_REDIRECT_FAILURES = new Set([
   "pageerror: Router action dispatched before initialization",
   "pageerror: Internal Next.js error: Router action dispatched before initialization.",
   "console: Error: Router action dispatched before initialization",
+  "console: Encountered a script tag while rendering React component. Scripts inside React components are never executed when rendering on the client. Consider using template tag instead (https://developer.mozilla.org/en-US/docs/Web/HTML/Element/template).",
 ]);
 
 type EligibleStar = {
@@ -69,13 +72,15 @@ test.beforeAll(() => {
 });
 
 test.afterAll(() => {
-  if (!viewerProfileState) return;
-  const originalRole = viewerProfileState.role
-    ? sqlLiteral(viewerProfileState.role)
-    : "null";
-  dbQuery(`update core.profiles
-    set status = ${sqlLiteral(viewerProfileState.status)}, role = ${originalRole}
-    where email = ${sqlLiteral(VIEWER_EMAIL)}`);
+  return cleanupStep("restore Star-treatment viewer profile", () => {
+    if (!viewerProfileState) return;
+    const originalRole = viewerProfileState.role
+      ? sqlLiteral(viewerProfileState.role)
+      : "null";
+    dbQuery(`update core.profiles
+      set status = ${sqlLiteral(viewerProfileState.status)}, role = ${originalRole}
+      where email = ${sqlLiteral(VIEWER_EMAIL)}`);
+  });
 });
 
 function labDateString(date = new Date()) {
@@ -178,7 +183,11 @@ async function openStarTreatmentForm(
   await page.goto("/protected/daily-operations");
   await page.getByRole("link", { name: "Star treatment" }).click();
   await expect(page).toHaveURL(/type=star-treatment/);
-  await page.getByLabel("System", { exact: true }).selectOption(String(star.systemId));
+  // A select change fired before hydration is dropped, so retry until Tank enables.
+  await expect(async () => {
+    await page.getByLabel("System", { exact: true }).selectOption(String(star.systemId));
+    await expect(page.getByLabel("Tank", { exact: true })).toBeEnabled({ timeout: 1_000 });
+  }).toPass({ timeout: 15_000 });
   await page.getByLabel("Tank", { exact: true }).selectOption(String(star.tankId));
   await page.getByLabel("Treated star").selectOption(String(star.id));
 }
@@ -264,7 +273,7 @@ test.describe("Star treatments: URL controls and client validation", () => {
     await page.goto("/protected/daily-operations?type=star-treatment");
     await expect(
       page.getByText(
-        "Record treatment administered to one individually tracked star.",
+        "Record a treatment for every individually tracked star in a system or tank, or for one star.",
         { exact: true },
       ),
     ).toBeVisible();
@@ -305,25 +314,25 @@ test.describe("Star treatments: URL controls and client validation", () => {
     await expect(page.getByLabel("Treatment name")).toBeVisible();
   await expect(page.locator("#star-treatment-unit")).toHaveValue("");
   await expect(page.locator("#star-treatment-concentration-unit")).toHaveValue("");
-    await page.getByRole("button", { name: "Save star treatment" }).click();
+    await page.getByRole("button", { name: "Save 1 treatment" }).click();
     await expect(page.getByText("Enter the treatment name")).toBeVisible();
     await expect(page.getByText("Enter an amount or concentration")).toBeVisible();
 
     await page.getByLabel("Administered date").fill(addDays(today, -1));
     await page.locator("#star-treatment-amount").fill("-1");
-    await page.getByRole("button", { name: "Save star treatment" }).click();
+    await page.getByRole("button", { name: "Save 1 treatment" }).click();
     await expect(page.getByText("Date must be today in the lab")).toBeVisible();
     await expect(page.getByText("Enter a positive number")).toBeVisible();
 
     await page.locator("#star-treatment-amount").fill("2.5");
     await expect(page.locator("#star-treatment-unit")).toHaveValue("");
-    await page.getByRole("button", { name: "Save star treatment" }).click();
+    await page.getByRole("button", { name: "Save 1 treatment" }).click();
     await expect(page.getByText("Enter an amount unit")).toBeVisible();
     await page.locator("#star-treatment-unit").selectOption("mL");
     await page.locator("#star-treatment-amount").fill("");
     await page.locator("#star-treatment-concentration").fill("10");
     await expect(page.locator("#star-treatment-concentration-unit")).toHaveValue("");
-    await page.getByRole("button", { name: "Save star treatment" }).click();
+    await page.getByRole("button", { name: "Save 1 treatment" }).click();
     await expect(page.getByText("Enter a concentration unit")).toBeVisible();
     expect(mutationAttempts).toEqual([]);
 
@@ -334,16 +343,16 @@ test.describe("Star treatments: URL controls and client validation", () => {
     await expect(page.locator("#star-treatment-unit")).toHaveValue("");
     await expect(page.locator("#star-treatment-concentration")).toHaveValue("");
     await expect(page.locator("#star-treatment-concentration-unit")).toHaveValue("");
-    await page.getByRole("button", { name: "Save star treatment" }).click();
+    await page.getByRole("button", { name: "Save 1 treatment" }).click();
     await expect.poll(() => mutationAttempts).toEqual([
-      "POST /rest/v1/rpc/create_star_treatment",
+      "POST /rest/v1/rpc/create_star_treatment_batch",
     ]);
     await expect(page.getByText("Enter an amount or concentration")).toHaveCount(0);
     await expect
       .poll(() => unexpectedRedirectFailures(browserFailures))
       .toEqual([
         expect.stringMatching(
-          /^requestfailed: POST .*\/rest\/v1\/rpc\/create_star_treatment /,
+          /^requestfailed: POST .*\/rest\/v1\/rpc\/create_star_treatment_batch /,
         ),
         "console: Failed to load resource: net::ERR_FAILED",
       ]);
@@ -486,23 +495,18 @@ test.describe("Star treatments: hosted schema, RPC, and lifecycle", () => {
   });
 
   test.afterAll(async () => {
-    if (!schemaStatus.available || !ADMIN_PASSWORD) return;
-    dbQuery(`update core.star_treatment_catalog
-      set name = 'Reef Dip', is_active = true, default_amount_unit = null,
-          default_concentration_unit = null
-      where id = ${reefDipCatalogId}`);
-    const remaining = dbQuery(
-      `select id from core.star_treatments where notes like ${sqlLiteral(`${TAG}%`)}`,
-    );
-    if (remaining.length === 0) return;
-
-    const adminClient = await signInRoleClient(ADMIN_EMAIL, ADMIN_PASSWORD);
-    for (const row of remaining) {
-      const { error } = await adminClient.rpc("hard_delete_star_treatment", {
-        p_treatment_id: Number(row.id),
-      });
-      if (error) throw error;
-    }
+    if (!schemaStatus.available) return;
+    await cleanupStep("restore Reef Dip catalog entry", () => {
+      if (reefDipCatalogId > 0) {
+        dbQuery(`update core.star_treatment_catalog
+          set name = 'Reef Dip', is_active = true, default_amount_unit = null,
+              default_concentration_unit = null
+          where id = ${reefDipCatalogId}`);
+      }
+    });
+    await cleanupStep("delete tagged Star treatments", () => dbQuery(
+      `delete from core.star_treatments where notes like ${sqlLiteral(`${TAG}%`)}`,
+    ));
   });
 
   test("exact Star Treatment seeds expose the approved defaults", () => {
@@ -536,7 +540,7 @@ test.describe("Star treatments: hosted schema, RPC, and lifecycle", () => {
     await page.getByLabel("Notes").fill(notes);
 
     await page.getByLabel("Administered date").fill(addDays(today, -1));
-    await page.getByRole("button", { name: "Save star treatment" }).click();
+    await page.getByRole("button", { name: "Save 1 treatment" }).click();
     await expect(page.getByText("Date must be today in the lab")).toBeVisible();
     expect(
       dbQuery(`select id from core.star_treatments where notes = ${sqlLiteral(notes)}`),
@@ -544,7 +548,7 @@ test.describe("Star treatments: hosted schema, RPC, and lifecycle", () => {
 
     await page.getByLabel("Administered date").fill(today);
     const submittedAfter = Date.now();
-    await page.getByRole("button", { name: "Save star treatment" }).click();
+    await page.getByRole("button", { name: "Save 1 treatment" }).click();
     await expect(page.getByRole("heading", { name: "Star treatment saved" })).toBeVisible();
 
     const row = dbQuery(`select
@@ -583,7 +587,7 @@ test.describe("Star treatments: hosted schema, RPC, and lifecycle", () => {
     await expect(page.locator("#star-treatment-unit")).toHaveValue("");
     await expect(page.locator("#star-treatment-concentration-unit")).toHaveValue("");
     await page.getByLabel("Notes").fill(notes);
-    await page.getByRole("button", { name: "Save star treatment" }).click();
+    await page.getByRole("button", { name: "Save 1 treatment" }).click();
     await expect(page.getByRole("heading", { name: "Star treatment saved" })).toBeVisible();
 
     const row = dbQuery(`select id, catalog_id, treatment_type, amount, unit,
@@ -659,9 +663,9 @@ test.describe("Star treatments: hosted schema, RPC, and lifecycle", () => {
     await page.getByLabel("Other").check();
     await page.getByLabel("Treatment name").fill("  E2E   Recovery   Bath  ");
     await page.locator("#star-treatment-amount").fill("2.5");
-    await expect(page.locator("#star-treatment-unit")).toHaveValue("mL");
+    await page.locator("#star-treatment-unit").selectOption("mL");
     await page.getByLabel("Notes").fill(notes);
-    await page.getByRole("button", { name: "Save star treatment" }).click();
+    await page.getByRole("button", { name: "Save 1 treatment" }).click();
     await expect(page.getByRole("heading", { name: "Star treatment saved" })).toBeVisible();
 
     const row = dbQuery(`select
@@ -696,9 +700,9 @@ test.describe("Star treatments: hosted schema, RPC, and lifecycle", () => {
     await expect(customArticle).toContainText("2.5 mL");
     await expect(treatmentArticle(page, probioticsId)).toHaveCount(0);
     await expect(page.getByLabel("Star")).toHaveValue(String(star.id));
-    await expect(page.getByLabel("Treatment type")).toHaveValue("other");
+    await expect(page.locator("#treatments-type")).toHaveValue("other");
 
-    await page.getByLabel("Treatment type").selectOption("probiotics");
+    await page.locator("#treatments-type").selectOption("probiotics");
     await page.getByRole("button", { name: "Apply filters" }).click();
     const probioticsArticle = treatmentArticle(page, probioticsId);
     await expect(probioticsArticle).toBeVisible();
@@ -835,7 +839,7 @@ test.describe("Star treatments: hosted schema, RPC, and lifecycle", () => {
     await page.getByLabel("Time").fill("05:39");
     await page.locator("#star-treatment-concentration").fill("11");
     await page.getByLabel("Notes").fill(ownNotes);
-    await page.getByRole("button", { name: "Save star treatment" }).click();
+    await page.getByRole("button", { name: "Save 1 treatment" }).click();
     await expect(page.getByRole("heading", { name: "Star treatment saved" })).toBeVisible();
 
     const volunteerTreatment = dbQuery(`select

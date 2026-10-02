@@ -2,11 +2,11 @@
  * App-managed invitation, reset-link, access-removal, restore, and Admin RBAC smoke tests.
  * See ../SKILL.md for the full procedure.
  */
-import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import { test, expect, type Page } from "@playwright/test";
 import {
   ADMIN_EMAIL,
   ADMIN_PASSWORD,
+  cleanupStep,
   db,
   dbQuery,
   loginAs,
@@ -14,10 +14,9 @@ import {
 } from "./helpers";
 import { getExpectedAuthRole, getRoleClaimAction, isPublicPath } from "../../../../lib/supabase/proxy";
 
-const SUPABASE_URL = process.env.SUPABASE_URL ?? "https://bqylxmsifagnztxhixyl.supabase.co";
 const SECRET_KEY = process.env.SUPABASE_SECRET_KEY;
-const inviteEmail = `e2e-invite-${RUN_TAG}@example.test`;
-const revokedEmail = `e2e-revoked-${RUN_TAG}@example.test`;
+const inviteEmail = `${RUN_TAG}-invite@example.test`;
+const revokedEmail = `${RUN_TAG}-revoked@example.test`;
 const invitePassword = "Invite-password-123!";
 const resetPassword = "Reset-password-123!";
 let inviteLink = "";
@@ -59,7 +58,7 @@ async function createInvite(page: Page, email: string, role: "admin" | "technici
 async function acceptInvite(page: Page, link: string, password = invitePassword) {
   await page.goto(link);
   await expect(page.getByText("Invited email", { exact: true })).toBeVisible();
-  await page.getByLabel("Password").fill(password);
+  await page.getByLabel("Password", { exact: true }).fill(password);
   await page.getByLabel("Confirm password").fill(password);
   await page.getByRole("button", { name: "Create account" }).click();
   await expect(page).toHaveURL(/\/protected\/home/);
@@ -95,31 +94,62 @@ test.describe("proxy role claim refresh policy", () => {
   });
 });
 
+test.describe("Google sign-in", () => {
+  test("login button redirects to the Supabase Google authorize endpoint", async ({ page }) => {
+    let authorizeUrl: URL | undefined;
+    // Stops at Supabase's authorize endpoint so the test never reaches Google.
+    await page.route("**/auth/v1/authorize**", async (route) => {
+      authorizeUrl = new URL(route.request().url());
+      await route.abort();
+    });
+    await page.goto("/auth/login");
+    await page.getByRole("button", { name: "Continue with Google" }).click();
+    await expect.poll(() => authorizeUrl?.searchParams.get("provider")).toBe("google");
+    expect(authorizeUrl?.searchParams.get("redirect_to")).toMatch(/\/auth\/callback$/);
+  });
+});
+
 test.describe("current invitation and Admin access lifecycle", () => {
   test.describe.configure({ mode: "serial" });
   test.skip(!SECRET_KEY || !db, "requires SUPABASE_SECRET_KEY for cleanup and DB assertions");
 
   test.afterAll(async () => {
-    if (!SECRET_KEY) return;
-    const privileged = createSupabaseClient(SUPABASE_URL, SECRET_KEY, { auth: { persistSession: false } });
-    const adminRows = dbQuery(`select auth_user_id from core.profiles where email = ${sqlLiteral(ADMIN_EMAIL)}`);
-    const adminAuthUserId = String(adminRows[0]?.auth_user_id ?? "");
+    if (!SECRET_KEY || !db) {
+      console.warn("Auth-test cleanup skipped Auth user removal: db client is null.");
+    }
     const createdEmails = [inviteEmail, revokedEmail];
-    if (adminAuthUserId) {
-      const openInvites = dbQuery(`select id from core.invitations where email in
-        (${createdEmails.map(sqlLiteral).join(", ")}) and revoked_at is null and accepted_at is null`);
-      for (const row of openInvites) {
-        await privileged.rpc("revoke_invitation", { p_admin_auth_user_id: adminAuthUserId, p_invitation_id: Number(row.id) });
+    if (SECRET_KEY && db) {
+      await cleanupStep("delete auth-and-admin test users", async () => {
+        let pageNumber = 1;
+        while (true) {
+          const { data, error } = await db.auth.admin.listUsers({ page: pageNumber, perPage: 1000 });
+          if (error) throw error;
+          for (const user of data.users.filter((candidate) =>
+            createdEmails.includes(candidate.email?.toLowerCase() ?? ""),
+          )) {
+            await cleanupStep(`delete auth user ${user.id}`, async () => {
+              const { error: deleteError } = await db.auth.admin.deleteUser(user.id);
+              if (deleteError) throw deleteError;
+            });
+          }
+          if (data.users.length < 1000) break;
+          pageNumber += 1;
+        }
+      });
+    }
+    await cleanupStep("delete auth-and-admin profiles", () => dbQuery(
+      `delete from core.profiles where email in (${createdEmails.map(sqlLiteral).join(", ")}) returning id`,
+    ));
+    await cleanupStep("delete auth-and-admin invitation rows", () => dbQuery(
+      `delete from core.invitations where email in (${createdEmails.map(sqlLiteral).join(", ")}) returning id`,
+    ));
+    await cleanupStep("report remaining auth-and-admin invitations", () => {
+      const remaining = dbQuery(`select id, email from core.invitations
+        where email in (${createdEmails.map(sqlLiteral).join(", ")}) order by id`);
+      if (remaining.length > 0) {
+        console.warn("Auth-test invitation rows remain after cleanup:", JSON.stringify(remaining));
       }
-    }
-    const users = await privileged.auth.admin.listUsers({ page: 1, perPage: 1000 });
-    for (const user of users.data.users.filter((candidate) => createdEmails.includes(candidate.email?.toLowerCase() ?? ""))) {
-      const { error } = await privileged.auth.admin.deleteUser(user.id);
-      expect(error).toBeNull();
-    }
-    const remaining = dbQuery(`select id, email, revoked_at, accepted_at from core.invitations
-      where email in (${createdEmails.map(sqlLiteral).join(", ")}) order by id`);
-    console.log("Invitation rows left for human SQL cleanup:", JSON.stringify(remaining));
+    });
   });
 
   test("Admin creates an invite, public GET does not consume it, and Google controls render", async ({ page, browser }) => {
@@ -200,15 +230,15 @@ test.describe("current invitation and Admin access lifecycle", () => {
       await resetPage.goto(resetLink);
       await expect(resetPage.getByRole("button", { name: "Set password and continue" })).toBeVisible();
       await resetPage.reload();
-      await resetPage.getByLabel("New password").fill(resetPassword);
+      await resetPage.getByLabel("New password", { exact: true }).fill(resetPassword);
       await resetPage.getByLabel("Confirm new password").fill(resetPassword);
       await resetPage.getByRole("button", { name: "Set password and continue" }).click();
       await expect(resetPage).toHaveURL(/\/protected\/home/);
       await resetPage.goto(resetLink);
-      await resetPage.getByLabel("New password").fill("Another-password-123!");
+      await resetPage.getByLabel("New password", { exact: true }).fill("Another-password-123!");
       await resetPage.getByLabel("Confirm new password").fill("Another-password-123!");
       await resetPage.getByRole("button", { name: "Set password and continue" }).click();
-      await expect(resetPage.getByRole("alert")).toContainText(/invalid|already used/i);
+      await expect(resetPage.locator("p[role='alert']")).toContainText(/invalid|already used/i);
     } finally {
       await resetContext.close();
     }
