@@ -24,13 +24,13 @@ const summary: Record<string, number> = {
 
 function tagged(column: string): string {
   return "((" + column + " LIKE " + sqlLiteral("e2e-%") +
-    " AND " + column + " ~ '^e2e-[0-9]+') OR (" + column +
+    " AND " + column + " ~ '^e2e-([0-9]+|rbac-|rls-)') OR (" + column +
     " LIKE " + sqlLiteral("E2EBATCH%") + "))";
 }
 
 function testEmail(column: string): string {
   return "(" + column + " LIKE " + sqlLiteral("e2e-%@example.test") +
-    " AND " + column + " ~ '^e2e-[0-9]+.*@example[.]test$')";
+    " AND " + column + " ~ '^e2e-([0-9]+|invite-).*@example[.]test$')";
 }
 
 function deleteRows(table: string, sql: string): void {

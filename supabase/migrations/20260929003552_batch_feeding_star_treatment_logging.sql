@@ -491,12 +491,10 @@ create function core.create_feeding_batch(
 	p_included_animal_ids int[],
 	p_excluded_animal_ids int[],
 	p_fed_at timestamptz,
+	p_food_catalog_id int,
 	p_tank_id int default null,
 	p_animal_id int default null,
-	p_food_catalog_id int default null,
-	p_food_name text default null,
 	p_amount_value numeric default null,
-	p_amount_unit text default null,
 	p_notes text default null
 )
 	returns jsonb
@@ -511,19 +509,15 @@ declare
 	created_records jsonb;
 	batch_result jsonb;
 begin
+	if p_food_catalog_id is null then
+		raise exception 'Select an active food quick pick.' using errcode = '23514';
+	end if;
+
 	request_payload := pg_catalog.jsonb_build_object(
 		'fed_at',
 		pg_catalog.to_char(p_fed_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"'),
 		'food_catalog_id', p_food_catalog_id,
-		'food_name', nullif(
-			pg_catalog.regexp_replace(pg_catalog.btrim(p_food_name), '[[:space:]]+', ' ', 'g'),
-			''
-		),
 		'amount_value', p_amount_value,
-		'amount_unit', case when p_amount_value is not null then nullif(
-			pg_catalog.regexp_replace(pg_catalog.btrim(p_amount_unit), '[[:space:]]+', ' ', 'g'),
-			''
-		) end,
 		'notes', nullif(pg_catalog.btrim(p_notes), '')
 	);
 
@@ -547,16 +541,14 @@ begin
 		raise exception 'Fed time is required.' using errcode = '23502';
 	end if;
 
-	-- 8. Provenance, food, and amount rules run per row in the existing insert triggers.
+	-- 8. Food and amount rules run per row in the existing insert trigger.
 	with inserted as (
 		insert into core.feeding_logs (
 			fed_at,
 			animal_id,
 			tank_id,
 			food_catalog_id,
-			food_name,
 			amount_value,
-			amount_unit,
 			notes
 		)
 		select
@@ -564,9 +556,7 @@ begin
 			animal.id,
 			animal.tank_id,
 			p_food_catalog_id,
-			p_food_name,
 			p_amount_value,
-			p_amount_unit,
 			nullif(pg_catalog.btrim(p_notes), '')
 		from core.animals as animal
 		where animal.id = any (batch.sorted_included_ids)
@@ -798,9 +788,9 @@ end;
 $$;
 
 comment on function core.create_feeding_batch(
-	uuid, int, int[], int[], timestamptz, int, int, int, text, numeric, text, text
+	uuid, int, int[], int[], timestamptz, int, int, int, numeric, text
 ) is
-	'Creates one feeding_logs row per included active animal (cohorts included) in the system/tank/animal scope. Retrying a request ID replays its stored result. Errors: SSL01 STALE_PREVIEW, SSL02 REQUEST_ID_CONFLICT, SSL03 NO_ELIGIBLE_ANIMALS.';
+	'Creates one catalog-backed feeding_logs row per included active animal in the requested scope. Retrying a request ID replays its stored result.';
 comment on function core.create_star_treatment_batch(
 	uuid, int, int[], int[], timestamptz, int, int, numeric, text, numeric, text, text, text, int
 ) is
@@ -822,7 +812,7 @@ revoke execute on function
 		int, int, numeric, text, numeric, text, text, text, timestamptz, int
 	),
 	core.create_feeding_batch(
-		uuid, int, int[], int[], timestamptz, int, int, int, text, numeric, text, text
+		uuid, int, int[], int[], timestamptz, int, int, int, numeric, text
 	),
 	core.create_star_treatment_batch(
 		uuid, int, int[], int[], timestamptz, int, int, numeric, text, numeric, text, text, text, int
@@ -833,7 +823,7 @@ grant execute on function
 		int, int, numeric, text, numeric, text, text, text, timestamptz, int
 	),
 	core.create_feeding_batch(
-		uuid, int, int[], int[], timestamptz, int, int, int, text, numeric, text, text
+		uuid, int, int[], int[], timestamptz, int, int, int, numeric, text
 	),
 	core.create_star_treatment_batch(
 		uuid, int, int[], int[], timestamptz, int, int, numeric, text, numeric, text, text, text, int

@@ -107,7 +107,11 @@ export function GridOverview({
     pickDefaultParam(DEFAULT_LEFT_PARAM, DEFAULT_RIGHT_PARAM, availableParams),
   );
   const [rightParam, setRightParam] = useState<WaterQualityParam>(() =>
-    pickDefaultParam(DEFAULT_RIGHT_PARAM, DEFAULT_LEFT_PARAM, availableParams),
+    pickDefaultParam(
+      DEFAULT_RIGHT_PARAM,
+      pickDefaultParam(DEFAULT_LEFT_PARAM, DEFAULT_RIGHT_PARAM, availableParams),
+      availableParams,
+    ),
   );
 
   const goToPage = (next: number) => setPage(((next % TREND_PAGE_COUNT) + TREND_PAGE_COUNT) % TREND_PAGE_COUNT);

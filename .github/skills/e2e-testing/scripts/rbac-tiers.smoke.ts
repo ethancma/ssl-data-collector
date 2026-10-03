@@ -183,12 +183,15 @@ for (const role of [
         animalId: ssl25AnimalId,
         food: "Krill",
         amount: "2",
-        unit: "pieces",
         notes: `${TAG} feeding`,
       });
       const rows = dbQuery(
-        `select animal_id, food_catalog_id, food_name, amount, amount_value, consumption_status
-         from core.feeding_logs where notes = '${TAG} feeding'`,
+        `select feeding.animal_id, feeding.food_catalog_id,
+           catalog.name as food_name, catalog.default_unit as catalog_default_unit,
+           feeding.amount_value, feeding.consumption_status
+         from core.feeding_logs as feeding
+         join core.food_catalog as catalog on catalog.id = feeding.food_catalog_id
+         where feeding.notes = '${TAG} feeding'`,
       );
       const catalogRows = dbQuery(
         `select id from core.food_catalog where name = 'Krill' and is_active`,
@@ -198,7 +201,7 @@ for (const role of [
       expect(Number(rows[0]?.animal_id)).toBe(ssl25AnimalId);
       expect(Number(rows[0]?.food_catalog_id)).toBe(Number(catalogRows[0].id));
       expect(rows[0]?.food_name).toBe("Krill");
-      expect(rows[0]?.amount).toBeNull();
+      expect(rows[0]?.catalog_default_unit).toBe("pieces");
       expect(Number(rows[0]?.amount_value)).toBe(2);
       expect(rows[0]?.consumption_status).toBeNull();
     });
@@ -405,16 +408,19 @@ test.describe("volunteer can create ordinary operational logs", () => {
 
   test("volunteer PM follow-up shows only feeding rows they recorded", async ({ page }) => {
     const fixtureRows = dbQuery(`insert into core.feeding_logs
-      (tank_id, animal_id, food_catalog_id, amount_value, amount_unit, fed_at, notes, recorded_by)
+      (tank_id, animal_id, food_catalog_id, amount_value, fed_at, notes, recorded_by)
       values
-        (${feedingTankId}, ${feedingAnimalId}, (select id from core.food_catalog where name = 'Krill' and is_active), 1, 'pieces', now(), ${sqlLiteral(`${TAG} own follow-up`)}, ${volunteerProfileId}),
-        (${feedingTankId}, ${feedingAnimalId}, (select id from core.food_catalog where name = 'Krill' and is_active), 1, 'pieces', now(), ${sqlLiteral(`${TAG} other follow-up`)}, ${technicianProfileId})
+        (${feedingTankId}, ${feedingAnimalId}, (select id from core.food_catalog where name = 'Krill' and is_active), 1, now(), ${sqlLiteral(`${TAG} own follow-up`)}, ${volunteerProfileId}),
+        (${feedingTankId}, ${feedingAnimalId}, (select id from core.food_catalog where name = 'Krill' and is_active), 1, now(), ${sqlLiteral(`${TAG} other follow-up`)}, ${technicianProfileId})
       returning id`);
     const fixtureIds = fixtureRows.map((row) => Number(row.id));
     expect(fixtureIds).toHaveLength(2);
-    expect(dbQuery(`select food_name from core.feeding_logs
-      where id in (${fixtureIds.join(", ")}) order by id`)).toEqual([
-      { food_name: "Krill" }, { food_name: "Krill" },
+    expect(dbQuery(`select catalog.name as food_name, catalog.default_unit
+      from core.feeding_logs as feeding
+      join core.food_catalog as catalog on catalog.id = feeding.food_catalog_id
+      where feeding.id in (${fixtureIds.join(", ")}) order by feeding.id`)).toEqual([
+      { food_name: "Krill", default_unit: "pieces" },
+      { food_name: "Krill", default_unit: "pieces" },
     ]);
 
     try {
@@ -1049,21 +1055,19 @@ test.describe("P0 operational security: ordinary-log CRUD matrix (DB-level)", ()
     {
       table: "feeding_logs",
       seedSql: (tag, recordedBy) => `insert into core.feeding_logs
-        (tank_id, animal_id, food_catalog_id, amount_value, amount_unit, notes, recorded_by)
-        values (${ssl25TankId ?? "null"}, ${ssl25AnimalId ?? "null"}, ${krillCatalogId}, 1, 'pieces', ${sqlLiteral(tag)}, ${recordedBy}) returning id`,
+        (tank_id, animal_id, food_catalog_id, amount_value, notes, recorded_by)
+        values (${ssl25TankId ?? "null"}, ${ssl25AnimalId ?? "null"}, ${krillCatalogId}, 1, ${sqlLiteral(tag)}, ${recordedBy}) returning id`,
       insertPayload: (tag) => ({
         tank_id: ssl25TankId,
         animal_id: ssl25AnimalId,
         food_catalog_id: krillCatalogId,
         amount_value: 1,
-        amount_unit: "pieces",
         notes: tag,
       }),
       updatePatch: { notes: `${TAG} feeding_logs updated` },
-      selectColumns: "id, food_catalog_id, food_name",
+      selectColumns: "id, food_catalog_id",
       assertRead: (row) => {
         expect(Number(row.food_catalog_id)).toBe(krillCatalogId);
-        expect(row.food_name).toBe("Krill");
       },
     },
     {

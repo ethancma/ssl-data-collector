@@ -155,7 +155,6 @@ export async function logSingleFeeding(
     animalId,
     food,
     amount,
-    unit,
     notes,
   }: {
     systemId: number;
@@ -163,14 +162,12 @@ export async function logSingleFeeding(
     animalId: number;
     food: string;
     amount: string;
-    unit: string;
     notes: string;
   },
 ) {
   await selectBatchScope(page, { systemId, tankId, animalId });
   await page.getByRole("radio", { name: food, exact: true }).check();
   await page.getByLabel("Amount per animal (optional)", { exact: true }).fill(amount);
-  await page.getByLabel("Unit", { exact: true }).selectOption(unit);
   await page.getByLabel("Notes", { exact: true }).fill(notes);
   await page.getByRole("button", { name: "Save 1 feeding", exact: true }).click();
   await expect(page.getByText("1 feeding logged.", { exact: true })).toBeVisible();

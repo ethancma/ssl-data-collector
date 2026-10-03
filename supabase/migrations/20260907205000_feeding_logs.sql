@@ -5,8 +5,6 @@ create table core.feeding_logs (
   id serial primary key,
   tank_id int not null references core.tanks (id),
   animal_id int not null references core.animals (id) on delete cascade,
-  food_name text,
-  amount text,
   fed_at timestamptz not null default now(),
   recorded_by int not null default core.current_profile_id() references core.profiles (id),
   consumption_status text check (consumption_status in ('full', 'partial', 'none', 'unknown')),

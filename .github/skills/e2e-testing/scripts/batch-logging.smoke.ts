@@ -57,8 +57,8 @@ function feedingArgs(requestId: string, included: number[], excluded: number[], 
   return {
     p_request_id: requestId, p_system_id: refs.systemId,
     p_included_animal_ids: included, p_excluded_animal_ids: excluded,
-    p_fed_at: eventAt, p_food_catalog_id: refs.foodId, p_food_name: null,
-    p_amount_value: 2.5, p_amount_unit: "pieces", p_notes: notes("RPC feeding"), ...extra,
+    p_fed_at: eventAt, p_food_catalog_id: refs.foodId,
+    p_amount_value: 2.5, p_notes: notes("RPC feeding"), ...extra,
   };
 }
 
@@ -181,18 +181,26 @@ test.describe("Batch feeding UI", () => {
     await expect(page.getByText(/2 of \d+ selected · \d+ excluded/)).toBeVisible();
     await page.locator(`input[type="radio"][value="${refs.foodId}"]`).check();
     await page.getByLabel("Amount per animal (optional)").fill("2.5");
-    await page.getByLabel("Unit", { exact: true }).selectOption("pieces");
     await page.getByLabel("Notes", { exact: true }).fill(notes("UI feeding"));
     await page.getByRole("button", { name: "Save 2 feedings" }).click();
     await expect(page.getByText(/2 feedings logged/i)).toBeVisible();
-    const rows = dbQuery(`select id, animal_id, tank_id, food_catalog_id, amount_value, amount_unit, notes, recorded_by, data_source from core.feeding_logs where notes = ${lit(notes("UI feeding"))} order by animal_id`);
+    const rows = dbQuery(`select feeding.id, feeding.animal_id, feeding.tank_id,
+      feeding.food_catalog_id, catalog.name as food_name,
+      catalog.default_unit as catalog_default_unit, feeding.amount_value,
+      feeding.notes, feeding.recorded_by, feeding.data_source
+      from core.feeding_logs as feeding
+      join core.food_catalog as catalog on catalog.id = feeding.food_catalog_id
+      where feeding.notes = ${lit(notes("UI feeding"))} order by feeding.animal_id`);
+    const food = dbQuery(`select name, default_unit from core.food_catalog where id = ${refs.foodId}`);
+    expect(food).toHaveLength(1);
     expect(rows.map((item) => Number(item.animal_id))).toEqual([animals.middleStar.id, animals.cohort.id].sort((a, b) => a - b));
     for (const item of rows) {
       const expected = Object.values(animals).find((animal) => animal.id === Number(item.animal_id));
       expect(Number(item.tank_id)).toBe(expected?.tank_id);
       expect(Number(item.food_catalog_id)).toBe(refs.foodId);
+      expect(item.food_name).toBe(food[0].name);
       expect(Number(item.amount_value)).toBe(2.5);
-      expect(item.amount_unit).toBe("pieces");
+      expect(item.catalog_default_unit).toBe(food[0].default_unit);
       expect(item.recorded_by).toBe(refs.adminProfileId);
       expect(item.data_source).toBe("live");
     }

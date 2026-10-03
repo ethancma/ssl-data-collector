@@ -1,5 +1,5 @@
 -- Consistent lab-wide quick-pick catalogs: Admin/Technician management, retirement via
--- is_active, auto-linking free text to active entries, and stored feeding units.
+-- is_active, and catalog-defined feeding units.
 
 -- ---------------------------------------------------------------------------
 -- Admin and Technician manage all three catalogs; Volunteer and Viewer stay read-only.
@@ -82,29 +82,12 @@ alter table core.food_catalog
 		and pg_catalog.length(default_unit) between 1 and 50
 	);
 
--- Existing numeric rows may lack a unit (no backfill); the trigger requires a unit
--- whenever amount_value is inserted or changed.
 alter table core.feeding_logs
-	add column amount_unit text,
 	add constraint feeding_logs_amount_value_positive_check
-		check (amount_value is null or amount_value > 0),
-	add constraint feeding_logs_amount_unit_check check (
-		amount_unit is null or (
-			amount_unit = pg_catalog.regexp_replace(
-				pg_catalog.btrim(amount_unit),
-				'[[:space:]]+',
-				' ',
-				'g'
-			)
-			and pg_catalog.length(amount_unit) between 1 and 50
-		)
-	),
-	add constraint feeding_logs_amount_unit_requires_value_check
-		check (amount_unit is null or amount_value is not null);
+		check (amount_value is null or amount_value > 0);
 
 -- ---------------------------------------------------------------------------
--- Event validation: new catalog assignments must be active; free text that matches
--- an active catalog key auto-links and snapshots the canonical catalog name.
+-- Event validation: required catalog assignments must be active; amounts are positive.
 -- ---------------------------------------------------------------------------
 
 create or replace function core.validate_feeding_food_mutation()
@@ -112,75 +95,23 @@ create or replace function core.validate_feeding_food_mutation()
 	language plpgsql
 	set search_path = pg_catalog, core
 	as $$
-declare
-	selected_food core.food_catalog%rowtype;
 begin
-	if tg_op = 'INSERT' then
-		if (new.data_source = 'live' or auth.uid() is not null)
-				and new.amount is not null then
-			raise exception 'Live feeding amounts must use numeric amount_value.'
-				using errcode = '23514';
-		end if;
-	elsif new.data_source = 'live' and new.amount is distinct from old.amount then
-		raise exception 'Live feeding amounts must use numeric amount_value.'
-			using errcode = '23514';
-	end if;
-
-	if new.amount_value is null then
-		new.amount_unit := null;
-	elsif tg_op = 'INSERT'
-			or new.amount_value is distinct from old.amount_value
-			or new.amount_unit is distinct from old.amount_unit then
-		if new.amount_value <= 0 then
-			raise exception 'Amount must be positive.' using errcode = '23514';
-		end if;
-		new.amount_unit := pg_catalog.regexp_replace(
-			pg_catalog.btrim(new.amount_unit), '[[:space:]]+', ' ', 'g'
-		);
-		if nullif(new.amount_unit, '') is null then
-			raise exception 'Amount unit is required when amount is provided.'
-				using errcode = '23514';
-		end if;
-		if pg_catalog.length(new.amount_unit) > 50 then
-			raise exception 'Amount unit must be between 1 and 50 characters.'
-				using errcode = '23514';
-		end if;
+	if new.amount_value is not null and new.amount_value <= 0 then
+		raise exception 'Amount must be positive.' using errcode = '23514';
 	end if;
 
 	if tg_op = 'UPDATE'
-			and new.food_catalog_id is not distinct from old.food_catalog_id
-			and new.food_name is not distinct from old.food_name then
+			and new.food_catalog_id is not distinct from old.food_catalog_id then
 		return new;
 	end if;
-	if tg_op = 'UPDATE' and new.food_catalog_id is not null
-			and new.food_catalog_id is not distinct from old.food_catalog_id
-			and new.food_name is distinct from old.food_name then
-		raise exception 'Clear the food quick pick before entering a different food name.'
+	if not exists (
+		select 1
+		from core.food_catalog as catalog
+		where catalog.id = new.food_catalog_id
+			and catalog.is_active
+	) then
+		raise exception 'Select an active food quick pick.'
 			using errcode = '23514';
-	end if;
-
-	if new.food_catalog_id is not null then
-		select * into selected_food from core.food_catalog
-		where id = new.food_catalog_id and is_active;
-		if not found then
-			raise exception 'Select an active food quick pick.'
-				using errcode = '23514';
-		end if;
-		new.food_name := selected_food.name;
-	else
-		new.food_name := pg_catalog.regexp_replace(
-			pg_catalog.btrim(new.food_name), '[[:space:]]+', ' ', 'g'
-		);
-		if new.food_name is null or pg_catalog.length(new.food_name) not between 1 and 200 then
-			raise exception 'Enter a food name.' using errcode = '23514';
-		end if;
-		select * into selected_food from core.food_catalog
-		where is_active
-			and core.normalize_quick_pick_key(name) = core.normalize_quick_pick_key(new.food_name);
-		if found then
-			new.food_catalog_id := selected_food.id;
-			new.food_name := selected_food.name;
-		end if;
 	end if;
 
 	return new;
@@ -708,15 +639,13 @@ comment on column core.star_treatment_catalog.is_active is
 comment on column core.food_catalog.is_active is
 	'Retired entries stay on historical events but cannot be newly selected or auto-linked.';
 comment on column core.food_catalog.default_unit is
-	'Suggested feeding amount unit; feeding_logs.amount_unit stores the entered unit.';
+	'Unit used when displaying numeric feeding amounts.';
 
 comment on column core.chemical_additions.catalog_id is
 	'Quick-pick reference; free text matching an active entry auto-links. chemical_name and unit are event-time snapshots.';
 comment on column core.star_treatments.catalog_id is
 	'Quick-pick reference; free text matching an active entry auto-links. treatment_type and unit columns are event-time snapshots.';
 comment on column core.feeding_logs.food_catalog_id is
-	'Quick-pick reference; free text matching an active entry auto-links. Entries with dependent logs cannot be deleted.';
+	'Required food catalog reference; food names and units are read from the catalog.';
 comment on column core.feeding_logs.amount_value is
-	'Positive numeric amount for new entries (fractions allowed); legacy amount text is preserved without conversion. Readers use amount_value when present, else display amount verbatim.';
-comment on column core.feeding_logs.amount_unit is
-	'Event-time unit snapshot; required when amount_value is entered or changed, NULL when amount_value is NULL.';
+	'Optional positive finite numeric amount; its unit is core.food_catalog.default_unit.';

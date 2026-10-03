@@ -40,7 +40,6 @@ export const feedingLogSchema = z.object({
         Number(value.trim()) > 0,
       "Enter an amount greater than 0",
     ),
-  amountUnit: z.string().max(50, "Keep the unit under 50 characters"),
   notes: z.string().max(2000, "Keep notes under 2000 characters").optional(),
 });
 

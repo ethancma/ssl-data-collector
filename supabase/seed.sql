@@ -72,16 +72,21 @@ begin
 
   -- core.handle_new_user() (see 20260907200000_core_foundation.sql) already fired off
   -- the inserts above and created a pending, roleless profile per account — promote
-  -- them to the active role each test account is supposed to have.
+  -- them to the active role each test account is supposed to have. The activation
+  -- guard only allows this when core.invitation_write names the profile's auth user.
+  perform set_config('core.invitation_write', admin_id::text, true);
   update core.profiles set role = 'admin', status = 'active',
       display_name = coalesce(display_name, 'Test Admin')
     where auth_user_id = admin_id;
+  perform set_config('core.invitation_write', tech_id::text, true);
   update core.profiles set role = 'technician', status = 'active',
       display_name = coalesce(display_name, 'Test Technician')
     where auth_user_id = tech_id;
+  perform set_config('core.invitation_write', volunteer_id::text, true);
   update core.profiles set role = 'volunteer', status = 'active',
       display_name = coalesce(display_name, 'Test Volunteer')
     where auth_user_id = volunteer_id;
+  perform set_config('core.invitation_write', viewer_id::text, true);
   update core.profiles set role = 'viewer', status = 'active',
       display_name = coalesce(display_name, 'Test Viewer')
     where auth_user_id = viewer_id;
