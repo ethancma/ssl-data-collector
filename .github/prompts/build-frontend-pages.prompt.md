@@ -22,7 +22,7 @@ which to start with.
   up for those specific sections. Everything else on the same page that *does* have
   existing schema should still be fully wired to real data.
 - Only touch `app/**` and `components/**` (read-only from `lib/config/**`,
-  `lib/models/**`, `lib/validation/**`, `lib/supabase/**` for existing helpers/types).
+  `lib/validation/**`, `lib/supabase/**` for existing helpers/types).
 - Reuse existing patterns before inventing new ones (see below) — don't restyle or
   refactor components that aren't part of the page you're building.
 

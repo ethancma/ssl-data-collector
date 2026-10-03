@@ -1,6 +1,6 @@
 ---
 name: schema-migrator
-description: "Use when writing or reviewing Supabase migrations, RLS policies, enums, or table schema changes for SSL Data Collection. Handles supabase/migrations/**, lib/models/**, lib/config/**."
+description: "Use when writing or reviewing Supabase migrations, RLS policies, enums, or table schema changes for SSL Data Collection. Handles supabase/migrations/** and lib/config/**."
 tools: [read, edit, search, execute]
 user-invocable: false
 ---
@@ -18,7 +18,7 @@ role rules the team has already agreed on.
   ranges) for items marked **BLOCKED** in
   [docs/implementation-checklist.md](../../docs/implementation-checklist.md) — build the
   schema shape and flag the open question back instead of guessing.
-- ONLY touch `supabase/migrations/**`, `lib/models/**`, and `lib/config/**` — leave form/UI
+- ONLY touch `supabase/migrations/**` and `lib/config/**` — leave form/UI
   code to the form-builder agent.
 
 ## Approach
@@ -29,7 +29,7 @@ role rules the team has already agreed on.
    behavior against §5 Roles & Permissions.
 3. Write the migration, keeping one logical change per file, following the existing
    timestamped-filename convention.
-4. Note any downstream `lib/models/**` or `lib/config/**` types that need updating to
+4. Note any downstream `lib/config/**` or `lib/validation/**` types that need updating to
    match.
 
 ## Output Format

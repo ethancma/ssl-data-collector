@@ -24,6 +24,10 @@ export const SMOKE_SECTIONS = [
     file: ".github/skills/e2e-testing/scripts/star-treatments.smoke.ts",
   },
   {
+    id: "batch-logging",
+    file: ".github/skills/e2e-testing/scripts/batch-logging.smoke.ts",
+  },
+  {
     id: "systems-trends",
     file: ".github/skills/e2e-testing/scripts/systems-trends.smoke.ts",
   },
@@ -52,7 +56,6 @@ const rules: SelectionRule[] = [
     description: "daily operations, forms, or Home dashboard",
     matches: (file) =>
       /^app\/protected\/(daily-operations|home)(\/|$)/.test(file) ||
-      file === "app/protected/admin/quick-picks/page.tsx" ||
       /^app\/protected\/settings\/quick-picks(\/|$)/.test(file) ||
       file === "app/protected/settings/water-quality-targets/page.tsx" ||
       /^components\/daily-operations\//.test(file) ||
@@ -71,9 +74,12 @@ const rules: SelectionRule[] = [
       /^app\/auth\//.test(file) ||
       /^app\/invite\//.test(file) ||
       /^app\/api\/admin\//.test(file) ||
-      /^supabase\/migrations\//.test(file) ||
+      /^app\/protected\/settings\/(page|password-form|profile-form|settings-layout|types)\.tsx?$/.test(
+        file,
+      ) ||
+      file === "lib/invitations.ts" ||
       file === "app/protected/admin/page.tsx" ||
-      /^components\/(admin-[^/]+|auth-button|login-form|logout-button)\.tsx$/.test(
+      /^components\/(admin-[^/]+|auth-button|invitation-acceptance-form|login-form|logout-button|reset-password-form)\.tsx$/.test(
         file,
       ),
     sections: ["auth-admin"],
@@ -89,7 +95,6 @@ const rules: SelectionRule[] = [
     description: "Star treatment flow",
     matches: (file) =>
       /^app\/protected\/star-treatments(\/|$)/.test(file) ||
-      file === "app/protected/admin/quick-picks/page.tsx" ||
       /^app\/protected\/settings\/quick-picks(\/|$)/.test(file) ||
       file === "components/quick-pick-catalog-manager.tsx" ||
       file === "components/quick-pick-catalog-config.ts" ||
@@ -98,9 +103,19 @@ const rules: SelectionRule[] = [
     sections: ["star-treatments"],
   },
   {
+    description: "batch feeding or batch Star treatment logging",
+    matches: (file) =>
+      file === "app/protected/daily-operations/page.tsx" ||
+      /^components\/daily-operations\/(batch-scope-checklist|batch-selection|log-types)\.tsx?$/.test(
+        file,
+      ) ||
+      /^components\/(feeding-log-form|star-treatment-form)\.tsx$/.test(file),
+    sections: ["batch-logging"],
+  },
+  {
     description: "role-gated quick-pick catalog management",
     matches: (file) =>
-      /^app\/protected\/(admin|settings)\/quick-picks(\/|$)/.test(file),
+      /^app\/protected\/settings\/quick-picks(\/|$)/.test(file),
     sections: ["operational-rbac"],
   },
   {
@@ -130,7 +145,7 @@ const rules: SelectionRule[] = [
     description: "shared application or runtime configuration",
     matches: (file) =>
       /^components\/ui\//.test(file) ||
-      /^lib\/(config|models|supabase)\//.test(file) ||
+      /^lib\/(config|supabase)\//.test(file) ||
       /^(components\.json|package(-lock)?\.json|next\.config\.ts|postcss\.config\.mjs|proxy\.ts|tailwind\.config\.ts)$/.test(
         file,
       ) ||

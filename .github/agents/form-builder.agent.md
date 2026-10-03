@@ -15,16 +15,16 @@ day, matching the UX conventions already established in the codebase.
   **BLOCKED** in
   [docs/implementation-checklist.md](../../docs/implementation-checklist.md) — build the
   form structure with an obvious config hook for the real values instead of guessing.
-- ONLY touch `app/**` and `components/**` (plus reading, not editing, `lib/config/**`
-  and `lib/models/**` for reference data/types).
-
+- ONLY touch `app/**`, `components/**`, and `lib/validation/**` (plus reading, not editing,
+  `lib/config/**` for reference data).
 ## Approach
 1. Reuse existing patterns before inventing new ones:
    [components/login-form.tsx](../../components/login-form.tsx),
-   [components/sign-up-form.tsx](../../components/sign-up-form.tsx), and the shadcn
+   [components/star-treatment-form.tsx](../../components/star-treatment-form.tsx) (the
+   interaction baseline for operational forms), and the shadcn
    primitives in `components/ui/`.
-2. Pull reference data/types from `lib/config/` (`reference-data.ts`, `species.ts`,
-   `systems.ts`) and `lib/models/` rather than hardcoding.
+2. Pull static reference data from `lib/config/reference-data.ts`; systems, species, and
+   quick-pick catalogs are database-owned, so query them rather than hardcoding.
 3. Follow the shared form UX conventions from
    [docs/implementation-checklist.md](../../docs/implementation-checklist.md) §3: default
    to today's date/last-used system, numeric-keypad inputs, multi-select checklists (not

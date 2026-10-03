@@ -30,9 +30,10 @@ validation/config and database dependencies as needed.
 
 | Task | Start here | Related files |
 | --- | --- | --- |
-| Public entry, auth screens, invitations | [`app/page.tsx`](app/page.tsx), [`app/auth/`](app/auth/), [`components/login-form.tsx`](components/login-form.tsx), [`components/sign-up-form.tsx`](components/sign-up-form.tsx) | [`app/api/onboarding/`](app/api/onboarding/), [`components/invitation-password-form.tsx`](components/invitation-password-form.tsx) |
+| Public entry and sign-in | [`app/page.tsx`](app/page.tsx), [`app/auth/`](app/auth/), [`components/login-form.tsx`](components/login-form.tsx) | [`app/auth/callback/`](app/auth/callback/), [`app/auth/confirm/`](app/auth/confirm/); `app/auth/sign-up/` only redirects to login (invite-only) |
+| Invitations and password reset | [`app/invite/`](app/invite/), [`app/auth/reset/`](app/auth/reset/), [`lib/invitations.ts`](lib/invitations.ts) | [`components/invitation-acceptance-form.tsx`](components/invitation-acceptance-form.tsx), [`components/reset-password-form.tsx`](components/reset-password-form.tsx), [`docs/auth-invitations.md`](docs/auth-invitations.md) |
 | Session protection, profiles, roles | [`proxy.ts`](proxy.ts), [`app/protected/layout.tsx`](app/protected/layout.tsx), [`lib/supabase/`](lib/supabase/) | [`components/protected-shell.tsx`](components/protected-shell.tsx), [`components/protected-sidebar.tsx`](components/protected-sidebar.tsx) |
-| Admin user approval and access | [`app/protected/admin/`](app/protected/admin/), [`app/api/admin/`](app/api/admin/) | [`components/admin-users-table.tsx`](components/admin-users-table.tsx) |
+| Admin user approval, invites, and access | [`app/protected/admin/`](app/protected/admin/), [`app/api/admin/`](app/api/admin/) | [`components/admin-users-table.tsx`](components/admin-users-table.tsx), [`components/admin-invitation-panel.tsx`](components/admin-invitation-panel.tsx) |
 | Daily Operations routing and shared workflow | [`app/protected/daily-operations/`](app/protected/daily-operations/), [`components/daily-operations/`](components/daily-operations/) | Individual form components in [`components/`](components/), validators in [`lib/validation/`](lib/validation/) |
 | AM/PM checks | [`components/daily-check-form.tsx`](components/daily-check-form.tsx) | [`lib/validation/daily-check.ts`](lib/validation/daily-check.ts) |
 | Feeding and consumption | [`components/feeding-log-form.tsx`](components/feeding-log-form.tsx) | [`lib/validation/feeding-log.ts`](lib/validation/feeding-log.ts) |
@@ -43,7 +44,7 @@ validation/config and database dependencies as needed.
 | Star treatments | [`app/protected/star-treatments/`](app/protected/star-treatments/), [`components/star-treatment-form.tsx`](components/star-treatment-form.tsx) | [`components/star-treatment-record.tsx`](components/star-treatment-record.tsx) |
 | Home and Systems dashboards | [`app/protected/home/`](app/protected/home/), [`app/protected/systems/`](app/protected/systems/) | [`components/systems/`](components/systems/) |
 | History and export | [`app/protected/history/`](app/protected/history/) | Relevant log forms and Supabase queries for the record type |
-| Account settings and password changes | [`app/protected/settings/`](app/protected/settings/), [`app/protected/change-password/`](app/protected/change-password/) | [`lib/supabase/`](lib/supabase/) |
+| Account settings and password changes | [`app/protected/settings/`](app/protected/settings/) (`page.tsx`, `password-form.tsx`, `profile-form.tsx`) | [`lib/supabase/current-profile.ts`](lib/supabase/current-profile.ts) |
 | Global styling and reusable controls | [`app/globals.css`](app/globals.css), [`components/ui/`](components/ui/) | [`docs/style-guide.md`](docs/style-guide.md), [`tailwind.config.ts`](tailwind.config.ts) |
 | Reference data and configurable quick picks | [`lib/config/reference-data.ts`](lib/config/reference-data.ts), [`components/quick-pick-catalog-config.ts`](components/quick-pick-catalog-config.ts) | [`components/quick-pick-catalog-manager.tsx`](components/quick-pick-catalog-manager.tsx), [`components/daily-operations/quick-pick-catalogs.ts`](components/daily-operations/quick-pick-catalogs.ts) |
 | Database schema, RLS, and seed data | [`supabase/migrations/`](supabase/migrations/), [`supabase/seeds/`](supabase/seeds/) | [`supabase/config.toml`](supabase/config.toml), [`supabase/seed.sql`](supabase/seed.sql), [`supabase/snippets/`](supabase/snippets/) |
@@ -57,8 +58,9 @@ Top-level structure:
 ├── README.md                    # you are here
 ├── AGENTS.md                    # rules for coding agents working in this repo
 ├── app/                         # Next.js routes, layouts, and server route handlers
-│   ├── api/                     # admin and onboarding server endpoints
-│   ├── auth/                    # login, signup, confirmation, and invitation routes
+│   ├── api/                     # admin invitation and reset-link server endpoints
+│   ├── auth/                    # login, signup, callback, confirmation, and reset routes
+│   ├── invite/                  # public invitation acceptance routes
 │   └── protected/               # authenticated admin, operations, and dashboard routes
 ├── components/                  # forms, dashboard features, navigation, and UI primitives
 │   ├── daily-operations/        # shared workflow state, selection, time, and form helpers
@@ -67,7 +69,8 @@ Top-level structure:
 ├── lib/
 │   ├── config/                  # shared reference data
 │   ├── supabase/                # browser/server clients and current-profile lookup
-│   └── validation/              # form schemas and domain validation
+│   ├── validation/              # form schemas and domain validation
+│   └── invitations.ts           # invite token and link helpers
 ├── supabase/                    # local config, migrations, repeatable seeds, and SQL snippets
 ├── tests/unit/                  # focused unit tests
 ├── proxy.ts                    # session refresh and route protection

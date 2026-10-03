@@ -20,10 +20,21 @@ test("selects daily operations and star treatments for quick-pick management", (
     "daily-operations",
     "star-treatments",
   ]);
-  assert.deepEqual(selectedIds(["app/protected/admin/quick-picks/page.tsx"]), [
+  assert.deepEqual(selectedIds(["app/protected/settings/quick-picks/page.tsx"]), [
     "daily-operations",
     "operational-rbac",
     "star-treatments",
+  ]);
+});
+
+test("selects batch logging for batch feeding and Star treatment surfaces", () => {
+  assert.deepEqual(selectedIds(["components/daily-operations/batch-selection.ts"]), [
+    "daily-operations",
+    "batch-logging",
+  ]);
+  assert.deepEqual(selectedIds(["components/feeding-log-form.tsx"]), [
+    "daily-operations",
+    "batch-logging",
   ]);
 });
 
@@ -45,6 +56,20 @@ test("keeps the Admin users surface focused on auth-admin", () => {
   }
 });
 
+test("keeps invitation, reset, and account settings files focused on auth-admin", () => {
+  for (const file of [
+    "app/invite/[token]/page.tsx",
+    "app/auth/reset/page.tsx",
+    "app/protected/settings/page.tsx",
+    "app/protected/settings/password-form.tsx",
+    "components/invitation-acceptance-form.tsx",
+    "components/reset-password-form.tsx",
+    "lib/invitations.ts",
+  ]) {
+    assert.deepEqual(selectedIds([file]), ["auth-admin"]);
+  }
+});
+
 test("combines known surfaces in stable section order", () => {
   assert.deepEqual(
     selectedIds([
@@ -52,7 +77,7 @@ test("combines known surfaces in stable section order", () => {
       "components/star-treatment-form.tsx",
       "app/auth/login/page.tsx",
     ]),
-    ["auth-admin", "star-treatments", "systems-trends"],
+    ["auth-admin", "star-treatments", "batch-logging", "systems-trends"],
   );
 });
 

@@ -35,16 +35,17 @@ The selector applies this policy:
 | Changed area | Selected script |
 |---|---|
 | Daily checks, feeding, water quality, chemical additions, health, maintenance, Today/Home | `daily-logging-forms.smoke.ts` |
-| Sign-up, pending approval, admin users | `auth-and-admin.smoke.ts` |
+| Sign-up, invitations, password reset, account settings, admin users | `auth-and-admin.smoke.ts` |
 | Sidebar, protected shell, navigation, theme | `sidebar-ui.smoke.ts` |
 | Operational-log roles and permission matrix | `rbac-tiers.smoke.ts` |
 | Star treatments and the Probiotics boundary | `star-treatments.smoke.ts` |
+| Batch feeding and batch Star treatment logging | `batch-logging.smoke.ts` |
 | Systems page and water-quality trend charts | `systems-trends.smoke.ts` |
 | Shared app/runtime files, unknown app/runtime files, shared e2e helpers | Full suite |
 | Supabase migrations, RLS/grants, database config, or seed data | Full suite (Tier 3+) |
 | Documentation or other non-runtime files only | No browser section |
 
-The full suite includes all six section scripts, so migration and broad changes cannot
+The full suite includes all seven section scripts, so migration and broad changes cannot
 silently omit operational RBAC coverage. The selector only chooses sections; it does not
 weaken each section's UI and direct-Supabase assertions.
 
