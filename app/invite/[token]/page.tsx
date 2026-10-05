@@ -1,5 +1,5 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { InvitationAcceptanceForm } from "@/components/invitation-acceptance-form";
+import { InvitationAcceptanceForm } from "@/components/auth/invitation-acceptance-form";
 import { getInvitationByToken, isOpenInvitation, isValidInvitationToken, publicInvitationError } from "@/app/invite/invitation-server";
 
 export const dynamic = "force-dynamic";

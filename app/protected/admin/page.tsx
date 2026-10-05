@@ -1,7 +1,7 @@
 import { Suspense } from "react";
 
-import { AdminInvitationPanel } from "@/components/admin-invitation-panel";
-import { AdminUsersTable } from "@/components/admin-users-table";
+import { AdminInvitationPanel } from "@/components/admin/admin-invitation-panel";
+import { AdminUsersTable } from "@/components/admin/admin-users-table";
 import { getCurrentProfile } from "@/lib/supabase/current-profile";
 import { createClient } from "@/lib/supabase/server";
 

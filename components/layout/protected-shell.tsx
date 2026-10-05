@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 
 import { cn } from "@/lib/utils";
-import { ProtectedSidebar } from "@/components/protected-sidebar";
+import { ProtectedSidebar } from "@/components/layout/protected-sidebar";
 
 const SIDEBAR_COLLAPSED_STORAGE_KEY = "ssl:sidebar-collapsed";
 

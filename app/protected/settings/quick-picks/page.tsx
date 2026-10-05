@@ -9,7 +9,7 @@ import {
 import {
   QuickPickCatalogManager,
   type QuickPickCatalogInitialData,
-} from "@/components/quick-pick-catalog-manager";
+} from "@/components/settings/quick-pick-catalog-manager";
 import { getCurrentProfile } from "@/lib/supabase/current-profile";
 import { createClient } from "@/lib/supabase/server";
 

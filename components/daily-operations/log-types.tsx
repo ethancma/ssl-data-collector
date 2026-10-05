@@ -9,13 +9,13 @@ import {
   Wrench,
 } from "lucide-react";
 
-import { ChemicalAdditionForm } from "@/components/chemical-addition-form";
-import { DailyCheckForm } from "@/components/daily-check-form";
-import { FeedingLogForm } from "@/components/feeding-log-form";
-import { HealthObservationForm } from "@/components/health-observation-form";
-import { MaintenanceLogForm } from "@/components/maintenance-log-form";
-import { StarTreatmentForm } from "@/components/star-treatment-form";
-import { WaterQualityForm } from "@/components/water-quality-form";
+import { ChemicalAdditionForm } from "@/components/daily-operations/chemical-addition-form";
+import { DailyCheckForm } from "@/components/daily-operations/daily-check-form";
+import { FeedingLogForm } from "@/components/daily-operations/feeding-log-form";
+import { HealthObservationForm } from "@/components/daily-operations/health-observation-form";
+import { MaintenanceLogForm } from "@/components/daily-operations/maintenance-log-form";
+import { StarTreatmentForm } from "@/components/star-treatments/star-treatment-form";
+import { WaterQualityForm } from "@/components/daily-operations/water-quality-form";
 import type {
   BatchScopeAnimal,
   BatchScopeSystem,

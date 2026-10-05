@@ -41,7 +41,7 @@ The selector applies this policy:
 | Star treatments and the Probiotics boundary | `star-treatments.smoke.ts` |
 | Batch feeding and batch Star treatment logging | `batch-logging.smoke.ts` |
 | Systems page and water-quality trend charts | `systems-trends.smoke.ts` |
-| Shared app/runtime files, unknown app/runtime files, shared e2e helpers | Full suite |
+| Shared application or runtime files, unknown application or runtime files, shared e2e helpers | Full suite |
 | Supabase migrations, RLS/grants, database config, or seed data | Full suite (Tier 3+) |
 | Documentation or other non-runtime files only | No browser section |
 
@@ -129,10 +129,10 @@ Selector examples:
 
 ```sh
 # Preferred: only files changed in this coding session
-npm run test:e2e:plan -- --files components/water-quality-form.tsx lib/validation/water-quality.ts
+npm run test:e2e:plan -- --files components/daily-operations/water-quality-form.tsx lib/validation/water-quality.ts
 
 # Execute the reviewed selection
-npm run test:e2e:plan -- --files components/water-quality-form.tsx lib/validation/water-quality.ts --run
+npm run test:e2e:plan -- --files components/daily-operations/water-quality-form.tsx lib/validation/water-quality.ts --run
 
 # Convenience for a clean, single-purpose worktree, or force every section
 npm run test:e2e:plan -- --git-diff

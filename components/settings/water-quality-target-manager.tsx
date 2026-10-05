@@ -8,7 +8,7 @@ import {
   resolveWaterQualityTarget,
   type WaterQualityTargetRange,
 } from "@/lib/daily-operations/water-quality-targets";
-import { SELECT_CLASS } from "@/components/daily-operations/form-classes";
+import { SELECT_CLASS } from "@/components/forms/form-classes";
 import { Button } from "@/components/ui/button";
 import {
   Card,

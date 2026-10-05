@@ -128,6 +128,36 @@ test.describe("systems page water quality trends card", () => {
   test.describe.configure({ mode: "serial" });
   test.skip(!TECH_PASSWORD, "E2E_TEST_TECH_PASSWORD not set");
 
+  test.beforeAll(() => {
+    const recordedBy = Number(
+      dbQuery("select id from core.profiles where email = " + sqlLiteral(TECH_EMAIL))[0]?.id,
+    );
+    expect(recordedBy).toBeGreaterThan(0);
+    dbQuery(
+      "delete from core.water_quality_readings where notes = " + sqlLiteral(TRENDS_NOTES),
+    );
+    dbQuery(
+      "insert into core.water_quality_readings " +
+        "(system_id, tested_at, ph, calcium, nitrate, nitrite, phosphate, ammonia, notes, recorded_by) " +
+        "select s.id, readings.tested_at, readings.ph, readings.calcium, readings.nitrate, " +
+        "readings.nitrite, readings.phosphate, readings.ammonia, " + sqlLiteral(TRENDS_NOTES) + ", " + recordedBy +
+        " from core.systems s cross join (values " +
+        "(now() - interval '3 days', 8.02, 410, 7.13, 41, 0.05, 0.01), " +
+        "(now() - interval '9 days', 8.11, 415, 8.20, 39, 0.06, 0.02), " +
+        "(now() - interval '21 days', 7.98, 408, 6.80, 38, 0.04, 0.03), " +
+        "(now() - interval '42 days', 8.05, 412, 9.10, 42, 0.07, 0.01) " +
+        ") as readings(tested_at, ph, calcium, nitrate, nitrite, phosphate, ammonia) " +
+        "where s.name = 'Graham'",
+    );
+    const seededRows = Number(
+      dbQuery(
+        "select count(*) as count from core.water_quality_readings where notes = " +
+          sqlLiteral(TRENDS_NOTES),
+      )[0]?.count,
+    );
+    expect(seededRows).toBe(4);
+  });
+
   test.beforeEach(({ page }) => {
     const consoleFindings: string[] = [];
     consoleFindingsByPage.set(page, consoleFindings);
@@ -148,16 +178,6 @@ test.describe("systems page water quality trends card", () => {
   test("Nitrate and Nitrite appear in isolate and compare controls for recent readings", async ({
     page,
   }) => {
-    const recordedBy = Number(
-      dbQuery("select id from core.profiles where email = " + sqlLiteral(TECH_EMAIL))[0]?.id,
-    );
-    expect(recordedBy).toBeGreaterThan(0);
-    // Compare defaults to phosphate/ammonia and hides the other side's pick, so both need data.
-    dbQuery(
-      "insert into core.water_quality_readings (system_id, nitrate, nitrite, phosphate, ammonia, notes, recorded_by) " +
-        "select id, 7.13, 41, 0.05, 0.01, " + sqlLiteral(TRENDS_NOTES) + ", " + recordedBy +
-        " from core.systems where name = 'Graham'",
-    );
     await login(page);
 
     const networkFindings: string[] = [];

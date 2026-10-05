@@ -1,9 +1,9 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
-import { StarTreatmentRecord } from "@/components/star-treatment-record";
+import { StarTreatmentRecord } from "@/components/star-treatments/star-treatment-record";
 import { getPacificDateString } from "@/lib/pacific-date-time";
-import { SELECT_CLASS } from "@/components/daily-operations/form-classes";
+import { SELECT_CLASS } from "@/components/forms/form-classes";
 import { Button } from "@/components/ui/button";
 import { getCurrentProfile } from "@/lib/supabase/current-profile";
 

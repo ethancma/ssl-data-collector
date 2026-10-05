@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 
-import { SELECT_CLASS } from "@/components/daily-operations/form-classes";
+import { SELECT_CLASS } from "@/components/forms/form-classes";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";

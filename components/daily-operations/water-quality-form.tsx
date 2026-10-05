@@ -18,7 +18,7 @@ import {
   getPacificTimeString,
   pacificWallTimeToIso,
 } from "@/lib/pacific-date-time";
-import { SELECT_CLASS } from "@/components/daily-operations/form-classes";
+import { SELECT_CLASS } from "@/components/forms/form-classes";
 import {
   formatWaterQualityTarget,
   isWaterQualityValueOutOfRange,

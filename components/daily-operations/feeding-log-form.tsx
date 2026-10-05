@@ -39,7 +39,7 @@ import {
   QUICK_PICK_HEADING_CLASS,
   QUICK_PICK_LABEL_CLASS,
   QUICK_PICK_OPTION_CLASS,
-} from "@/components/daily-operations/form-classes";
+} from "@/components/forms/form-classes";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { createClient } from "@/lib/supabase/client";

@@ -169,8 +169,8 @@ Setup (Resend):
    - **Copy reset link** on active user rows, and a recovery page to set a new password.
      First confirm Supabase's `generateLink` (type `recovery`) returns the link without
      sending email.
-   - Delete the native-invite pieces: `app/auth/accept/**`,
-     `app/api/onboarding/activate`, `components/invitation-password-form.tsx`, the
+   - Delete the native-invite pieces (already removed): the accept route, the onboarding
+     activate API, the old invitation password form, the
      `invited` branch in `app/protected/layout.tsx`, and the invite guard in
      `app/auth/confirm/route.ts`.
 3. **External config** (human): Google OAuth client and Supabase provider, redirect

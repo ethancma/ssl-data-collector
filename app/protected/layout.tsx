@@ -1,5 +1,5 @@
-import { ProtectedShell } from "@/components/protected-shell";
-import { LogoutButton } from "@/components/logout-button";
+import { ProtectedShell } from "@/components/layout/protected-shell";
+import { LogoutButton } from "@/components/auth/logout-button";
 import { getCurrentProfile } from "@/lib/supabase/current-profile";
 
 export default async function ProtectedLayout({

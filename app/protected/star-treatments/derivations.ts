@@ -6,7 +6,7 @@ import {
   sortCatalogByName,
   type StarTreatmentCatalogItem,
 } from "@/lib/daily-operations/quick-pick-catalogs";
-import type { StarTreatmentRecordData } from "@/components/star-treatment-record";
+import type { StarTreatmentRecordData } from "@/components/star-treatments/star-treatment-record";
 
 export type StarTreatmentSearchParams = {
   from?: string | string[];

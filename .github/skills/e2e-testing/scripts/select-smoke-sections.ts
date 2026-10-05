@@ -58,10 +58,7 @@ const rules: SelectionRule[] = [
       /^app\/protected\/(daily-operations|home)(\/|$)/.test(file) ||
       /^app\/protected\/settings\/quick-picks(\/|$)/.test(file) ||
       file === "app/protected/settings/water-quality-targets/page.tsx" ||
-      /^components\/daily-operations\//.test(file) ||
-      /^components\/(chemical-addition-form|daily-check-form|feeding-log-form|health-observation-form|maintenance-log-form|quick-pick-catalog-manager|unit-select|water-quality-form|water-quality-target-manager)\.tsx$/.test(
-        file,
-      ) ||
+      /^components\/(daily-operations|settings|forms)\//.test(file) ||
       /^lib\/(daily-operations\/|pacific-date-time\.ts$)/.test(file) ||
       /^lib\/validation\/(chemical-addition|common-fields|daily-check|feeding-log|health-observation|maintenance-log|water-quality)\.ts$/.test(
         file,
@@ -79,15 +76,13 @@ const rules: SelectionRule[] = [
       ) ||
       file === "lib/invitations.ts" ||
       file === "app/protected/admin/page.tsx" ||
-      /^components\/(admin-[^/]+|auth-button|invitation-acceptance-form|login-form|logout-button|reset-password-form)\.tsx$/.test(
-        file,
-      ),
+      /^components\/(auth|admin)\//.test(file),
     sections: ["auth-admin"],
   },
   {
     description: "protected shell, sidebar, navigation, or theme",
     matches: (file) =>
-      /^components\/protected-(shell|sidebar)\.tsx$/.test(file) ||
+      /^components\/layout\//.test(file) ||
       /^app\/protected\/(layout|page)\.tsx$/.test(file),
     sections: ["sidebar-shell"],
   },
@@ -96,10 +91,10 @@ const rules: SelectionRule[] = [
     matches: (file) =>
       /^app\/protected\/star-treatments(\/|$)/.test(file) ||
       /^app\/protected\/settings\/quick-picks(\/|$)/.test(file) ||
-      file === "components/quick-pick-catalog-manager.tsx" ||
-      /^lib\/daily-operations\/quick-pick-catalog(s|-config)\.ts$/.test(file) ||
-      file === "components/unit-select.tsx" ||
-      /^components\/star-treatment-(form|record)\.tsx$/.test(file),
+      /^components\/settings\/quick-pick-catalog-(item|manager)\.tsx$/.test(file) ||
+      /^lib\/daily-operations\/quick-pick-catalog(s|-config|-manager)\.ts$/.test(file) ||
+      file === "lib/validation/star-treatment.ts" ||
+      /^components\/(forms|star-treatments)\//.test(file),
     sections: ["star-treatments"],
   },
   {
@@ -107,10 +102,11 @@ const rules: SelectionRule[] = [
     matches: (file) =>
       /^app\/protected\/daily-operations(\/|$)/.test(file) ||
       file === "lib/daily-operations/batch-selection.ts" ||
-      /^components\/daily-operations\/(batch-scope-checklist|log-types)\.tsx$/.test(
+      /^components\/daily-operations\/(batch-scope-checklist|log-types|feeding-log-form)\.tsx$/.test(
         file,
       ) ||
-      /^components\/(feeding-log-form|star-treatment-form)\.tsx$/.test(file),
+      file === "lib/validation/star-treatment.ts" ||
+      file === "components/star-treatments/star-treatment-form.tsx",
     sections: ["batch-logging"],
   },
   {

@@ -1,6 +1,6 @@
 ---
 name: form-builder
-description: "Use when building or editing daily logging forms and dashboards for SSL Data Collection — AM/PM check, feeding, water quality, health observation, chemical addition, maintenance, or the Today dashboard. Handles app/** and components/**."
+description: "Use when building or editing daily logging forms and dashboards for SSL Data Collection — AM/PM check, feeding, water quality, health observation, chemical addition, maintenance, Star Treatments, quick-pick catalog management, or the Today dashboard. Handles app/**, components/**, and their validation/configuration helpers."
 tools: [read, edit, search]
 user-invocable: false
 ---
@@ -20,9 +20,11 @@ day, matching the UX conventions already established in the codebase.
   `lib/config/**` for reference data).
 ## Approach
 1. Reuse existing patterns before inventing new ones:
-   [components/login-form.tsx](../../components/login-form.tsx),
-   [components/star-treatment-form.tsx](../../components/star-treatment-form.tsx) (the
-   interaction baseline for operational forms), and the shadcn
+   [components/auth/login-form.tsx](../../components/auth/login-form.tsx),
+   [components/star-treatments/star-treatment-form.tsx](../../components/star-treatments/star-treatment-form.tsx) (the
+  interaction baseline for operational forms), its shared schema in
+  [lib/validation/star-treatment.ts](../../lib/validation/star-treatment.ts), the
+  quick-pick catalog components, and the shadcn
    primitives in `components/ui/`.
 2. Pull static reference data from `lib/config/reference-data.ts`; systems, species, and
    quick-pick catalogs are database-owned, so query them rather than hardcoding.

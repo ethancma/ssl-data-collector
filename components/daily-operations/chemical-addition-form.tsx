@@ -24,10 +24,10 @@ import {
   QUICK_PICK_LABEL_CLASS,
   QUICK_PICK_OPTION_CLASS,
   SELECT_CLASS,
-} from "@/components/daily-operations/form-classes";
+} from "@/components/forms/form-classes";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { UnitSelect } from "@/components/unit-select";
+import { UnitSelect } from "@/components/forms/unit-select";
 import { MEASUREMENT_UNITS } from "@/lib/config/reference-data";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";

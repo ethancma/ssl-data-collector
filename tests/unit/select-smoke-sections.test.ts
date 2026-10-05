@@ -10,7 +10,7 @@ function selectedIds(files: string[]) {
 }
 
 test("selects the narrow daily-operations section for a form change", () => {
-  assert.deepEqual(selectedIds(["components/water-quality-form.tsx"]), [
+  assert.deepEqual(selectedIds(["components/daily-operations/water-quality-form.tsx"]), [
     "daily-operations",
   ]);
   assert.deepEqual(selectedIds(["lib/validation/common-fields.ts"]), [
@@ -30,6 +30,10 @@ test("keeps shared Pacific time and the Star catalog files off the full suite", 
     "daily-operations",
     "star-treatments",
   ]);
+  assert.deepEqual(selectedIds(["lib/daily-operations/quick-pick-catalog-manager.ts"]), [
+    "daily-operations",
+    "star-treatments",
+  ]);
   assert.deepEqual(selectedIds(["app/protected/daily-operations/data.ts"]), [
     "daily-operations",
     "batch-logging",
@@ -37,7 +41,11 @@ test("keeps shared Pacific time and the Star catalog files off the full suite", 
 });
 
 test("selects daily operations and star treatments for quick-pick management", () => {
-  assert.deepEqual(selectedIds(["components/quick-pick-catalog-manager.tsx"]), [
+  assert.deepEqual(selectedIds(["components/settings/quick-pick-catalog-manager.tsx"]), [
+    "daily-operations",
+    "star-treatments",
+  ]);
+  assert.deepEqual(selectedIds(["components/settings/quick-pick-catalog-item.tsx"]), [
     "daily-operations",
     "star-treatments",
   ]);
@@ -48,12 +56,19 @@ test("selects daily operations and star treatments for quick-pick management", (
   ]);
 });
 
+test("selects Star treatment and batch coverage for the shared validator", () => {
+  assert.deepEqual(selectedIds(["lib/validation/star-treatment.ts"]), [
+    "star-treatments",
+    "batch-logging",
+  ]);
+});
+
 test("selects batch logging for batch feeding and Star treatment surfaces", () => {
   assert.deepEqual(selectedIds(["lib/daily-operations/batch-selection.ts"]), [
     "daily-operations",
     "batch-logging",
   ]);
-  assert.deepEqual(selectedIds(["components/feeding-log-form.tsx"]), [
+  assert.deepEqual(selectedIds(["components/daily-operations/feeding-log-form.tsx"]), [
     "daily-operations",
     "batch-logging",
   ]);
@@ -61,7 +76,7 @@ test("selects batch logging for batch feeding and Star treatment surfaces", () =
 
 test("selects daily operations for water-quality target management", () => {
   for (const file of [
-    "components/water-quality-target-manager.tsx",
+    "components/settings/water-quality-target-manager.tsx",
     "app/protected/settings/water-quality-targets/page.tsx",
   ]) {
     assert.deepEqual(selectedIds([file]), ["daily-operations"]);
@@ -71,7 +86,7 @@ test("selects daily operations for water-quality target management", () => {
 test("keeps the Admin users surface focused on auth-admin", () => {
   for (const file of [
     "app/protected/admin/page.tsx",
-    "components/admin-users-table.tsx",
+    "components/admin/admin-users-table.tsx",
   ]) {
     assert.deepEqual(selectedIds([file]), ["auth-admin"]);
   }
@@ -83,19 +98,33 @@ test("keeps invitation, reset, and account settings files focused on auth-admin"
     "app/auth/reset/page.tsx",
     "app/protected/settings/page.tsx",
     "app/protected/settings/password-form.tsx",
-    "components/invitation-acceptance-form.tsx",
-    "components/reset-password-form.tsx",
+    "components/auth/invitation-acceptance-form.tsx",
+    "components/auth/reset-password-form.tsx",
     "lib/invitations.ts",
   ]) {
     assert.deepEqual(selectedIds([file]), ["auth-admin"]);
   }
 });
 
+test("maps the reorganized component folders to their sections", () => {
+  assert.deepEqual(selectedIds(["components/layout/protected-sidebar.tsx"]), [
+    "sidebar-shell",
+  ]);
+  assert.deepEqual(selectedIds(["components/auth/login-form.tsx"]), ["auth-admin"]);
+  assert.deepEqual(selectedIds(["components/star-treatments/star-treatment-record.tsx"]), [
+    "star-treatments",
+  ]);
+  assert.deepEqual(selectedIds(["components/forms/unit-select.tsx"]), [
+    "daily-operations",
+    "star-treatments",
+  ]);
+});
+
 test("combines known surfaces in stable section order", () => {
   assert.deepEqual(
     selectedIds([
       "components/systems/charts.tsx",
-      "components/star-treatment-form.tsx",
+      "components/star-treatments/star-treatment-form.tsx",
       "app/auth/login/page.tsx",
     ]),
     ["auth-admin", "star-treatments", "batch-logging", "systems-trends"],
@@ -128,9 +157,9 @@ test("escalates migrations so role and RLS coverage cannot be omitted", () => {
 
 test("preserves multi-match reasons when another change escalates to full", () => {
   const selection = selectSmokeSections([
-    "components/quick-pick-catalog-manager.tsx",
+    "components/settings/quick-pick-catalog-manager.tsx",
     "supabase/config.toml",
-    "./components/quick-pick-catalog-manager.tsx",
+    "./components/settings/quick-pick-catalog-manager.tsx",
   ]);
 
   assert.equal(selection.escalatedToFullSuite, true);

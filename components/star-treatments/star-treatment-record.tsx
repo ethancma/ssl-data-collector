@@ -4,26 +4,30 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Controller, useForm } from "react-hook-form";
-import { z } from "zod";
 
 import { formatPacificDateTime } from "@/lib/pacific-date-time";
 import {
   attachedCatalogId,
-  getStarTreatmentMeasurementErrors,
   normalizeSnapshot,
   resolveStarTreatmentCatalogItem,
   selectStarTreatmentCatalogItem,
   type StarTreatmentCatalogItem,
 } from "@/lib/daily-operations/quick-pick-catalogs";
 import {
+  nullableNumber,
+  starTreatmentEditSchema,
+  type StarTreatmentEditInput,
+  type StarTreatmentEditValues,
+} from "@/lib/validation/star-treatment";
+import {
   QUICK_PICK_HEADING_CLASS,
   QUICK_PICK_LABEL_CLASS,
   QUICK_PICK_OPTION_CLASS,
-} from "@/components/daily-operations/form-classes";
+} from "@/components/forms/form-classes";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { UnitSelect } from "@/components/unit-select";
+import { UnitSelect } from "@/components/forms/unit-select";
 import { MEASUREMENT_UNITS } from "@/lib/config/reference-data";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
@@ -48,72 +52,10 @@ export type StarTreatmentRecordData = {
   enteredAt: string;
 };
 
-const optionalPositiveNumber = z.string().refine((value) => {
-  if (value.trim() === "") return true;
-  const numberValue = Number(value);
-  return Number.isFinite(numberValue) && numberValue > 0;
-}, "Enter a positive number");
-
-const editSchema = z
-  .object({
-    catalogId: z
-      .string()
-      .refine((value) => value === "" || /^\d+$/.test(value), "Select a quick pick"),
-    treatmentName: z
-      .string()
-      .refine((value) => normalizeSnapshot(value) !== "", "Enter the treatment name")
-      .max(100, "Keep the treatment name under 100 characters"),
-    amount: optionalPositiveNumber,
-    unit: z.string().max(50, "Keep the unit under 50 characters"),
-    concentration: optionalPositiveNumber,
-    concentrationUnit: z
-      .string()
-      .max(50, "Keep the concentration unit under 50 characters"),
-    notes: z.string().max(5000, "Keep notes under 5000 characters"),
-  })
-  .superRefine((values, context) => {
-    const measurementErrors = getStarTreatmentMeasurementErrors({
-      treatmentName: values.treatmentName,
-      amount: values.amount,
-      amountUnit: values.unit,
-      concentration: values.concentration,
-      concentrationUnit: values.concentrationUnit,
-    });
-
-    if (measurementErrors.amount) {
-      context.addIssue({
-        code: "custom",
-        path: ["amount"],
-        message: measurementErrors.amount,
-      });
-    }
-    if (measurementErrors.amountUnit) {
-      context.addIssue({
-        code: "custom",
-        path: ["unit"],
-        message: measurementErrors.amountUnit,
-      });
-    }
-    if (measurementErrors.concentrationUnit) {
-      context.addIssue({
-        code: "custom",
-        path: ["concentrationUnit"],
-        message: measurementErrors.concentrationUnit,
-      });
-    }
-  });
-
-type EditInput = z.input<typeof editSchema>;
-type EditValues = z.output<typeof editSchema>;
-
 function displayTreatmentType(value: string) {
   if (value === "probiotics") return "Probiotics";
   if (value === "reef_dip") return "Reef dip";
   return value;
-}
-
-function nullableNumber(value: string) {
-  return value.trim() === "" ? null : Number(value);
 }
 
 export function StarTreatmentRecord({
@@ -155,8 +97,8 @@ export function StarTreatmentRecord({
     getValues,
     setValue,
     formState: { errors, isSubmitting },
-  } = useForm<EditInput, unknown, EditValues>({
-    resolver: zodResolver(editSchema),
+  } = useForm<StarTreatmentEditInput, unknown, StarTreatmentEditValues>({
+    resolver: zodResolver(starTreatmentEditSchema),
     defaultValues: {
       catalogId:
         defaultTreatment.catalogId === null ? "" : String(defaultTreatment.catalogId),
@@ -188,7 +130,7 @@ export function StarTreatmentRecord({
     });
   };
 
-  const onUpdate = async (values: EditValues) => {
+  const onUpdate = async (values: StarTreatmentEditValues) => {
     setUpdateMessage("");
     const amount = nullableNumber(values.amount);
     const concentration = nullableNumber(values.concentration);

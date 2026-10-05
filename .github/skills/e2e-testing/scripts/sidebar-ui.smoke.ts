@@ -1,12 +1,12 @@
 /**
- * Sidebar Home button + theme toggle (components/protected-sidebar.tsx). UI-only
+ * Sidebar Home button + theme toggle (components/layout/protected-sidebar.tsx). UI-only
  * (Tier 1 per docs/testing-strategy.md) — no Supabase row assertions needed. Extend
  * this file for further sidebar/theme/navigation changes.
  */
 import { test, expect } from "@playwright/test";
 import { login, TECH_PASSWORD } from "./helpers";
 
-// Covers the sidebar's new Home icon-button + theme-toggle row (components/protected-sidebar.tsx).
+// Covers the sidebar's new Home icon-button + theme-toggle row (components/layout/protected-sidebar.tsx).
 // UI-only (Tier 1 per docs/testing-strategy.md) — no Supabase row assertions needed.
 test.describe("sidebar Home button and theme toggle", () => {
   test.describe.configure({ mode: "serial" });

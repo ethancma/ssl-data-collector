@@ -54,9 +54,9 @@ existing Admin section, not its own top-level link.
   (`lib/validation/*.ts`), inserts via
   [lib/supabase/client.ts](../../lib/supabase/client.ts), then
   `router.push(...); router.refresh();`. Reference:
-  [components/feeding-log-form.tsx](../../components/feeding-log-form.tsx).
+  [components/daily-operations/feeding-log-form.tsx](../../components/daily-operations/feeding-log-form.tsx).
 - Admin table template:
-  [components/admin-users-table.tsx](../../components/admin-users-table.tsx) —
+  [components/admin/admin-users-table.tsx](../../components/admin/admin-users-table.tsx) —
   per-row dropdowns/inputs write straight to Supabase on change, per-row error state.
 - All RLS needed already exists (admin-write / active-member-read on
   systems/tanks/species/animals; contributor-insert / admin-all on the 5 log

@@ -89,8 +89,8 @@ verification to `e2e-verifier`. This is a **Tier 3** change.
 ## UI contract (`form-builder`)
 
 - Build one shared scope-and-checklist component and use it in both
-  [feeding-log-form.tsx](../../components/feeding-log-form.tsx) and
-  [star-treatment-form.tsx](../../components/star-treatment-form.tsx).
+  [feeding-log-form.tsx](../../components/daily-operations/feeding-log-form.tsx) and
+  [star-treatment-form.tsx](../../components/star-treatments/star-treatment-form.tsx).
 - Field order:
   - Feeding: date/time → system → tank → animal → checklist → food type → amount per
     animal → notes → save.

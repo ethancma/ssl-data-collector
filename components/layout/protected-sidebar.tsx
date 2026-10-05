@@ -22,7 +22,7 @@ import {
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
-import { LogoutButton } from "@/components/logout-button";
+import { LogoutButton } from "@/components/auth/logout-button";
 
 const focusRingClassName =
   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring";
