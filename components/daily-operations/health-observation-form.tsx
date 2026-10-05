@@ -13,14 +13,16 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { DateTimeFields } from "@/components/forms/date-time-fields";
+import { FieldError } from "@/components/forms/field-error";
+import { Textarea } from "@/components/ui/textarea";
 import {
   getPacificDateString,
   getPacificTimeString,
-  pacificWallTimeToIso,
+  parsePacificInstant,
 } from "@/lib/pacific-date-time";
 import { SELECT_CLASS } from "@/components/forms/form-classes";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   HEALTH_ISSUE_TYPES,
@@ -28,7 +30,7 @@ import {
   type HealthIssueType,
 } from "@/lib/config/reference-data";
 import { createClient } from "@/lib/supabase/client";
-import { cn } from "@/lib/utils";
+import { nullIfBlank } from "@/lib/utils";
 import {
   healthObservationSchema,
   type HealthObservationFormInput,
@@ -93,13 +95,9 @@ export function HealthObservationForm({
 
   const onSubmit = async (values: HealthObservationFormValues) => {
     setServerError(null);
-    let observedAt: string;
-    try {
-      observedAt = pacificWallTimeToIso(values.date, values.time);
-    } catch (error) {
-      setError("time", {
-        message: error instanceof Error ? error.message : "Enter a valid Pacific time",
-      });
+    const instant = parsePacificInstant(values.date, values.time);
+    if (instant.error !== undefined) {
+      setError("time", { message: instant.error });
       return;
     }
 
@@ -108,12 +106,12 @@ export function HealthObservationForm({
     const { data: observation, error } = await supabase
       .from("health_observations")
       .insert({
-        observed_at: observedAt,
+        observed_at: instant.iso,
         animal_id: values.animalId,
         tank_id: values.tankId,
         severity: values.severity,
         issues: values.issues,
-        notes: values.notes?.trim() ? values.notes.trim() : null,
+        notes: nullIfBlank(values.notes),
       })
       .select("id")
       .single();
@@ -166,29 +164,19 @@ export function HealthObservationForm({
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-6">
-          <input type="hidden" {...register("tankId")} />
+          <input id="health-observation-tank" type="hidden" {...register("tankId")} />
 
-          <div className="grid gap-4 rounded-lg border border-input bg-muted/30 p-4 sm:grid-cols-2">
-            <div className="grid content-start gap-2">
-              <Label htmlFor="date">Date</Label>
-              <Input id="date" type="date" {...register("date")} />
-              {errors.date && (
-                <p className="text-sm text-red-500">{errors.date.message}</p>
-              )}
-            </div>
-            <div className="grid content-start gap-2">
-              <Label htmlFor="time">Time</Label>
-              <Input id="time" type="time" {...register("time")} />
-              {errors.time && (
-                <p className="text-sm text-red-500">{errors.time.message}</p>
-              )}
-            </div>
-          </div>
+          <DateTimeFields
+            idPrefix="health-observation"
+            date={register("date")}
+            time={register("time")}
+            errors={{ date: errors.date?.message, time: errors.time?.message }}
+          />
 
           <div className="grid gap-2">
-            <Label htmlFor="animalId">Animal</Label>
+            <Label htmlFor="health-observation-animal">Animal</Label>
             <select
-              id="animalId"
+              id="health-observation-animal"
               className={SELECT_CLASS}
               {...register("animalId", { onChange: onAnimalChange })}
             >
@@ -199,11 +187,10 @@ export function HealthObservationForm({
                 </option>
               ))}
             </select>
-            {(errors.animalId || errors.tankId) && (
-              <p className="text-sm text-red-500">
-                {errors.animalId?.message ?? errors.tankId?.message}
-              </p>
-            )}
+            <FieldError
+              id="health-observation-animal-error"
+              message={errors.animalId?.message ?? errors.tankId?.message}
+            />
           </div>
 
           <div className="grid gap-2">
@@ -223,9 +210,10 @@ export function HealthObservationForm({
                 </Button>
               ))}
             </div>
-            {errors.severity && (
-              <p className="text-sm text-red-500">{errors.severity.message}</p>
-            )}
+            <FieldError
+              id="health-observation-severity-error"
+              message={errors.severity?.message}
+            />
           </div>
 
           <div className="grid gap-2">
@@ -238,7 +226,7 @@ export function HealthObservationForm({
                   {HEALTH_ISSUE_TYPES.map((issue) => (
                     <div key={issue} className="flex items-center gap-2">
                       <Checkbox
-                        id={`issue-${issue}`}
+                        id={`health-observation-issue-${issue.replace(/_/g, "-")}`}
                         checked={field.value?.includes(issue) ?? false}
                         onCheckedChange={(checked) => {
                           const current = field.value ?? [];
@@ -249,7 +237,7 @@ export function HealthObservationForm({
                           );
                         }}
                       />
-                      <Label htmlFor={`issue-${issue}`}>
+                      <Label htmlFor={`health-observation-issue-${issue.replace(/_/g, "-")}`}>
                         {ISSUE_LABELS[issue]}
                       </Label>
                     </div>
@@ -260,9 +248,9 @@ export function HealthObservationForm({
           </div>
 
           <div className="grid gap-2">
-            <Label htmlFor="photoFile">Photo</Label>
+            <Label htmlFor="health-observation-photo">Photo</Label>
             <input
-              id="photoFile"
+              id="health-observation-photo"
               type="file"
               accept="image/*"
               className="text-sm"
@@ -272,27 +260,26 @@ export function HealthObservationForm({
                 })
               }
             />
-            {errors.photoFile && (
-              <p className="text-sm text-red-500">{errors.photoFile.message}</p>
-            )}
+            <FieldError
+              id="health-observation-photo-error"
+              message={errors.photoFile?.message}
+            />
           </div>
 
           <div className="grid gap-2">
-            <Label htmlFor="notes">Notes</Label>
-            <textarea
-              id="notes"
+            <Label htmlFor="health-observation-notes">Notes</Label>
+            <Textarea
+              id="health-observation-notes"
               rows={3}
-              className={cn(
-                "flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-base shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring md:text-sm",
-              )}
               {...register("notes")}
             />
-            {errors.notes && (
-              <p className="text-sm text-red-500">{errors.notes.message}</p>
-            )}
+            <FieldError
+              id="health-observation-notes-error"
+              message={errors.notes?.message}
+            />
           </div>
 
-          {serverError && <p className="text-sm text-red-500">{serverError}</p>}
+          <FieldError message={serverError ?? undefined} />
 
           <Button type="submit" disabled={isSubmitting}>
             {isSubmitting ? "Saving…" : "Save observation"}

@@ -13,10 +13,13 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { DateTimeFields } from "@/components/forms/date-time-fields";
+import { FieldError } from "@/components/forms/field-error";
+import { Textarea } from "@/components/ui/textarea";
 import {
   getPacificDateString,
   getPacificTimeString,
-  pacificWallTimeToIso,
+  parsePacificInstant,
 } from "@/lib/pacific-date-time";
 import { SELECT_CLASS } from "@/components/forms/form-classes";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -24,7 +27,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { CHECK_TYPES, CONSUMPTION_STATUSES } from "@/lib/config/reference-data";
 import { createClient } from "@/lib/supabase/client";
-import { cn } from "@/lib/utils";
+import { nullIfBlank } from "@/lib/utils";
 import {
   dailyCheckSchema,
   type DailyCheckFormInput,
@@ -90,24 +93,20 @@ export function DailyCheckForm({
 
   const onSubmit = async (values: DailyCheckFormValues) => {
     setServerError(null);
-    let checkedAt: string;
-    try {
-      checkedAt = pacificWallTimeToIso(values.date, values.time);
-    } catch (error) {
-      setError("time", {
-        message: error instanceof Error ? error.message : "Enter a valid Pacific time",
-      });
+    const instant = parsePacificInstant(values.date, values.time);
+    if (instant.error !== undefined) {
+      setError("time", { message: instant.error });
       return;
     }
 
     const supabase = createClient();
     const { error } = await supabase.from("daily_checks").insert({
-      checked_at: checkedAt,
+      checked_at: instant.iso,
       system_id: values.systemId, // already coerced to a positive int by dailyCheckSchema
       check_type: values.checkType,
       water_running: values.waterRunning,
       temperature: values.temperature ? Number(values.temperature) : null,
-      notes: values.notes?.trim() ? values.notes.trim() : null,
+      notes: nullIfBlank(values.notes),
     });
     if (error) {
       setServerError(error.message);
@@ -153,27 +152,17 @@ export function DailyCheckForm({
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-6">
-          <div className="grid gap-4 rounded-lg border border-input bg-muted/30 p-4 sm:grid-cols-2">
-            <div className="grid content-start gap-2">
-              <Label htmlFor="date">Date</Label>
-              <Input id="date" type="date" {...register("date")} />
-              {errors.date && (
-                <p className="text-sm text-red-500">{errors.date.message}</p>
-              )}
-            </div>
-            <div className="grid content-start gap-2">
-              <Label htmlFor="time">Time</Label>
-              <Input id="time" type="time" {...register("time")} />
-              {errors.time && (
-                <p className="text-sm text-red-500">{errors.time.message}</p>
-              )}
-            </div>
-          </div>
+          <DateTimeFields
+            idPrefix="daily-check"
+            date={register("date")}
+            time={register("time")}
+            errors={{ date: errors.date?.message, time: errors.time?.message }}
+          />
 
           <div className="grid gap-2">
-            <Label htmlFor="systemId">System</Label>
+            <Label htmlFor="daily-check-system">System</Label>
             <select
-              id="systemId"
+              id="daily-check-system"
               className={SELECT_CLASS}
               {...register("systemId")}
             >
@@ -184,9 +173,10 @@ export function DailyCheckForm({
                 </option>
               ))}
             </select>
-            {errors.systemId && (
-              <p className="text-sm text-red-500">{errors.systemId.message}</p>
-            )}
+            <FieldError
+              id="daily-check-system-error"
+              message={errors.systemId?.message}
+            />
           </div>
 
           <div className="grid gap-2">
@@ -214,43 +204,40 @@ export function DailyCheckForm({
               name="waterRunning"
               render={({ field }) => (
                 <Checkbox
-                  id="waterRunning"
+                  id="daily-check-water-running"
                   checked={field.value}
                   onCheckedChange={(v) => field.onChange(v === true)}
                 />
               )}
             />
-            <Label htmlFor="waterRunning">Water running</Label>
+            <Label htmlFor="daily-check-water-running">Water running</Label>
           </div>
 
           <div className="grid gap-2">
-            <Label htmlFor="temperature">Temperature (°C)</Label>
+            <Label htmlFor="daily-check-temperature">Temperature (°C)</Label>
             <Input
-              id="temperature"
+              id="daily-check-temperature"
               inputMode="decimal"
               placeholder="e.g. 12.5"
               {...register("temperature")}
             />
-            {errors.temperature && (
-              <p className="text-sm text-red-500">
-                {errors.temperature.message}
-              </p>
-            )}
+            <FieldError
+              id="daily-check-temperature-error"
+              message={errors.temperature?.message}
+            />
           </div>
 
           <div className="grid gap-2">
-            <Label htmlFor="notes">Notes</Label>
-            <textarea
-              id="notes"
+            <Label htmlFor="daily-check-notes">Notes</Label>
+            <Textarea
+              id="daily-check-notes"
               rows={3}
-              className={cn(
-                "flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-base shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring md:text-sm",
-              )}
               {...register("notes")}
             />
-            {errors.notes && (
-              <p className="text-sm text-red-500">{errors.notes.message}</p>
-            )}
+            <FieldError
+              id="daily-check-notes-error"
+              message={errors.notes?.message}
+            />
           </div>
 
           {pendingFeedingLogsForSystem.length > 0 && checkType === "PM" && (
@@ -284,7 +271,7 @@ export function DailyCheckForm({
             </div>
           )}
 
-          {serverError && <p className="text-sm text-red-500">{serverError}</p>}
+          <FieldError message={serverError ?? undefined} />
 
           <Button type="submit" disabled={isSubmitting}>
             {isSubmitting ? "Saving…" : "Save check"}

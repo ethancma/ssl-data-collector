@@ -416,7 +416,7 @@ test.describe("e2e smoke", () => {
     await page.getByLabel("Lesion").check();
     await page.getByLabel("Arm curling").check();
     await page
-      .locator("#photoFile")
+      .locator("#health-observation-photo")
       .setInputFiles(path.join(__dirname, "fixtures/test-photo.png"));
     await page.getByLabel("Notes").fill(`${RUN_TAG} health obs with photo`);
     await page.getByRole("button", { name: "Save observation" }).click();

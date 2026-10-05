@@ -14,6 +14,9 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { DateTimeFields } from "@/components/forms/date-time-fields";
+import { FieldError } from "@/components/forms/field-error";
+import { Textarea } from "@/components/ui/textarea";
 import {
   BatchScopeFields,
   BatchSuccessCard,
@@ -30,7 +33,7 @@ import {
 import {
   getPacificDateString,
   getPacificTimeString,
-  pacificWallTimeToIso,
+  parsePacificInstant,
 } from "@/lib/pacific-date-time";
 import {
   type FoodCatalogItem,
@@ -43,7 +46,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { createClient } from "@/lib/supabase/client";
-import { cn } from "@/lib/utils";
+import { nullIfBlank } from "@/lib/utils";
 import { feedingLogSchema } from "@/lib/validation/feeding-log";
 
 const FEEDING_SCOPE_TEXT = {
@@ -134,13 +137,9 @@ export function FeedingLogForm({
     const { systemId, tankId, animalId } = batch.scope;
     if (systemId === null || includedCount === 0) return;
 
-    let fedAt: string;
-    try {
-      fedAt = pacificWallTimeToIso(values.date, values.time);
-    } catch (error) {
-      setError("time", {
-        message: error instanceof Error ? error.message : "Enter a valid Pacific time",
-      });
+    const instant = parsePacificInstant(values.date, values.time);
+    if (instant.error !== undefined) {
+      setError("time", { message: instant.error });
       return;
     }
 
@@ -162,10 +161,10 @@ export function FeedingLogForm({
           p_animal_id: animalId,
           p_included_animal_ids: batch.includedIds,
           p_excluded_animal_ids: batch.excludedIds,
-          p_fed_at: fedAt,
+          p_fed_at: instant.iso,
           p_food_catalog_id: selectedFood.id,
           p_amount_value: hasAmount ? Number(values.amount.trim()) : null,
-          p_notes: values.notes?.trim() ? values.notes.trim() : null,
+          p_notes: nullIfBlank(values.notes),
         }),
       FEEDING_SCOPE_TEXT.nounPlural,
     );
@@ -218,38 +217,12 @@ export function FeedingLogForm({
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-6" noValidate>
-          <div className="grid gap-4 rounded-lg border border-input bg-muted/30 p-4 sm:grid-cols-2">
-            <div className="grid content-start gap-2">
-              <Label htmlFor="date">Date</Label>
-              <Input
-                id="date"
-                type="date"
-                aria-invalid={Boolean(errors.date)}
-                aria-describedby={errors.date ? "date-error" : undefined}
-                {...register("date")}
-              />
-              {errors.date && (
-                <p id="date-error" className="text-sm text-red-500">
-                  {errors.date.message}
-                </p>
-              )}
-            </div>
-            <div className="grid content-start gap-2">
-              <Label htmlFor="time">Time</Label>
-              <Input
-                id="time"
-                type="time"
-                aria-invalid={Boolean(errors.time)}
-                aria-describedby={errors.time ? "time-error" : undefined}
-                {...register("time")}
-              />
-              {errors.time && (
-                <p id="time-error" className="text-sm text-red-500">
-                  {errors.time.message}
-                </p>
-              )}
-            </div>
-          </div>
+          <DateTimeFields
+            idPrefix="feeding"
+            date={register("date")}
+            time={register("time")}
+            errors={{ date: errors.date?.message, time: errors.time?.message }}
+          />
 
           <BatchScopeFields batch={batch} idPrefix="feeding" disabled={isSubmitting} />
 
@@ -278,24 +251,23 @@ export function FeedingLogForm({
                 No active foods are available. Ask an administrator to add a food to the catalog.
               </p>
             )}
-            {errors.catalogId && (
-              <p className="text-sm text-red-500" role="alert">
-                {errors.catalogId.message}
-              </p>
-            )}
+            <FieldError role="alert" message={errors.catalogId?.message} />
           </div>
 
-          {catalogLoadError && (
-            <p className="text-sm text-red-500" role="alert">
-              Food choices could not be loaded. Refresh the page or ask an administrator to check the food catalog.
-            </p>
-          )}
+          <FieldError
+            role="alert"
+            message={
+              catalogLoadError
+                ? "Food choices could not be loaded. Refresh the page or ask an administrator to check the food catalog."
+                : undefined
+            }
+          />
 
           <div className="grid content-start gap-2">
-            <Label htmlFor="amount">Amount per animal (optional)</Label>
+            <Label htmlFor="feeding-amount">Amount per animal (optional)</Label>
             <div className="flex items-center overflow-hidden rounded-md border border-input">
               <Input
-                id="amount"
+                id="feeding-amount"
                 inputMode="decimal"
                 placeholder="e.g. 2"
                 aria-invalid={Boolean(errors.amount)}
@@ -307,37 +279,22 @@ export function FeedingLogForm({
                 {selectedFood?.defaultUnit ?? "Select food"}
               </span>
             </div>
-            {errors.amount && (
-              <p id="amount-error" className="text-sm text-red-500">
-                {errors.amount.message}
-              </p>
-            )}
+            <FieldError id="feeding-amount-error" message={errors.amount?.message} />
           </div>
 
           <div className="grid gap-2">
-            <Label htmlFor="notes">Notes</Label>
-            <textarea
-              id="notes"
+            <Label htmlFor="feeding-notes">Notes</Label>
+            <Textarea
+              id="feeding-notes"
               rows={3}
-              className={cn(
-                "flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-base shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring md:text-sm",
-              )}
               aria-invalid={Boolean(errors.notes)}
-              aria-describedby={errors.notes ? "notes-error" : undefined}
+              aria-describedby={errors.notes ? "feeding-notes-error" : undefined}
               {...register("notes")}
             />
-            {errors.notes && (
-              <p id="notes-error" className="text-sm text-red-500">
-                {errors.notes.message}
-              </p>
-            )}
+            <FieldError id="feeding-notes-error" message={errors.notes?.message} />
           </div>
 
-          {serverError && (
-            <p className="text-sm text-red-500" role="alert">
-              {serverError}
-            </p>
-          )}
+          <FieldError role="alert" message={serverError ?? undefined} />
 
           <Button
             type="submit"

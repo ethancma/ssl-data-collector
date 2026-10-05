@@ -13,10 +13,13 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { DateTimeFields } from "@/components/forms/date-time-fields";
+import { FieldError } from "@/components/forms/field-error";
+import { Textarea } from "@/components/ui/textarea";
 import {
   getPacificDateString,
   getPacificTimeString,
-  pacificWallTimeToIso,
+  parsePacificInstant,
 } from "@/lib/pacific-date-time";
 import { SELECT_CLASS } from "@/components/forms/form-classes";
 import {
@@ -35,7 +38,7 @@ import {
   WATER_QUALITY_PARAMS,
 } from "@/lib/config/reference-data";
 import { createClient } from "@/lib/supabase/client";
-import { cn } from "@/lib/utils";
+import { nullIfBlank } from "@/lib/utils";
 import {
   waterQualitySchema,
   type WaterQualityFormInput,
@@ -112,25 +115,21 @@ export function WaterQualityForm({
       return;
     }
 
-    let testedAt: string;
-    try {
-      testedAt = pacificWallTimeToIso(values.date, values.time);
-    } catch (error) {
-      setError("time", {
-        message: error instanceof Error ? error.message : "Enter a valid Pacific time",
-      });
+    const instant = parsePacificInstant(values.date, values.time);
+    if (instant.error !== undefined) {
+      setError("time", { message: instant.error });
       return;
     }
 
     const supabase = createClient();
     const { error } = await supabase.from("water_quality_readings").insert({
-      tested_at: testedAt,
+      tested_at: instant.iso,
       system_id: values.systemId,
       ph_source: values.phSource,
       ...Object.fromEntries(
         WATER_QUALITY_PARAMETERS.map((key) => [key, values[key] ? Number(values[key]) : null]),
       ),
-      notes: values.notes?.trim() ? values.notes.trim() : null,
+      notes: nullIfBlank(values.notes),
     });
     if (error) {
       if (error.message.includes("Notes are required when")) {
@@ -158,43 +157,17 @@ export function WaterQualityForm({
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-6" noValidate>
-          <div className="grid gap-4 rounded-lg border border-input bg-muted/30 p-4 sm:grid-cols-2">
-            <div className="grid content-start gap-2">
-              <Label htmlFor="date">Date</Label>
-              <Input
-                id="date"
-                type="date"
-                aria-describedby={errors.date ? "water-quality-date-error" : undefined}
-                aria-invalid={Boolean(errors.date)}
-                {...register("date")}
-              />
-              {errors.date && (
-                <p id="water-quality-date-error" className="text-sm text-red-500">
-                  {errors.date.message}
-                </p>
-              )}
-            </div>
-            <div className="grid content-start gap-2">
-              <Label htmlFor="time">Time</Label>
-              <Input
-                id="time"
-                type="time"
-                aria-describedby={errors.time ? "water-quality-time-error" : undefined}
-                aria-invalid={Boolean(errors.time)}
-                {...register("time")}
-              />
-              {errors.time && (
-                <p id="water-quality-time-error" className="text-sm text-red-500">
-                  {errors.time.message}
-                </p>
-              )}
-            </div>
-          </div>
+          <DateTimeFields
+            idPrefix="water-quality"
+            date={register("date")}
+            time={register("time")}
+            errors={{ date: errors.date?.message, time: errors.time?.message }}
+          />
 
           <div className="grid gap-2">
-            <Label htmlFor="systemId">System</Label>
+            <Label htmlFor="water-quality-system">System</Label>
             <select
-              id="systemId"
+              id="water-quality-system"
               className={SELECT_CLASS}
               aria-describedby={errors.systemId ? "water-quality-system-error" : undefined}
               aria-invalid={Boolean(errors.systemId)}
@@ -207,11 +180,7 @@ export function WaterQualityForm({
                 </option>
               ))}
             </select>
-            {errors.systemId && (
-              <p id="water-quality-system-error" className="text-sm text-red-500">
-                {errors.systemId.message}
-              </p>
-            )}
+            <FieldError id="water-quality-system-error" message={errors.systemId?.message} />
           </div>
 
           <div className="grid gap-2">
@@ -241,8 +210,9 @@ export function WaterQualityForm({
                 toNumericReading(watchedValues[param.key]),
                 target,
               );
-              const errorId = `water-quality-${param.key}-error`;
-              const warningId = `water-quality-${param.key}-warning`;
+              const paramId = `water-quality-${param.key.replace(/_/g, "-")}`;
+              const errorId = `${paramId}-error`;
+              const warningId = `${paramId}-warning`;
               const describedBy = [
                 errors[param.key] ? errorId : null,
                 warning ? warningId : null,
@@ -252,22 +222,18 @@ export function WaterQualityForm({
 
               return (
                 <div key={param.key} className="grid content-start gap-2">
-                  <Label htmlFor={param.key}>
+                  <Label htmlFor={paramId}>
                     {param.label} ({param.unit ?? "unitless"})
                   </Label>
                   <Input
-                    id={param.key}
+                    id={paramId}
                     inputMode="decimal"
                     placeholder="—"
                     aria-describedby={describedBy}
                     aria-invalid={Boolean(errors[param.key])}
                     {...register(param.key)}
                   />
-                  {errors[param.key] && (
-                    <p id={errorId} className="text-sm text-red-500">
-                      {errors[param.key]?.message}
-                    </p>
-                  )}
+                  <FieldError id={errorId} message={errors[param.key]?.message} />
                   {warning && target && (
                     <p
                       id={warningId}
@@ -283,38 +249,28 @@ export function WaterQualityForm({
           </div>
 
           <div className="grid gap-2">
-            <Label htmlFor="notes">Notes</Label>
-            <textarea
-              id="notes"
+            <Label htmlFor="water-quality-notes">Notes</Label>
+            <Textarea
+              id="water-quality-notes"
               rows={3}
-              className={cn(
-                "flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-base shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring md:text-sm",
-              )}
               aria-describedby={errors.notes ? "water-quality-notes-error" : undefined}
               aria-invalid={Boolean(errors.notes)}
               {...register("notes")}
             />
-            {errors.notes && (
-              <p id="water-quality-notes-error" className="text-sm text-red-500">
-                {errors.notes.message}
-              </p>
-            )}
+            <FieldError id="water-quality-notes-error" message={errors.notes?.message} />
           </div>
 
-          {targetLoadError && (
-            <p className="text-sm text-red-500" role="alert">
-              Target ranges could not be loaded. Refresh before saving: {targetLoadError}
-            </p>
-          )}
+          <FieldError
+            role="alert"
+            message={
+              targetLoadError
+                ? `Target ranges could not be loaded. Refresh before saving: ${targetLoadError}`
+                : undefined
+            }
+          />
 
-          {errors.root && (
-            <p className="text-sm text-red-500">{errors.root.message}</p>
-          )}
-          {serverError && (
-            <p className="text-sm text-red-500" role="alert">
-              {serverError}
-            </p>
-          )}
+          <FieldError message={errors.root?.message} />
+          <FieldError role="alert" message={serverError ?? undefined} />
 
           <Button
             type="submit"

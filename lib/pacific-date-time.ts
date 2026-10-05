@@ -137,6 +137,18 @@ export function pacificWallTimeToIso(date: string, time: string) {
   return matches[0].toISOString();
 }
 
+// Form-friendly wrapper: returns the error message instead of throwing.
+export function parsePacificInstant(
+  date: string,
+  time: string,
+): { iso: string; error?: undefined } | { iso?: undefined; error: string } {
+  try {
+    return { iso: pacificWallTimeToIso(date, time) };
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "Enter a valid Pacific time" };
+  }
+}
+
 export function pacificDayBoundaryToIso(date: string) {
   return pacificWallTimeToIso(date, "00:00");
 }

@@ -21,7 +21,7 @@ import {
 import {
   getPacificDateString,
   getPacificTimeString,
-  pacificWallTimeToIso,
+  parsePacificInstant,
 } from "@/lib/pacific-date-time";
 import {
   attachedCatalogId,
@@ -48,12 +48,15 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { DateTimeFields } from "@/components/forms/date-time-fields";
+import { FieldError } from "@/components/forms/field-error";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { UnitSelect } from "@/components/forms/unit-select";
 import { MEASUREMENT_UNITS } from "@/lib/config/reference-data";
 import { createClient } from "@/lib/supabase/client";
-import { cn } from "@/lib/utils";
+import { nullIfBlank } from "@/lib/utils";
 
 const STAR_SCOPE_TEXT = {
   legend: "Stars treated",
@@ -147,13 +150,9 @@ export function StarTreatmentForm({
     const { systemId, tankId, animalId } = batch.scope;
     if (systemId === null || includedCount === 0) return;
 
-    let administeredAt: string;
-    try {
-      administeredAt = pacificWallTimeToIso(values.date, values.time);
-    } catch (error) {
-      setError("time", {
-        message: error instanceof Error ? error.message : "Enter a valid Pacific time",
-      });
+    const instant = parsePacificInstant(values.date, values.time);
+    if (instant.error !== undefined) {
+      setError("time", { message: instant.error });
       return;
     }
 
@@ -177,14 +176,14 @@ export function StarTreatmentForm({
           p_animal_id: animalId,
           p_included_animal_ids: batch.includedIds,
           p_excluded_animal_ids: batch.excludedIds,
-          p_administered_at: administeredAt,
+          p_administered_at: instant.iso,
           p_amount: amountValue,
           p_unit: amountValue === null ? null : values.unit.trim(),
           p_concentration: concentrationValue,
           p_concentration_unit:
             concentrationValue === null ? null : values.concentrationUnit.trim(),
           p_treatment_type: treatmentType,
-          p_notes: values.notes.trim() || null,
+          p_notes: nullIfBlank(values.notes),
           p_catalog_id: catalogId,
         }),
       STAR_SCOPE_TEXT.nounPlural,
@@ -243,40 +242,15 @@ export function StarTreatmentForm({
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-6" noValidate>
-          <div className="grid gap-4 rounded-lg border border-input bg-muted/30 p-4 sm:grid-cols-2">
-            <div className="grid content-start gap-2">
-              <Label htmlFor="star-treatment-date">Administered date</Label>
-              <Input
-                id="star-treatment-date"
-                type="date"
-                min={getPacificDateString()}
-                max={getPacificDateString()}
-                aria-describedby={errors.date ? "star-treatment-date-error" : undefined}
-                aria-invalid={Boolean(errors.date)}
-                {...register("date")}
-              />
-              {errors.date && (
-                <p id="star-treatment-date-error" className="text-sm text-red-500">
-                  {errors.date.message}
-                </p>
-              )}
-            </div>
-            <div className="grid content-start gap-2">
-              <Label htmlFor="star-treatment-time">Time</Label>
-              <Input
-                id="star-treatment-time"
-                type="time"
-                aria-describedby={errors.time ? "star-treatment-time-error" : undefined}
-                aria-invalid={Boolean(errors.time)}
-                {...register("time")}
-              />
-              {errors.time && (
-                <p id="star-treatment-time-error" className="text-sm text-red-500">
-                  {errors.time.message}
-                </p>
-              )}
-            </div>
-          </div>
+          <DateTimeFields
+            idPrefix="star-treatment"
+            date={register("date")}
+            time={register("time")}
+            errors={{ date: errors.date?.message, time: errors.time?.message }}
+            dateLabel="Administered date"
+            dateMin={getPacificDateString()}
+            dateMax={getPacificDateString()}
+          />
 
           <BatchScopeFields
             batch={batch}
@@ -332,11 +306,10 @@ export function StarTreatmentForm({
                 aria-invalid={Boolean(errors.treatmentName)}
                 {...register("treatmentName")}
               />
-              {errors.treatmentName && (
-                <p id="star-treatment-custom-error" className="text-sm text-red-500">
-                  {errors.treatmentName.message}
-                </p>
-              )}
+              <FieldError
+                id="star-treatment-custom-error"
+                message={errors.treatmentName?.message}
+              />
             </div>
           )}
 
@@ -352,11 +325,10 @@ export function StarTreatmentForm({
                 aria-invalid={Boolean(errors.amount)}
                 {...register("amount")}
               />
-              {errors.amount && (
-                <p id="star-treatment-amount-error" className="text-sm text-red-500">
-                  {errors.amount.message}
-                </p>
-              )}
+              <FieldError
+                id="star-treatment-amount-error"
+                message={errors.amount?.message}
+              />
             </div>
             <Controller
               control={control}
@@ -390,11 +362,10 @@ export function StarTreatmentForm({
                 aria-invalid={Boolean(errors.concentration)}
                 {...register("concentration")}
               />
-              {errors.concentration && (
-                <p id="star-treatment-concentration-error" className="text-sm text-red-500">
-                  {errors.concentration.message}
-                </p>
-              )}
+              <FieldError
+                id="star-treatment-concentration-error"
+                message={errors.concentration?.message}
+              />
             </div>
             <Controller
               control={control}
@@ -416,28 +387,21 @@ export function StarTreatmentForm({
 
           <div className="grid gap-2">
             <Label htmlFor="star-treatment-notes">Notes</Label>
-            <textarea
+            <Textarea
               id="star-treatment-notes"
               rows={4}
-              className={cn(
-                "flex min-h-24 w-full rounded-md border border-input bg-transparent px-3 py-2 text-base shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring md:text-sm",
-              )}
+              className="min-h-24"
               aria-describedby={errors.notes ? "star-treatment-notes-error" : undefined}
               aria-invalid={Boolean(errors.notes)}
               {...register("notes")}
             />
-            {errors.notes && (
-              <p id="star-treatment-notes-error" className="text-sm text-red-500">
-                {errors.notes.message}
-              </p>
-            )}
+            <FieldError
+              id="star-treatment-notes-error"
+              message={errors.notes?.message}
+            />
           </div>
 
-          {serverError && (
-            <p className="text-sm text-red-500" role="alert">
-              {serverError}
-            </p>
-          )}
+          <FieldError role="alert" message={serverError ?? undefined} />
 
           <div className="flex flex-wrap gap-3">
             <Button

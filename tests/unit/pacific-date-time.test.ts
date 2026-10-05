@@ -5,7 +5,17 @@ import {
   formatPacificDateTime,
   getPacificDateTimeParts,
   pacificWallTimeToIso,
+  parsePacificInstant,
 } from "@/lib/pacific-date-time";
+
+test("parsePacificInstant returns the ISO value or the error message instead of throwing", () => {
+  assert.deepEqual(parsePacificInstant("2026-01-15", "12:00"), {
+    iso: "2026-01-15T20:00:00.000Z",
+  });
+  const skipped = parsePacificInstant("2026-03-08", "02:30");
+  assert.equal(skipped.iso, undefined);
+  assert.match(skipped.error ?? "", /does not exist in Pacific time/);
+});
 
 test("converts ordinary operational form values into an ISO payload timestamp", () => {
   const payload = {

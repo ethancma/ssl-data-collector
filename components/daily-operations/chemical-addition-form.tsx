@@ -14,10 +14,13 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { DateTimeFields } from "@/components/forms/date-time-fields";
+import { FieldError } from "@/components/forms/field-error";
+import { Textarea } from "@/components/ui/textarea";
 import {
   getPacificDateString,
   getPacificTimeString,
-  pacificWallTimeToIso,
+  parsePacificInstant,
 } from "@/lib/pacific-date-time";
 import {
   QUICK_PICK_HEADING_CLASS,
@@ -30,7 +33,7 @@ import { Label } from "@/components/ui/label";
 import { UnitSelect } from "@/components/forms/unit-select";
 import { MEASUREMENT_UNITS } from "@/lib/config/reference-data";
 import { createClient } from "@/lib/supabase/client";
-import { cn } from "@/lib/utils";
+import { nullIfBlank } from "@/lib/utils";
 import {
   chemicalAdditionSchema,
 } from "@/lib/validation/chemical-addition";
@@ -119,19 +122,15 @@ export function ChemicalAdditionForm({
 
   const onSubmit = async (values: SystemChemicalAdditionFormValues) => {
     setServerError(null);
-    let addedAt: string;
-    try {
-      addedAt = pacificWallTimeToIso(values.date, values.time);
-    } catch (error) {
-      setError("time", {
-        message: error instanceof Error ? error.message : "Enter a valid Pacific time",
-      });
+    const instant = parsePacificInstant(values.date, values.time);
+    if (instant.error !== undefined) {
+      setError("time", { message: instant.error });
       return;
     }
 
     const supabase = createClient();
     const { error } = await supabase.from("chemical_additions").insert({
-      added_at: addedAt,
+      added_at: instant.iso,
       system_id: values.systemId,
       catalog_id: attachedCatalogId(
         { catalogId: values.catalogId, name: values.chemicalName },
@@ -140,7 +139,7 @@ export function ChemicalAdditionForm({
       chemical_name: normalizeSnapshot(values.chemicalName),
       amount: Number(values.amount),
       unit: values.unit.trim(),
-      reason: values.reason?.trim() ? values.reason.trim() : null,
+      reason: nullIfBlank(values.reason),
     });
     if (error) {
       setServerError(error.message);
@@ -160,27 +159,17 @@ export function ChemicalAdditionForm({
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-6">
-          <div className="grid gap-4 rounded-lg border border-input bg-muted/30 p-4 sm:grid-cols-2">
-            <div className="grid content-start gap-2">
-              <Label htmlFor="date">Date</Label>
-              <Input id="date" type="date" {...register("date")} />
-              {errors.date && (
-                <p className="text-sm text-red-500">{errors.date.message}</p>
-              )}
-            </div>
-            <div className="grid content-start gap-2">
-              <Label htmlFor="time">Time</Label>
-              <Input id="time" type="time" {...register("time")} />
-              {errors.time && (
-                <p className="text-sm text-red-500">{errors.time.message}</p>
-              )}
-            </div>
-          </div>
+          <DateTimeFields
+            idPrefix="chemical-addition"
+            date={register("date")}
+            time={register("time")}
+            errors={{ date: errors.date?.message, time: errors.time?.message }}
+          />
 
           <div className="grid gap-2">
-            <Label htmlFor="systemId">System</Label>
+            <Label htmlFor="chemical-addition-system">System</Label>
             <select
-              id="systemId"
+              id="chemical-addition-system"
               className={SELECT_CLASS}
               {...register("systemId")}
             >
@@ -191,23 +180,25 @@ export function ChemicalAdditionForm({
                 </option>
               ))}
             </select>
-            {errors.systemId && (
-              <p className="text-sm text-red-500">{errors.systemId.message}</p>
-            )}
+            <FieldError
+              id="chemical-addition-system-error"
+              message={errors.systemId?.message}
+            />
           </div>
 
           <div
             role="group"
-            aria-labelledby="chemical-quick-pick-label"
+            aria-labelledby="chemical-addition-catalog-id-label"
             className="grid content-start gap-2"
           >
-            <p id="chemical-quick-pick-label" className={QUICK_PICK_HEADING_CLASS}>
+            <p id="chemical-addition-catalog-id-label" className={QUICK_PICK_HEADING_CLASS}>
               Quick pick
             </p>
             <div className="grid gap-2 sm:grid-cols-2">
               {catalogs.map((item) => (
                 <label key={item.id} className={QUICK_PICK_OPTION_CLASS} title={item.name}>
                   <input
+                    id={`chemical-addition-catalog-id-${item.id}`}
                     type="radio"
                     value={item.id}
                     {...register("catalogId", { onChange: onChemicalCatalogChange })}
@@ -217,6 +208,7 @@ export function ChemicalAdditionForm({
               ))}
               <label className={QUICK_PICK_OPTION_CLASS}>
                 <input
+                  id="chemical-addition-catalog-id-other"
                   type="radio"
                   value=""
                   {...register("catalogId", { onChange: onChemicalCatalogChange })}
@@ -226,49 +218,52 @@ export function ChemicalAdditionForm({
             </div>
           </div>
 
-          {catalogLoadError && (
-            <p className="text-sm text-red-500" role="alert">
-              Quick picks could not be loaded. Enter the chemical and unit manually.
-            </p>
-          )}
+          <FieldError
+            role="alert"
+            message={
+              catalogLoadError
+                ? "Quick picks could not be loaded. Enter the chemical and unit manually."
+                : undefined
+            }
+          />
 
           {catalogId === "" && (
             <div className="grid gap-2">
-              <Label htmlFor="chemicalName">Chemical/product name</Label>
+              <Label htmlFor="chemical-addition-chemical-name">Chemical/product name</Label>
               <Input
-                id="chemicalName"
+                id="chemical-addition-chemical-name"
                 maxLength={200}
-                aria-describedby={errors.chemicalName ? "chemicalName-error" : undefined}
+                aria-describedby={errors.chemicalName ? "chemical-addition-chemical-name-error" : undefined}
                 aria-invalid={Boolean(errors.chemicalName)}
                 {...register("chemicalName")}
               />
-              {errors.chemicalName && (
-                <p id="chemicalName-error" className="text-sm text-red-500">
-                  {errors.chemicalName.message}
-                </p>
-              )}
+              <FieldError
+                id="chemical-addition-chemical-name-error"
+                message={errors.chemicalName?.message}
+              />
             </div>
           )}
 
           <div className="grid items-start gap-4 sm:grid-cols-2">
             <div className="grid content-start gap-2">
-              <Label htmlFor="amount">Amount</Label>
+              <Label htmlFor="chemical-addition-amount">Amount</Label>
               <Input
-                id="amount"
+                id="chemical-addition-amount"
                 inputMode="decimal"
                 placeholder="e.g. 50"
                 {...register("amount")}
               />
-              {errors.amount && (
-                <p className="text-sm text-red-500">{errors.amount.message}</p>
-              )}
+              <FieldError
+                id="chemical-addition-amount-error"
+                message={errors.amount?.message}
+              />
             </div>
             <Controller
               control={control}
               name="unit"
               render={({ field }) => (
                 <UnitSelect
-                  id="unit"
+                  id="chemical-addition-unit"
                   label="Unit"
                   options={MEASUREMENT_UNITS}
                   value={field.value}
@@ -281,21 +276,19 @@ export function ChemicalAdditionForm({
           </div>
 
           <div className="grid gap-2">
-            <Label htmlFor="reason">Reason</Label>
-            <textarea
-              id="reason"
+            <Label htmlFor="chemical-addition-reason">Reason</Label>
+            <Textarea
+              id="chemical-addition-reason"
               rows={3}
-              className={cn(
-                "flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-base shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring md:text-sm",
-              )}
               {...register("reason")}
             />
-            {errors.reason && (
-              <p className="text-sm text-red-500">{errors.reason.message}</p>
-            )}
+            <FieldError
+              id="chemical-addition-reason-error"
+              message={errors.reason?.message}
+            />
           </div>
 
-          {serverError && <p className="text-sm text-red-500">{serverError}</p>}
+          <FieldError message={serverError ?? undefined} />
 
           <Button type="submit" disabled={isSubmitting}>
             {isSubmitting ? "Saving…" : "Save system addition"}

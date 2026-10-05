@@ -25,12 +25,14 @@ import {
   QUICK_PICK_OPTION_CLASS,
 } from "@/components/forms/form-classes";
 import { Button } from "@/components/ui/button";
+import { FieldError } from "@/components/forms/field-error";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { UnitSelect } from "@/components/forms/unit-select";
 import { MEASUREMENT_UNITS } from "@/lib/config/reference-data";
 import { createClient } from "@/lib/supabase/client";
-import { cn } from "@/lib/utils";
+import { cn, nullIfBlank } from "@/lib/utils";
 
 export type StarTreatmentRecordData = {
   id: number;
@@ -151,7 +153,7 @@ export function StarTreatmentRecord({
       p_concentration: concentration,
       p_concentration_unit:
         concentration === null ? null : values.concentrationUnit.trim(),
-      p_notes: values.notes.trim() || null,
+      p_notes: nullIfBlank(values.notes),
       p_catalog_id: catalogId,
     });
 
@@ -297,11 +299,10 @@ export function StarTreatmentRecord({
                   aria-invalid={Boolean(errors.treatmentName)}
                   {...register("treatmentName")}
                 />
-                {errors.treatmentName && (
-                  <p id={fieldId("custom-treatment-error")} className="text-sm text-red-500">
-                    {errors.treatmentName.message}
-                  </p>
-                )}
+                <FieldError
+                  id={fieldId("custom-treatment-error")}
+                  message={errors.treatmentName?.message}
+                />
               </div>
             )}
 
@@ -321,11 +322,7 @@ export function StarTreatmentRecord({
                     },
                   })}
                 />
-                {errors.amount && (
-                  <p id={fieldId("amount-error")} className="text-sm text-red-500">
-                    {errors.amount.message}
-                  </p>
-                )}
+                <FieldError id={fieldId("amount-error")} message={errors.amount?.message} />
               </div>
               <Controller
                 control={control}
@@ -366,11 +363,10 @@ export function StarTreatmentRecord({
                     },
                   })}
                 />
-                {errors.concentration && (
-                  <p id={fieldId("concentration-error")} className="text-sm text-red-500">
-                    {errors.concentration.message}
-                  </p>
-                )}
+                <FieldError
+                  id={fieldId("concentration-error")}
+                  message={errors.concentration?.message}
+                />
               </div>
               <Controller
                 control={control}
@@ -392,21 +388,15 @@ export function StarTreatmentRecord({
 
             <div className="grid gap-2">
               <Label htmlFor={fieldId("notes")}>Notes</Label>
-              <textarea
+              <Textarea
                 id={fieldId("notes")}
                 rows={3}
-                className={cn(
-                  "flex min-h-24 w-full rounded-md border border-input bg-transparent px-3 py-2 text-base shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring md:text-sm",
-                )}
+                className="min-h-24"
                 aria-describedby={errors.notes ? fieldId("notes-error") : undefined}
                 aria-invalid={Boolean(errors.notes)}
                 {...register("notes")}
               />
-              {errors.notes && (
-                <p id={fieldId("notes-error")} className="text-sm text-red-500">
-                  {errors.notes.message}
-                </p>
-              )}
+              <FieldError id={fieldId("notes-error")} message={errors.notes?.message} />
             </div>
 
             {updateMessage && (
