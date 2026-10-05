@@ -1,49 +1,16 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
-import {
-  StarTreatmentRecord,
-  type StarTreatmentRecordData,
-} from "@/components/star-treatment-record";
-import {
-  addPacificCalendarDays,
-  getPacificDateString,
-  pacificDayBoundaryToIso,
-} from "@/components/daily-operations/pacific-date-time";
+import { StarTreatmentRecord } from "@/components/star-treatment-record";
+import { getPacificDateString } from "@/lib/pacific-date-time";
 import { SELECT_CLASS } from "@/components/daily-operations/form-classes";
-import {
-  sortCatalogByName,
-  type StarTreatmentCatalogItem,
-} from "@/components/daily-operations/quick-pick-catalogs";
 import { Button } from "@/components/ui/button";
 import { getCurrentProfile } from "@/lib/supabase/current-profile";
-import { createClient } from "@/lib/supabase/server";
 
-type SearchParams = Promise<{
-  from?: string | string[];
-  to?: string | string[];
-  animal?: string | string[];
-  treatment?: string | string[];
-}>;
+import { loadStarTreatmentsData } from "./data";
+import { parseStarTreatmentFilters, type StarTreatmentSearchParams } from "./derivations";
 
-function firstValue(value: string | string[] | undefined) {
-  return Array.isArray(value) ? value[0] : value;
-}
-
-function isDate(value: string | undefined): value is string {
-  if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
-  const [year, month, day] = value.split("-").map(Number);
-  const parsed = new Date(Date.UTC(year, month - 1, day));
-  return (
-    parsed.getUTCFullYear() === year &&
-    parsed.getUTCMonth() === month - 1 &&
-    parsed.getUTCDate() === day
-  );
-}
-
-function oneRelation<T>(value: T | T[] | null): T | null {
-  return Array.isArray(value) ? (value[0] ?? null) : value;
-}
+type SearchParams = Promise<StarTreatmentSearchParams>;
 
 export default async function StarTreatmentsPage({ searchParams }: { searchParams: SearchParams }) {
   const profile = await getCurrentProfile();
@@ -55,102 +22,10 @@ export default async function StarTreatmentsPage({ searchParams }: { searchParam
 
   const params = await searchParams;
   const today = getPacificDateString();
-  const requestedFrom = firstValue(params.from);
-  const requestedTo = firstValue(params.to);
-  const from = isDate(requestedFrom)
-    ? requestedFrom
-    : addPacificCalendarDays(today, -29);
-  const to = isDate(requestedTo) ? requestedTo : today;
-  const animalFilter = firstValue(params.animal) ?? "";
-  const treatmentFilter = firstValue(params.treatment) ?? "";
-  const supabase = await createClient();
-
-  const [starSpeciesResult, catalogResult] = await Promise.all([
-    supabase
-      .from("species")
-      .select("id")
-      .eq("category", "star")
-      .order("common_name")
-      .order("id"),
-    // Retired rows are included so existing records keep their quick pick; the record
-    // editor only offers them on records that already reference them.
-    supabase
-      .from("star_treatment_catalog")
-      .select("id, name, default_amount_unit, default_concentration_unit, is_active")
-      .order("name"),
-  ]);
-  const { data: starSpecies, error: starSpeciesError } = starSpeciesResult;
-  const catalog: StarTreatmentCatalogItem[] = sortCatalogByName(
-    (catalogResult.data ?? []).map((item) => ({
-      id: item.id,
-      name: item.name,
-      defaultAmountUnit: item.default_amount_unit,
-      defaultConcentrationUnit: item.default_concentration_unit,
-      isActive: item.is_active,
-    })),
-  );
-  const starSpeciesIds = (starSpecies ?? []).map((species) => species.id);
-  const starsResult = starSpeciesIds.length
-    ? await supabase
-        .from("animals")
-        .select("id, name")
-        .eq("tracking_type", "individual")
-        .in("species_id", starSpeciesIds)
-        .order("name")
-    : { data: [], error: null };
-  const stars = starsResult.data;
-  const starChoicesError =
-    starSpeciesError?.message ??
-    starsResult.error?.message ??
-    (starSpeciesIds.length === 0 ? "No star species are configured." : undefined);
-
-  let treatmentQuery = supabase
-    .from("star_treatments")
-    .select(
-      "id, animal_id, tank_id, catalog_id, treatment_type, amount, unit, concentration, concentration_unit, notes, administered_at, recorded_by, data_source, entered_at, animal:animals!star_treatments_animal_id_fkey(id, name), tank:tanks!star_treatments_tank_id_fkey(id, name, system:systems!tanks_system_id_fkey(id, name))",
-    )
-    .gte("administered_at", pacificDayBoundaryToIso(from))
-    .lt(
-      "administered_at",
-      pacificDayBoundaryToIso(addPacificCalendarDays(to, 1)),
-    )
-    .order("administered_at", { ascending: false });
-
-  if (/^\d+$/.test(animalFilter)) {
-    treatmentQuery = treatmentQuery.eq("animal_id", Number(animalFilter));
-  }
-  if (treatmentFilter === "probiotics" || treatmentFilter === "reef_dip") {
-    treatmentQuery = treatmentQuery.eq("treatment_type", treatmentFilter);
-  } else if (treatmentFilter === "other") {
-    treatmentQuery = treatmentQuery.not("treatment_type", "in", '("probiotics","reef_dip")');
-  }
-
-  const { data: treatments, error } = await treatmentQuery;
-  const records: StarTreatmentRecordData[] = (treatments ?? []).map((treatment) => {
-    const animal = oneRelation(treatment.animal);
-    const tank = oneRelation(treatment.tank);
-    const system = oneRelation(tank?.system ?? null);
-    return {
-      id: treatment.id,
-      animalId: treatment.animal_id,
-      animalName: animal?.name ?? `Star ${treatment.animal_id}`,
-      tankId: treatment.tank_id,
-      catalogId: treatment.catalog_id,
-      tankName: tank?.name ?? `Tank ${treatment.tank_id}`,
-      systemName: system?.name ?? "Unknown system",
-      treatmentType: treatment.treatment_type,
-      amount: treatment.amount === null ? null : String(treatment.amount),
-      unit: treatment.unit,
-      concentration:
-        treatment.concentration === null ? null : String(treatment.concentration),
-      concentrationUnit: treatment.concentration_unit,
-      notes: treatment.notes,
-      administeredAt: treatment.administered_at,
-      recordedBy: treatment.recorded_by,
-      dataSource: treatment.data_source,
-      enteredAt: treatment.entered_at,
-    };
-  });
+  const filters = parseStarTreatmentFilters(params, today);
+  const { from, to, animalFilter, treatmentFilter } = filters;
+  const { data, starChoicesError, catalogError, error } = await loadStarTreatmentsData(filters);
+  const { catalog, stars, records } = data;
 
   return (
     <div className="flex w-full max-w-5xl flex-col gap-6">
@@ -172,7 +47,7 @@ export default async function StarTreatmentsPage({ searchParams }: { searchParam
         </p>
       )}
 
-      {catalogResult.error && (
+      {catalogError !== undefined && (
         <p className="text-sm text-red-500" role="alert">
           Treatment quick picks could not be loaded. Existing snapshots remain editable
           as Other.
@@ -248,9 +123,9 @@ export default async function StarTreatmentsPage({ searchParams }: { searchParam
         </div>
       </form>
 
-      {error ? (
+      {error !== undefined ? (
         <p className="text-sm text-red-500" role="alert">
-          Treatments could not be loaded: {error.message}
+          Treatments could not be loaded: {error}
         </p>
       ) : records.length === 0 ? (
         <p className="rounded-md border p-6 text-sm text-muted-foreground">

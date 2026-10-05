@@ -15,7 +15,8 @@ day, matching the UX conventions already established in the codebase.
   **BLOCKED** in
   [docs/implementation-checklist.md](../../docs/implementation-checklist.md) — build the
   form structure with an obvious config hook for the real values instead of guessing.
-- ONLY touch `app/**`, `components/**`, and `lib/validation/**` (plus reading, not editing,
+- ONLY touch `app/**`, `components/**`, `lib/validation/**`, `lib/daily-operations/**`, and
+  `lib/pacific-date-time.ts` (plus reading, not editing,
   `lib/config/**` for reference data).
 ## Approach
 1. Reuse existing patterns before inventing new ones:

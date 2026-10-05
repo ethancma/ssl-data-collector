@@ -5,7 +5,7 @@ import {
   formatPacificDateTime,
   getPacificDateTimeParts,
   pacificWallTimeToIso,
-} from "@/components/daily-operations/pacific-date-time";
+} from "@/lib/pacific-date-time";
 
 test("converts ordinary operational form values into an ISO payload timestamp", () => {
   const payload = {

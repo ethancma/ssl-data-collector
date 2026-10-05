@@ -5,7 +5,7 @@ import {
   QUICK_PICK_CATALOGS,
   quickPickSelectColumns,
   toQuickPickCatalogRow,
-} from "@/components/quick-pick-catalog-config";
+} from "@/lib/daily-operations/quick-pick-catalog-config";
 import {
   QuickPickCatalogManager,
   type QuickPickCatalogInitialData,

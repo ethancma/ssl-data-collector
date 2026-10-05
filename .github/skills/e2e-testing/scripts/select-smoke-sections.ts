@@ -62,8 +62,8 @@ const rules: SelectionRule[] = [
       /^components\/(chemical-addition-form|daily-check-form|feeding-log-form|health-observation-form|maintenance-log-form|quick-pick-catalog-manager|unit-select|water-quality-form|water-quality-target-manager)\.tsx$/.test(
         file,
       ) ||
-      file === "components/quick-pick-catalog-config.ts" ||
-      /^lib\/validation\/(chemical-addition|daily-check|feeding-log|health-observation|maintenance-log|water-quality)\.ts$/.test(
+      /^lib\/(daily-operations\/|pacific-date-time\.ts$)/.test(file) ||
+      /^lib\/validation\/(chemical-addition|common-fields|daily-check|feeding-log|health-observation|maintenance-log|water-quality)\.ts$/.test(
         file,
       ),
     sections: ["daily-operations"],
@@ -97,7 +97,7 @@ const rules: SelectionRule[] = [
       /^app\/protected\/star-treatments(\/|$)/.test(file) ||
       /^app\/protected\/settings\/quick-picks(\/|$)/.test(file) ||
       file === "components/quick-pick-catalog-manager.tsx" ||
-      file === "components/quick-pick-catalog-config.ts" ||
+      /^lib\/daily-operations\/quick-pick-catalog(s|-config)\.ts$/.test(file) ||
       file === "components/unit-select.tsx" ||
       /^components\/star-treatment-(form|record)\.tsx$/.test(file),
     sections: ["star-treatments"],
@@ -105,8 +105,9 @@ const rules: SelectionRule[] = [
   {
     description: "batch feeding or batch Star treatment logging",
     matches: (file) =>
-      file === "app/protected/daily-operations/page.tsx" ||
-      /^components\/daily-operations\/(batch-scope-checklist|batch-selection|log-types)\.tsx?$/.test(
+      /^app\/protected\/daily-operations(\/|$)/.test(file) ||
+      file === "lib/daily-operations/batch-selection.ts" ||
+      /^components\/daily-operations\/(batch-scope-checklist|log-types)\.tsx$/.test(
         file,
       ) ||
       /^components\/(feeding-log-form|star-treatment-form)\.tsx$/.test(file),
@@ -122,6 +123,7 @@ const rules: SelectionRule[] = [
     description: "Systems dashboard or trend charts",
     matches: (file) =>
       /^app\/protected\/systems(\/|$)/.test(file) ||
+      file === "lib/pacific-date-time.ts" ||
       /^components\/systems\//.test(file),
     sections: ["systems-trends"],
   },

@@ -26,15 +26,15 @@ import {
   type BatchScopeAnimal,
   type BatchScopeSystem,
   type BatchScopeTank,
-} from "@/components/daily-operations/batch-selection";
+} from "@/lib/daily-operations/batch-selection";
 import {
   getPacificDateString,
   getPacificTimeString,
   pacificWallTimeToIso,
-} from "@/components/daily-operations/pacific-date-time";
+} from "@/lib/pacific-date-time";
 import {
   type FoodCatalogItem,
-} from "@/components/daily-operations/quick-pick-catalogs";
+} from "@/lib/daily-operations/quick-pick-catalogs";
 import {
   QUICK_PICK_HEADING_CLASS,
   QUICK_PICK_LABEL_CLASS,

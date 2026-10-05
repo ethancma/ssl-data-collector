@@ -649,7 +649,7 @@ test.describe("e2e smoke", () => {
     await page.goto("/protected/daily-operations?type=maintenance-log");
     await expectDefaultDateAndTime(page);
     await page.getByLabel("Time").fill(PICKED_TIME);
-    await page.getByLabel("System").selectOption(String(grahamSystemId));
+    await page.getByLabel("System", { exact: true }).selectOption(String(grahamSystemId));
     await page.getByLabel("Filter change").check();
     await page.getByLabel("Notes").fill(`${RUN_TAG} maintenance picked time`);
     await page.getByRole("button", { name: "Save maintenance log" }).click();

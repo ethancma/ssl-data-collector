@@ -7,7 +7,7 @@ import {
   catalogNameKey,
   normalizeSnapshot,
   sortCatalogByName,
-} from "@/components/daily-operations/quick-pick-catalogs";
+} from "@/lib/daily-operations/quick-pick-catalogs";
 import {
   QUICK_PICK_CATALOGS,
   quickPickSelectColumns,
@@ -15,7 +15,7 @@ import {
   type QuickPickCatalogConfig,
   type QuickPickCatalogKey,
   type QuickPickCatalogRow,
-} from "@/components/quick-pick-catalog-config";
+} from "@/lib/daily-operations/quick-pick-catalog-config";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {

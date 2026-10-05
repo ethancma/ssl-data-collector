@@ -7,7 +7,7 @@
 
 import { useRef, useState, type PointerEvent } from "react";
 
-import { formatPacificDateTime } from "@/components/daily-operations/pacific-date-time";
+import { formatPacificDateTime } from "@/lib/pacific-date-time";
 
 export type ChartSeries = {
   key: string;

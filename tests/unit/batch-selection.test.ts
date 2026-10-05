@@ -11,7 +11,7 @@ import {
   type BatchScopeAnimal,
   type BatchScopeTank,
   type BatchSelection,
-} from "@/components/daily-operations/batch-selection";
+} from "@/lib/daily-operations/batch-selection";
 
 const tanks: BatchScopeTank[] = [
   { id: 10, name: "Middle", systemId: 1 },

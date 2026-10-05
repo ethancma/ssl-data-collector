@@ -38,7 +38,7 @@ import {
   type BatchScopeSystem,
   type BatchScopeTank,
   type BatchSelection,
-} from "./batch-selection";
+} from "@/lib/daily-operations/batch-selection";
 
 type ScopeParamUpdates = Partial<Record<"system" | "tank" | "animal", string | null>>;
 

@@ -1,17 +1,7 @@
 import { z } from "zod";
 
 import { MAINTENANCE_TASK_TYPES } from "@/lib/config/reference-data";
-
-const dateField = z
-  .string()
-  .min(1, "Select a date")
-  .regex(/^\d{4}-\d{2}-\d{2}$/, "Enter a date as YYYY-MM-DD")
-  .refine((v) => !Number.isNaN(Date.parse(v)), "Enter a valid date");
-
-const timeField = z
-  .string()
-  .min(1, "Select a time")
-  .regex(/^\d{2}:\d{2}$/, "Enter a time as HH:mm");
+import { dateField, timeField } from "@/lib/validation/common-fields";
 
 // Validation for the maintenance log form.
 export const maintenanceLogSchema = z.object({

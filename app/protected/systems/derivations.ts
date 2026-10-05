@@ -1,4 +1,4 @@
-import { pacificDateKey } from "@/components/daily-operations/pacific-date-time";
+import { pacificDateKey } from "@/lib/pacific-date-time";
 import type { SystemOverviewEntry } from "@/components/systems/types";
 
 export type SystemIdentityRow = {

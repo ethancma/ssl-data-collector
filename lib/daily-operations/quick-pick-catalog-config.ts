@@ -1,9 +1,9 @@
-import { DEFAULT_FOOD_UNIT } from "@/components/daily-operations/quick-pick-catalogs";
+import { DEFAULT_FOOD_UNIT } from "@/lib/daily-operations/quick-pick-catalogs";
 import { FOOD_UNITS, MEASUREMENT_UNITS } from "@/lib/config/reference-data";
 
 export type QuickPickCatalogKey = "food" | "chemical" | "star";
 
-export type QuickPickUnitField = {
+type QuickPickUnitField = {
   column: string;
   label: string;
   required: boolean;

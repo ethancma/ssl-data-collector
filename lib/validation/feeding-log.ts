@@ -1,23 +1,6 @@
 import { z } from "zod";
 
-const idField = (label: string) =>
-  z
-    .string()
-    .min(1, label)
-    .regex(/^\d+$/, label)
-    .transform(Number)
-    .pipe(z.number().int().positive(label));
-
-const dateField = z
-  .string()
-  .min(1, "Select a date")
-  .regex(/^\d{4}-\d{2}-\d{2}$/, "Enter a date as YYYY-MM-DD")
-  .refine((v) => !Number.isNaN(Date.parse(v)), "Enter a valid date");
-
-const timeField = z
-  .string()
-  .min(1, "Select a time")
-  .regex(/^\d{2}:\d{2}$/, "Enter a time as HH:mm");
+import { dateField, idField, timeField } from "@/lib/validation/common-fields";
 
 export const feedingLogSchema = z.object({
   date: dateField,
@@ -42,6 +25,3 @@ export const feedingLogSchema = z.object({
     ),
   notes: z.string().max(2000, "Keep notes under 2000 characters").optional(),
 });
-
-export type FeedingLogFormInput = z.input<typeof feedingLogSchema>;
-export type FeedingLogFormValues = z.output<typeof feedingLogSchema>;

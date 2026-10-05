@@ -5,6 +5,7 @@ import {
   WATER_QUALITY_PARAMS,
   type WaterQualityParameter,
 } from "@/lib/config/reference-data";
+import { dateField, timeField } from "@/lib/validation/common-fields";
 
 // Validation for the weekly water quality reading form. The params stay as
 // strings (form inputs); the caller parses them to numbers on submit, same as
@@ -24,17 +25,6 @@ const optionalNumeric = (label: string) =>
 const paramFields = Object.fromEntries(
   WATER_QUALITY_PARAMS.map((p) => [p.key, optionalNumeric(p.label)]),
 ) as Record<WaterQualityParameter, ReturnType<typeof optionalNumeric>>;
-
-const dateField = z
-  .string()
-  .min(1, "Select a date")
-  .regex(/^\d{4}-\d{2}-\d{2}$/, "Enter a date as YYYY-MM-DD")
-  .refine((v) => !Number.isNaN(Date.parse(v)), "Enter a valid date");
-
-const timeField = z
-  .string()
-  .min(1, "Select a time")
-  .regex(/^\d{2}:\d{2}$/, "Enter a time as HH:mm");
 
 export const waterQualitySchema = z
   .object({

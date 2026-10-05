@@ -152,9 +152,10 @@ test.describe("systems page water quality trends card", () => {
       dbQuery("select id from core.profiles where email = " + sqlLiteral(TECH_EMAIL))[0]?.id,
     );
     expect(recordedBy).toBeGreaterThan(0);
+    // Compare defaults to phosphate/ammonia and hides the other side's pick, so both need data.
     dbQuery(
-      "insert into core.water_quality_readings (system_id, nitrate, nitrite, notes, recorded_by) " +
-        "select id, 7.13, 41, " + sqlLiteral(TRENDS_NOTES) + ", " + recordedBy +
+      "insert into core.water_quality_readings (system_id, nitrate, nitrite, phosphate, ammonia, notes, recorded_by) " +
+        "select id, 7.13, 41, 0.05, 0.01, " + sqlLiteral(TRENDS_NOTES) + ", " + recordedBy +
         " from core.systems where name = 'Graham'",
     );
     await login(page);

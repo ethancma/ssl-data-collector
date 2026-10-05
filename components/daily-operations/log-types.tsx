@@ -20,13 +20,13 @@ import type {
   BatchScopeAnimal,
   BatchScopeSystem,
   BatchScopeTank,
-} from "@/components/daily-operations/batch-selection";
+} from "@/lib/daily-operations/batch-selection";
 import type {
   ChemicalAdditionCatalogItem,
   FoodCatalogItem,
   StarTreatmentCatalogItem,
-} from "@/components/daily-operations/quick-pick-catalogs";
-import type { WaterQualityTargetRange } from "@/components/daily-operations/water-quality-targets";
+} from "@/lib/daily-operations/quick-pick-catalogs";
+import type { WaterQualityTargetRange } from "@/lib/daily-operations/water-quality-targets";
 import { CHECK_TYPES } from "@/lib/config/reference-data";
 
 export type LogTypeId =

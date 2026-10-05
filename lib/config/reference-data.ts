@@ -34,16 +34,13 @@ export const PH_SOURCES = ["manual", "apex_probe"] as const;
 
 // Suggested unit dropdown options; forms also offer "Other" free text, so the DB accepts any unit.
 export const MEASUREMENT_UNITS = ["mL", "L", "g", "mg", "ppm"] as const;
-export type MeasurementUnit = (typeof MEASUREMENT_UNITS)[number];
 
 export const FOOD_UNITS = ["pieces", "mL", "L"] as const;
-export type FoodUnit = (typeof FOOD_UNITS)[number];
 
 export const PROFILE_ROLES = ["admin", "technician", "volunteer", "viewer"] as const;
 export type ProfileRole = (typeof PROFILE_ROLES)[number];
 
-export const PROFILE_STATUSES = ["pending", "active", "denied"] as const;
-export type ProfileStatus = (typeof PROFILE_STATUSES)[number];
+export type ProfileStatus = "pending" | "active" | "denied";
 
 // Weekly water-quality parameters. Mutable targets live in
 // core.water_quality_target_ranges; fixed units, labels, and chart colors live here.

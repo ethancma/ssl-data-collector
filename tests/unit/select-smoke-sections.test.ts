@@ -13,6 +13,27 @@ test("selects the narrow daily-operations section for a form change", () => {
   assert.deepEqual(selectedIds(["components/water-quality-form.tsx"]), [
     "daily-operations",
   ]);
+  assert.deepEqual(selectedIds(["lib/validation/common-fields.ts"]), [
+    "daily-operations",
+  ]);
+  assert.deepEqual(selectedIds(["lib/daily-operations/water-quality-targets.ts"]), [
+    "daily-operations",
+  ]);
+});
+
+test("keeps shared Pacific time and the Star catalog files off the full suite", () => {
+  assert.deepEqual(selectedIds(["lib/pacific-date-time.ts"]), [
+    "daily-operations",
+    "systems-trends",
+  ]);
+  assert.deepEqual(selectedIds(["lib/daily-operations/quick-pick-catalog-config.ts"]), [
+    "daily-operations",
+    "star-treatments",
+  ]);
+  assert.deepEqual(selectedIds(["app/protected/daily-operations/data.ts"]), [
+    "daily-operations",
+    "batch-logging",
+  ]);
 });
 
 test("selects daily operations and star treatments for quick-pick management", () => {
@@ -28,7 +49,7 @@ test("selects daily operations and star treatments for quick-pick management", (
 });
 
 test("selects batch logging for batch feeding and Star treatment surfaces", () => {
-  assert.deepEqual(selectedIds(["components/daily-operations/batch-selection.ts"]), [
+  assert.deepEqual(selectedIds(["lib/daily-operations/batch-selection.ts"]), [
     "daily-operations",
     "batch-logging",
   ]);

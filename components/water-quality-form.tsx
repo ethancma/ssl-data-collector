@@ -17,7 +17,7 @@ import {
   getPacificDateString,
   getPacificTimeString,
   pacificWallTimeToIso,
-} from "@/components/daily-operations/pacific-date-time";
+} from "@/lib/pacific-date-time";
 import { SELECT_CLASS } from "@/components/daily-operations/form-classes";
 import {
   formatWaterQualityTarget,
@@ -26,7 +26,7 @@ import {
   waterQualityValuesRequireNotes,
   type WaterQualityTargetRange,
   type WaterQualityValues,
-} from "@/components/daily-operations/water-quality-targets";
+} from "@/lib/daily-operations/water-quality-targets";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {

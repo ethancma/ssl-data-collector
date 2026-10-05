@@ -2,7 +2,7 @@ import { Suspense } from "react";
 import { notFound } from "next/navigation";
 
 import { WaterQualityTargetManager } from "@/components/water-quality-target-manager";
-import type { WaterQualityTargetRange } from "@/components/daily-operations/water-quality-targets";
+import type { WaterQualityTargetRange } from "@/lib/daily-operations/water-quality-targets";
 import {
   WATER_QUALITY_PARAMETERS,
   type WaterQualityParameter,
