@@ -56,7 +56,8 @@ jobs:
         if: steps.plan.outputs.skip != 'true'
         run: |
           npx playwright install --with-deps chromium
-          npx next dev -p 3000 > next.log 2>&1 &
+          npm run -s build > build.log 2>&1 || { cat build.log; exit 1; }
+          npx next start -p 3000 > next.log 2>&1 &
           for _ in $(seq 1 60); do curl -sf http://localhost:3000/auth/login > /dev/null && break; sleep 2; done
       - name: Run selected e2e sections
         if: steps.plan.outputs.skip != 'true'
