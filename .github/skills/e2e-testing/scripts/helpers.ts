@@ -25,7 +25,7 @@ import {
   receiveMessageOnPort,
   Worker,
 } from "node:worker_threads";
-import { expect, type Page } from "@playwright/test";
+import { expect, type Page, type Request } from "@playwright/test";
 import { loadEnvConfig } from "@next/env";
 import { createClient } from "@supabase/supabase-js";
 
@@ -205,6 +205,16 @@ export function anonRoleClient() {
   });
 }
 
+// Production builds prefetch links; navigating away aborts those requests.
+export function isAbortedRscPrefetch(request: Request): boolean {
+  const url = new URL(request.url());
+  return (
+    request.failure()?.errorText === "net::ERR_ABORTED" &&
+    url.origin === new URL(BASE_URL).origin &&
+    url.searchParams.has("_rsc")
+  );
+}
+
 export function collectBrowserFailures(page: Page): string[] {
   const failures: string[] = [];
   page.on("console", (message) => {
@@ -214,15 +224,8 @@ export function collectBrowserFailures(page: Page): string[] {
   });
   page.on("pageerror", (error) => failures.push(`pageerror: ${error.message}`));
   page.on("requestfailed", (request) => {
+    if (isAbortedRscPrefetch(request)) return;
     const errorText = request.failure()?.errorText ?? "unknown";
-    const url = new URL(request.url());
-    if (
-      errorText === "net::ERR_ABORTED" &&
-      url.origin === new URL(BASE_URL).origin &&
-      url.searchParams.has("_rsc")
-    ) {
-      return;
-    }
     failures.push(
       `requestfailed: ${request.method()} ${request.url()} (${errorText})`,
     );

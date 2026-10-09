@@ -15,6 +15,7 @@ import {
   cleanupStep,
   db,
   dbQuery,
+  isAbortedRscPrefetch,
   login,
   loginAs,
   signInRoleClient,
@@ -129,7 +130,9 @@ test.describe("e2e smoke", () => {
       if (message.type() === "error") consoleErrors.push(message.text());
     });
     page.on("pageerror", (error) => pageErrors.push(error.message));
-    page.on("requestfailed", (request) => failedRequests.push(request.url()));
+    page.on("requestfailed", (request) => {
+      if (!isAbortedRscPrefetch(request)) failedRequests.push(request.url());
+    });
     page.on("response", (response) => {
       if (response.status() >= 400) {
         errorResponses.push(`${response.status()} ${response.url()}`);
