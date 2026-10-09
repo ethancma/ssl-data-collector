@@ -16,15 +16,15 @@ Examples: a new form field, a dashboard tweak, a non-destructive query change.
   in the [e2e-testing skill](../.github/skills/e2e-testing/SKILL.md), review its reasons, and
   run the selected Playwright sections.
 - Run the full e2e suite when the selector escalates broad, shared, or unknown runtime changes.
-- Automated PR review (e.g. CodeRabbit) if/when configured — agent addresses flags.
+- Run the `reviewer` agent on the diff in a fresh context; fix its Blocking findings.
 - Human reads the diff before merge.
 
 ## Tier 3 — Schema/migrations, RLS policies, auth & roles, import tooling
 Examples: a new table/column, an RLS policy change, the CSV import or paper-backfill tools.
 - Everything in Tier 2, plus:
 - Run the complete e2e suite. Tier 3 never relies on a narrower selector result.
-- Run migrations against a scratch/staging Supabase project first — never directly against
-  production.
+- Run migrations against the local Supabase stack (`npx supabase db reset`) first — never
+  directly against the hosted project.
 - Verify directly in the Supabase dashboard (table editor, RLS policy check) — don't trust
   the app UI alone.
 - Re-verify all four roles (Admin/Technician/Volunteer/Viewer) behave as intended, not
