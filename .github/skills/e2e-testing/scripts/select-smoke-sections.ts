@@ -49,7 +49,6 @@ interface SelectionRule {
 }
 
 const allSectionIds = SMOKE_SECTIONS.map(({ id }) => id);
-const scriptRoot = ".github/skills/e2e-testing/scripts/";
 
 const rules: SelectionRule[] = [
   {
@@ -131,7 +130,9 @@ const rules: SelectionRule[] = [
   {
     description: "shared e2e helper or Playwright configuration",
     matches: (file) =>
-      file === `${scriptRoot}helpers.ts` || file === "playwright.config.ts",
+      /^\.github\/skills\/e2e-testing\/scripts\/(helpers\.ts|global-(setup|teardown)\.ts|db-worker\.mjs)$/.test(
+        file,
+      ) || file === "playwright.config.ts",
     sections: "full",
   },
   {

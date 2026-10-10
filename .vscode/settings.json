@@ -1,0 +1,13 @@
+{
+  "chat.tools.terminal.autoApprove": {
+    "npm run verify": true,
+    "npm run typecheck": true,
+    "npm run lint": true,
+    "npm run test:unit": true,
+    "npm run test:e2e:plan": true,
+    "npm run check:dead-code": true,
+    "/^npx playwright test\\b/": true,
+    "/^git (status|diff|log|show|branch|worktree list)\\b/": true,
+    "/^(npx )?supabase (status|migration list)\\b/": true
+  }
+}

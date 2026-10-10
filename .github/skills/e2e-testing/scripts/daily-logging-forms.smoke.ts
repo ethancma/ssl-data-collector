@@ -11,9 +11,11 @@ import { test, expect } from "@playwright/test";
 import {
   ADMIN_EMAIL,
   ADMIN_PASSWORD,
+  BASE_URL,
   cleanupStep,
   db,
   dbQuery,
+  isAbortedRscPrefetch,
   login,
   loginAs,
   signInRoleClient,
@@ -128,7 +130,9 @@ test.describe("e2e smoke", () => {
       if (message.type() === "error") consoleErrors.push(message.text());
     });
     page.on("pageerror", (error) => pageErrors.push(error.message));
-    page.on("requestfailed", (request) => failedRequests.push(request.url()));
+    page.on("requestfailed", (request) => {
+      if (!isAbortedRscPrefetch(request)) failedRequests.push(request.url());
+    });
     page.on("response", (response) => {
       if (response.status() >= 400) {
         errorResponses.push(`${response.status()} ${response.url()}`);
@@ -152,7 +156,7 @@ test.describe("e2e smoke", () => {
     for (const [name, type] of tabs) {
       await page.getByRole("link", { name, exact: true }).click();
       await expect(page).toHaveURL(
-        `http://localhost:3000/protected/daily-operations?type=${type}`,
+        `${BASE_URL}/protected/daily-operations?type=${type}`,
       );
       await expect(page.locator("form")).toBeVisible();
     }

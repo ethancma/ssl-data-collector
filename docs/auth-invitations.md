@@ -147,7 +147,7 @@ Setup (Resend):
 
 ## Implementation plan
 
-1. **Schema** (`schema-migrator`)
+1. **Schema**
    - Replace the unpushed `20260929010106_native_auth_invitation_acceptance.sql` with
      `core.invitations` and the three RPCs (`20260929010106_app_invitations.sql`).
    - Overwrite the invite pieces in the already-pushed
@@ -162,7 +162,7 @@ Setup (Resend):
      Then `supabase db push` applies only the two unpushed migrations, after human
      approval.
    - Keep the live-role policies and the JWT claim fix.
-2. **App** (`form-builder`)
+2. **App**
    - Admin invite panel: copy link, open invites list, revoke/regenerate.
    - `/invite/[token]` page; password and Google acceptance routes; `/auth/callback`.
    - Google button on login.
@@ -175,7 +175,7 @@ Setup (Resend):
      `app/auth/confirm/route.ts`.
 3. **External config** (human): Google OAuth client and Supabase provider, redirect
    allowlist, server secret in the host environment, hosted sign-up disabled.
-4. **Email** (later, `form-builder`): Resend domain, the **Email invite** action,
+4. **Email** (later): Resend domain, the **Email invite** action,
    Supabase SMTP, and **Forgot password?** on the login page.
 5. **Verification** (`e2e-verifier`, Tier 3): on staging, cover the password and Google
    acceptance paths; expired, revoked, and reused links; a Google email mismatch;

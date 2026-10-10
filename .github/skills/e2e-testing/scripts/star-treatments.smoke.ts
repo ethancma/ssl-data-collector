@@ -243,7 +243,7 @@ test.describe("Star treatments: role visibility and no-access behavior", () => {
       page.getByRole("heading", { name: "This page could not be found." }),
     ).toBeVisible();
     const expectedNotFound = [
-      /^response: 404 GET http:\/\/localhost:3000\/protected\/(daily-operations|star-treatments)/,
+      /^response: 404 GET https?:\/\/[^/]+\/protected\/(daily-operations|star-treatments)/,
       /^console: Failed to load resource: the server responded with a status of 404/,
     ];
     expectNoUnexpectedRedirectFailures(
@@ -405,7 +405,10 @@ test.describe("Star treatments: Probiotics stays out of system chemical addition
       expect.stringMatching(
         /^response: 400 POST .*\/rest\/v1\/chemical_additions/,
       ),
-      "console: Failed to load resource: the server responded with a status of 400 ()",
+      // Status text is empty over hosted HTTP/2 and "Bad Request" on the local stack.
+      expect.stringMatching(
+        /^console: Failed to load resource: the server responded with a status of 400 \((Bad Request)?\)$/,
+      ),
     ]);
   });
 });

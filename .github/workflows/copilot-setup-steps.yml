@@ -1,0 +1,26 @@
+name: Copilot Setup Steps
+
+# Prepares the Copilot cloud agent's environment so it can run `npm run verify` and the e2e sections.
+on:
+  workflow_dispatch:
+  pull_request:
+    paths: [.github/workflows/copilot-setup-steps.yml]
+
+jobs:
+  copilot-setup-steps:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - name: Local Supabase and a local-only .env.local
+        run: |
+          npx supabase start -x studio,logflare,vector,edge-runtime
+          npm run -s wt -- env > .env.local

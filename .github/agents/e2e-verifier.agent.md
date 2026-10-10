@@ -14,8 +14,8 @@ file is the source of truth for steps, test accounts, and the section scripts. D
 improvise a different procedure.
 
 ## Constraints
-- DO NOT kill or restart the dev server on port 3000 — reuse it, per
-  [AGENTS.md](../../AGENTS.md).
+- DO NOT kill or restart the port-3000 dev server; in a worktree, reuse that worktree's own
+  server (see [AGENTS.md](../../AGENTS.md)).
 - DO NOT merge PRs — a human always reviews and merges.
 - A green UI with no matching Supabase row is a failure, not a pass.
 - DO NOT use repository-wide or repeated regex searches to discover UI controls. Follow the
