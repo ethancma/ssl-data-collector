@@ -7,6 +7,7 @@ import { useTheme } from "next-themes";
 import {
   ClipboardList,
   FlaskConical,
+  HeartPulse,
   Home,
   LogOut,
   Monitor,
@@ -338,6 +339,7 @@ export function ProtectedSidebar({
               },
             ]
           : []),
+        { href: "/protected/iseau", label: "ISeaU", icon: HeartPulse },
         { href: "/protected/systems", label: "Systems", icon: Waves },
       ],
     },

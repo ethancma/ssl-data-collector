@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "hooks": {
+    "sessionStart": [
+      {
+        "type": "command",
+        "bash": "node .github/hooks/agent-hook.mjs start",
+        "command": "node .github/hooks/agent-hook.mjs start",
+        "cwd": ".",
+        "timeout": 10
+      }
+    ],
+    "preToolUse": [
+      {
+        "type": "command",
+        "bash": "node .github/hooks/agent-hook.mjs pre",
+        "command": "node .github/hooks/agent-hook.mjs pre",
+        "cwd": ".",
+        "timeout": 10
+      }
+    ],
+    "postToolUse": [
+      {
+        "type": "command",
+        "bash": "node .github/hooks/agent-hook.mjs post",
+        "command": "node .github/hooks/agent-hook.mjs post",
+        "cwd": ".",
+        "timeout": 30
+      }
+    ],
+    "agentStop": [
+      {
+        "type": "command",
+        "bash": "node .github/hooks/agent-hook.mjs stop",
+        "command": "node .github/hooks/agent-hook.mjs stop",
+        "cwd": ".",
+        "timeout": 180
+      }
+    ]
+  }
+}

@@ -67,8 +67,10 @@ weaken each section's UI and direct-Supabase assertions.
 
 ## Procedure
 
-1. **Reuse the always-on dev server** on port 3000. Never start a second instance and never
-   kill the running one (see [AGENTS.md](../../../AGENTS.md)).
+1. **Reuse the running dev server.** In the main checkout that's `:3000` (talks to the hosted
+   dev project); never stop or restart it. In a worktree (`npm run wt -- setup`), start
+   `npm run dev -- -p $PORT` once and reuse it; e2e there runs against the local Supabase
+   stack, and global setup takes a machine-wide lock and runs `supabase db reset` first.
 2. **Auth & account state** — sign in with a designated test account (see
    [test-accounts.md](./references/test-accounts.md)). If the change touches onboarding:
    create a new sign-in, confirm it lands as `profiles.status = pending`, approve it as an

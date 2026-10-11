@@ -3,8 +3,8 @@
  * Not matched by playwright.config.ts's testMatch (no spec/test/smoke suffix) —
  * imported by the *.smoke.ts files in this directory, never run directly.
  *
- * Assumes: dev server already running on http://localhost:3000 (never started/stopped
- * by this script — see AGENTS.md).
+ * Assumes: dev server already running at E2E_BASE_URL (default http://localhost:$PORT or
+ * :3000; never started/stopped by this script — see AGENTS.md).
  *
  * DB verification uses a service-role Supabase client (bypasses RLS) rather than
  * trusting the UI alone. Committed dev/test account defaults target the hosted test
@@ -19,7 +19,13 @@ import { execFileSync } from "node:child_process";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { expect, type Page } from "@playwright/test";
+import {
+  MessageChannel,
+  type MessagePort,
+  receiveMessageOnPort,
+  Worker,
+} from "node:worker_threads";
+import { expect, type Page, type Request } from "@playwright/test";
 import { loadEnvConfig } from "@next/env";
 import { createClient } from "@supabase/supabase-js";
 
@@ -28,6 +34,10 @@ loadEnvConfig(process.cwd());
 const SUPABASE_URL =
   process.env.SUPABASE_URL ?? "https://bqylxmsifagnztxhixyl.supabase.co";
 const SECRET_KEY = process.env.SUPABASE_SECRET_KEY;
+// Direct Postgres URL (set by `npm run wt -- setup` for the local stack); unset falls back to the linked CLI.
+const E2E_DB_URL = process.env.E2E_DB_URL;
+export const BASE_URL =
+  process.env.E2E_BASE_URL ?? `http://localhost:${process.env.PORT ?? 3000}`;
 export const TECH_EMAIL = process.env.E2E_TEST_TECH_EMAIL ?? "test-tech@ssl.dev";
 export const TECH_PASSWORD = process.env.E2E_TEST_TECH_PASSWORD ?? "password";
 export const ADMIN_EMAIL = process.env.E2E_TEST_ADMIN_EMAIL ?? "test-admin@ssl.dev";
@@ -195,6 +205,16 @@ export function anonRoleClient() {
   });
 }
 
+// Production builds prefetch links; navigating away aborts those requests.
+export function isAbortedRscPrefetch(request: Request): boolean {
+  const url = new URL(request.url());
+  return (
+    request.failure()?.errorText === "net::ERR_ABORTED" &&
+    url.origin === new URL(BASE_URL).origin &&
+    url.searchParams.has("_rsc")
+  );
+}
+
 export function collectBrowserFailures(page: Page): string[] {
   const failures: string[] = [];
   page.on("console", (message) => {
@@ -204,15 +224,8 @@ export function collectBrowserFailures(page: Page): string[] {
   });
   page.on("pageerror", (error) => failures.push(`pageerror: ${error.message}`));
   page.on("requestfailed", (request) => {
+    if (isAbortedRscPrefetch(request)) return;
     const errorText = request.failure()?.errorText ?? "unknown";
-    const url = new URL(request.url());
-    if (
-      errorText === "net::ERR_ABORTED" &&
-      url.origin === "http://localhost:3000" &&
-      url.searchParams.has("_rsc")
-    ) {
-      return;
-    }
     failures.push(
       `requestfailed: ${request.method()} ${request.url()} (${errorText})`,
     );
@@ -255,6 +268,7 @@ export async function expectDefaultDateAndTime(page: Page) {
 // supabase/migrations/20260907200000_core_foundation.sql) and 403s with "permission denied
 // for schema core". Always use this helper for core-schema assertions, never `db.from(...)`.
 export function dbQuery(sql: string): Record<string, unknown>[] {
+  if (E2E_DB_URL) return dbQueryDirect(sql);
   const file = path.join(mkdtempSync(path.join(tmpdir(), "e2e-sql-")), "query.sql");
   writeFileSync(file, sql);
   let out = "";
@@ -273,6 +287,35 @@ export function dbQuery(sql: string): Record<string, unknown>[] {
     }
   }
   return (JSON.parse(out).rows as Record<string, unknown>[]) ?? [];
+}
+
+let dbWorker: { port: MessagePort; signal: Int32Array } | null = null;
+
+// Blocks on a worker-held connection so dbQuery stays synchronous for existing callers.
+function dbQueryDirect(sql: string): Record<string, unknown>[] {
+  if (!dbWorker) {
+    const { port1, port2 } = new MessageChannel();
+    const signal = new Int32Array(new SharedArrayBuffer(4));
+    const worker = new Worker(
+      path.resolve(".github/skills/e2e-testing/scripts/db-worker.mjs"),
+      { workerData: { url: E2E_DB_URL, port: port2, signal }, transferList: [port2] },
+    );
+    worker.unref();
+    port1.unref();
+    dbWorker = { port: port1, signal };
+  }
+  Atomics.store(dbWorker.signal, 0, 0);
+  dbWorker.port.postMessage(sql);
+  if (Atomics.wait(dbWorker.signal, 0, 0, 60_000) === "timed-out") {
+    throw new Error("dbQuery timed out after 60s");
+  }
+  const reply = receiveMessageOnPort(dbWorker.port)?.message as
+    | { rows: Record<string, unknown>[]; error?: undefined }
+    | { error: string }
+    | undefined;
+  if (!reply) throw new Error("dbQuery worker returned no reply");
+  if (reply.error !== undefined) throw new Error(reply.error);
+  return reply.rows;
 }
 
 export function sqlLiteral(value: string): string {

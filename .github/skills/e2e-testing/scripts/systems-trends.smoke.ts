@@ -7,7 +7,7 @@
  * for further Systems-page chart changes.
  */
 import { test, expect, type Locator, type Page } from "@playwright/test";
-import { cleanupStep, dbQuery, login, RUN_TAG, sqlLiteral, TECH_EMAIL, TECH_PASSWORD } from "./helpers";
+import { cleanupStep, dbQuery, isAbortedRscPrefetch, login, RUN_TAG, sqlLiteral, TECH_EMAIL, TECH_PASSWORD } from "./helpers";
 
 const DESKTOP_VIEWPORT = { width: 1280, height: 720 };
 const TRENDS_NOTES = RUN_TAG + "-trends nitrogen";
@@ -182,6 +182,7 @@ test.describe("systems page water quality trends card", () => {
 
     const networkFindings: string[] = [];
     page.on("requestfailed", (request) => {
+      if (isAbortedRscPrefetch(request)) return;
       networkFindings.push(
         `${request.method()} ${request.url()}: ${request.failure()?.errorText ?? "failed"}`,
       );

@@ -1,3 +1,4 @@
+import { releaseE2eLock } from "./global-setup";
 import { db, dbQuery, sqlLiteral } from "./helpers";
 
 const summary: Record<string, number> = {
@@ -102,6 +103,14 @@ async function cleanupAuthUsers(): Promise<void> {
 }
 
 async function globalTeardown(): Promise<void> {
+  try {
+    await sweep();
+  } finally {
+    releaseE2eLock();
+  }
+}
+
+async function sweep(): Promise<void> {
   try {
     dbQuery("select 1 as connected");
   } catch (error) {
