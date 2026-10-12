@@ -26,11 +26,12 @@ export default function IseauCompare() {
     <Link href="/protected/iseau" className={cn("inline-flex items-center gap-2 rounded text-sm text-muted-foreground hover:text-foreground", focusClass)}><ArrowLeft aria-hidden="true" className="h-4 w-4" />Back to lineup</Link>
     <PageHeader title="Compare stars side by side." description="Pick a star in each column, then open any box for its full history." />
     <RangeSwitch state={state} />
-    <div className="grid gap-x-4 gap-y-14 md:grid-cols-3 md:gap-y-0">
+    {/* Always three columns; narrow screens scroll sideways instead of stacking so rows stay comparable. */}
+    <div className="overflow-x-auto pb-2"><div className="grid gap-x-4" style={{ gridTemplateColumns: "repeat(3, minmax(0, 1fr))", minWidth: "46rem" }}>
       {ids.map((id, column) => {
         const star = STARS.find((candidate) => candidate.id === id)!;
         const span = starData(star, state.range);
-        return <div key={column} className="min-w-0 space-y-4 md:row-span-6 md:grid md:grid-rows-[subgrid] md:gap-y-4 md:space-y-0">
+        return <div key={column} className="min-w-0" style={{ display: "grid", gridRow: "span 6", gridTemplateRows: "subgrid", rowGap: "1rem" }}>
           <div className="space-y-4">
             <div className="relative">
               <label htmlFor={`iseau-compare-${column}`} className="sr-only">Star {column + 1}</label>
@@ -53,7 +54,7 @@ export default function IseauCompare() {
           {SECTIONS.map(({ id: sectionId }) => <SectionBox key={sectionId} id={sectionId} star={star} range={state.range} onOpen={() => setOpen({ starId: star.id, id: sectionId })} />)}
         </div>;
       })}
-    </div>
+    </div></div>
     {open && openStar && <SectionSheet id={open.id} star={openStar} range={state.range} onClose={() => setOpen(null)} />}
     <SampleNote />
   </div>;

@@ -206,7 +206,7 @@ export function SectionBox({ id, star, range, onOpen, className }: Props & { id:
   const { title, Icon } = SECTIONS.find((section) => section.id === id)!;
   const summary = sectionSummary(id, star, range);
   return <button type="button" onClick={onOpen} aria-haspopup="dialog" aria-label={`${title} for ${star.name}: ${summary.value}, ${summary.caption}. Open history.`}
-    className={cn("flex h-full min-h-64 flex-col justify-between gap-6 rounded-3xl bg-muted p-6 text-left transition-colors hover:bg-accent", focusClass, className)}>
+    className={cn("flex h-full min-h-64 w-full flex-col justify-between gap-6 rounded-3xl bg-muted p-6 text-left transition-colors hover:bg-accent", focusClass, className)}>
     <span className="flex items-center gap-2 text-base font-semibold"><Icon aria-hidden="true" className="h-4 w-4 text-muted-foreground" />{title}</span>
     <span className="block"><span className="block text-4xl font-semibold tabular-nums tracking-tight">{summary.value}</span><span className="mt-1 block text-sm text-muted-foreground">{summary.caption}</span></span>
     <span className="block"><SectionPreview id={id} star={star} range={range} /></span>

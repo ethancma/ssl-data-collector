@@ -29,7 +29,7 @@ export default function IseauLineup() {
       <Button asChild variant="outline"><Link href={compareHref(star ? [star, ...state.stars] : state.stars)}><Columns3 aria-hidden="true" />Compare stars</Link></Button>
     </div>
     {star ? <LineupDetail key={star.id} star={star} state={state} /> : state.stars.length
-      ? <ul className="grid auto-rows-fr grid-cols-[repeat(auto-fill,minmax(15rem,1fr))] gap-3">{state.stars.map((candidate) => <li key={candidate.id} className="min-w-0"><StarCard star={candidate} href={`${pathname}?star=${candidate.id}`} /></li>)}</ul>
+      ? <ul className="grid auto-rows-fr gap-3" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(15rem, 1fr))" }}>{state.stars.map((candidate) => <li key={candidate.id} className="min-w-0"><StarCard star={candidate} href={`${pathname}?star=${candidate.id}`} /></li>)}</ul>
       : <EmptyNote>No {state.status} patients in {state.system === "all" ? "any system" : state.system}. Try the other tab or another system.</EmptyNote>}
     <SampleNote />
   </div>;
