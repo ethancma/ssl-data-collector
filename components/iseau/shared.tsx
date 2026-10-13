@@ -1,79 +1,116 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowLeft, ArrowRightLeft, ClipboardCheck, Download, FlaskConical, HeartPulse, Image as ImageIcon, Utensils, Waves } from "lucide-react";
-import type { ReactNode } from "react";
-import { Button } from "@/components/ui/button";
+import { X } from "lucide-react";
+import { useEffect, useRef, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
 import { formatPacificDateTime } from "@/lib/pacific-date-time";
-import { DESIGNS, LAYERS, SAMPLE_NOW, eventDetails, locationAt, worstSeverity, type Layer, type SampleEvent, type Severity } from "./mock-data";
-import type { PreviewState } from "./use-iseau-preview";
+import {
+  RANGES, SYSTEMS, currentLocation, daysSince, isCurrent, lastHealth, lastTemperature, trend,
+  type Severity, type Star,
+} from "./mock-data";
+import { starsFor, type IseauState } from "./use-iseau";
 
 export const focusClass = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background";
-export const selectClass = `h-9 max-w-full rounded-md border border-input bg-background px-2 text-sm ${focusClass}`;
-const LAYER_ICONS = { health: HeartPulse, treatment: FlaskConical, feeding: Utensils, water: Waves, chemical: FlaskConical, check: ClipboardCheck, move: ArrowRightLeft };
-export function dateLabel(at: string | number, time = false) {
-  return formatPacificDateTime(new Date(at), { month: "short", day: "numeric", ...(time ? { hour: "numeric", minute: "2-digit" } : {}) });
+
+export function dateLabel(time: number, withTime = false) {
+  return formatPacificDateTime(new Date(time), { month: "short", day: "numeric", ...(withTime ? { hour: "numeric", minute: "2-digit" } : {}) });
 }
-export function SeverityBadge({ severity }: { severity: Severity }) {
-  return <span className={cn("inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-xs font-medium", severity === "high" ? "border-destructive/40 text-destructive" : "border-border text-foreground")}>
-    <span aria-hidden="true" className="h-2 w-2 rounded-full" style={{ background: severity === "high" ? "hsl(var(--destructive))" : severity === "medium" ? "hsl(var(--chart-4))" : "hsl(var(--chart-2))" }} />{severity}
-  </span>;
+export function relativeDay(time: number) {
+  const days = daysSince(time);
+  return days <= 0 ? "today" : days === 1 ? "yesterday" : `${days} days ago`;
 }
-export function LayerIcon({ layer }: { layer: Layer }) {
-  const Icon = LAYER_ICONS[layer];
-  return <Icon aria-hidden="true" className="h-4 w-4 shrink-0" />;
+
+// Severity keeps fixed hues in both themes so a coral dot always means "high".
+export const SEVERITY = {
+  low: { label: "Low", bg: "bg-teal-500", text: "text-teal-500" },
+  medium: { label: "Medium", bg: "bg-amber-400", text: "text-amber-400" },
+  high: { label: "High", bg: "bg-red-500", text: "text-red-500" },
+} satisfies Record<Severity, { label: string; bg: string; text: string }>;
+
+function SeverityDot({ severity, className }: { severity: Severity; className?: string }) {
+  return <span aria-hidden="true" className={cn("inline-block h-2.5 w-2.5 shrink-0 rounded-full", SEVERITY[severity].bg, className)} />;
 }
-export function PreviewFrame({ design, state, children }: { design: number; state: PreviewState; children: ReactNode }) {
-  const current = DESIGNS.find((candidate) => candidate.id === design)!;
-  const location = state.patient ? locationAt(state.patient, SAMPLE_NOW) : undefined;
-  return <div className="mx-auto w-full max-w-7xl space-y-6 p-4 sm:p-6">
-    <header className="space-y-3">
-      <Link href="/protected/iseau" className={cn("inline-flex items-center gap-2 rounded text-sm text-muted-foreground hover:text-foreground", focusClass)}><ArrowLeft aria-hidden="true" className="h-4 w-4" />All designs</Link>
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div><h1 className="text-3xl font-semibold">ISeaU</h1><p className="mt-1 text-sm text-muted-foreground">Design {design}: {current.title}</p></div>
-        <span className="rounded border border-dashed border-border px-3 py-1 text-xs text-muted-foreground">Sample data / Oct 5, 2026</span>
-      </div>
-      <nav aria-label="Preview designs" className="flex flex-wrap gap-1">{DESIGNS.map((item) => <Button key={item.id} asChild size="sm" variant={item.id === design ? "secondary" : "ghost"}><Link aria-current={item.id === design ? "page" : undefined} href={`/protected/iseau/preview/${item.id}`}>Design {item.id}</Link></Button>)}</nav>
-    </header>
-    <section aria-label="Patient and event filters" className="space-y-4 border-y border-border py-4">
-      <div role="tablist" aria-label="Patient status" className="flex flex-wrap gap-1">{(["current", "past"] as const).map((tab) => <Button key={tab} role="tab" id={`patient-tab-${tab}`} aria-controls="patient-panel" aria-selected={state.tab === tab} tabIndex={state.tab === tab ? 0 : -1} variant={state.tab === tab ? "secondary" : "ghost"} onClick={() => state.setTab(tab)} onKeyDown={(event) => {
-        if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
-        event.preventDefault();
-        const next = event.key === "Home" ? "current" : event.key === "End" ? "past" : tab === "current" ? "past" : "current";
-        state.setTab(next);
-        document.getElementById(`patient-tab-${next}`)?.focus();
-      }}>{tab === "current" ? "Current patients" : "Past patients"}</Button>)}</div>
-      <div role="tabpanel" id="patient-panel" aria-labelledby={`patient-tab-${state.tab}`} className="flex flex-wrap items-end gap-3">
-        <label className="flex w-full min-w-0 flex-col gap-1 text-xs text-muted-foreground sm:w-auto sm:flex-1" htmlFor="iseau-patient">Sunflower sea star
-          <select id="iseau-patient" value={state.patient?.id ?? ""} onChange={(event) => state.selectPatient(event.target.value)} className={cn(selectClass, "w-full sm:min-w-64")} disabled={!state.patients.length}>
-            {state.patients.length ? state.patients.map((patient) => { const at = locationAt(patient, SAMPLE_NOW); return <option key={patient.id} value={patient.id}>{patient.name} / {at.tank} / {at.system} / worst: {worstSeverity(patient, state.days)}</option>; }) : <option value="">No patients</option>}
-          </select>
-        </label>
-        <fieldset><legend className="mb-1 text-xs text-muted-foreground">Window</legend><div className="flex gap-1">{([7, 14, 30] as const).map((days) => <Button key={days} size="sm" className="h-9" aria-pressed={state.days === days} variant={state.days === days ? "default" : "outline"} onClick={() => state.setDays(days)}>{days} days</Button>)}</div></fieldset>
-        <Button variant="outline" onClick={state.exportCsv} disabled={!state.patient}><Download aria-hidden="true" />Export CSV</Button>
-      </div>
-      <fieldset><legend className="mb-2 text-xs text-muted-foreground">Event layers</legend><div className="flex flex-wrap gap-x-4 gap-y-3">{LAYERS.map((layer) => <label key={layer.id} className="flex cursor-pointer items-center gap-2 text-xs"><input type="checkbox" checked={state.layers.includes(layer.id)} onChange={() => state.toggleLayer(layer.id)} className={cn("h-4 w-4 accent-primary", focusClass)} /><LayerIcon layer={layer.id} />{layer.label}</label>)}</div></fieldset>
-    </section>
-    <div className="flex flex-wrap items-center justify-between gap-2 text-sm"><p className="font-medium">{state.patient?.name ?? "No patient"}{location ? ` / ${location.tank} / ${location.system}` : ""}</p><p role="status" className="text-xs text-muted-foreground">{state.events.length} visible events / {dateLabel(SAMPLE_NOW)}</p></div>
-    {state.patient ? children : <EmptyEvents message="No patients in this tab for the selected window." />}
+export function SeverityLabel({ severity }: { severity: Severity }) {
+  return <span className="inline-flex items-center gap-2"><SeverityDot severity={severity} />{SEVERITY[severity].label} severity</span>;
+}
+
+export function starSentence(star: Star) {
+  const latest = lastHealth(star);
+  if (!isCurrent(star)) return `No health observations for ${daysSince(latest.at)} days.`;
+  const level = SEVERITY[latest.severity].label.toLowerCase();
+  switch (trend(star)) {
+    case "improving": return `${star.name} is improving, down to ${level} severity.`;
+    case "worsening": return `${star.name} is getting worse, now at ${level} severity.`;
+    case "steady": return `${star.name} is holding steady at ${level} severity.`;
+    default: return `${star.name} was first observed ${relativeDay(latest.at)}.`;
+  }
+}
+
+export function Segmented<T extends string | number>({ label, value, options, onChange }: {
+  label: string; value: T; options: { value: T; label: string }[]; onChange: (value: T) => void;
+}) {
+  return <div role="group" aria-label={label} className="inline-flex max-w-full flex-wrap gap-1 rounded-full bg-muted p-1">
+    {options.map((option) => <button key={String(option.value)} type="button" aria-pressed={option.value === value} onClick={() => onChange(option.value)}
+      className={cn("rounded-full px-4 py-1.5 text-sm font-medium transition-colors", focusClass, option.value === value ? "bg-foreground text-background" : "text-muted-foreground hover:text-foreground")}>{option.label}</button>)}
   </div>;
 }
-export function EmptyEvents({ message = "No events match the selected window and layers." }: { message?: string }) {
-  return <p role="status" className="py-8 text-sm text-muted-foreground">{message}</p>;
+export function StatusSwitch({ state }: { state: IseauState }) {
+  return <Segmented label="Patient status" value={state.status} onChange={state.setStatus}
+    options={[{ value: "current", label: "Current patients" }, { value: "past", label: "Past patients" }]} />;
 }
-export function EventDetail({ event }: { event: SampleEvent }) {
-  return <article className="min-w-0 space-y-2 py-3">
-    <div className="flex flex-wrap items-center gap-2"><LayerIcon layer={event.layer} /><h3 className="text-sm font-medium">{event.title}</h3>{event.severity && <SeverityBadge severity={event.severity} />}</div>
-    <p className="text-xs text-muted-foreground"><time dateTime={event.at}>{dateLabel(event.at, true)}</time> / {event.system}{event.tank ? ` / ${event.tank}` : ""} / Recorded by {event.recordedBy}</p>
-    <p className="break-words text-sm text-muted-foreground">{eventDetails(event)}</p>
-    {event.photo && <div role="img" aria-label={`Sample health photo placeholder for ${dateLabel(event.at)}`} className="flex h-16 w-24 items-center justify-center gap-1 rounded border border-dashed border-border bg-muted text-xs text-muted-foreground"><ImageIcon aria-hidden="true" className="h-4 w-4" />Photo</div>}
-  </article>;
+export function SystemSwitch({ state }: { state: IseauState }) {
+  return <Segmented label="System" value={state.system} onChange={state.setSystem}
+    options={[{ value: "all", label: "All systems" }, ...SYSTEMS.map((system) => ({ value: system, label: `${system} (${starsFor(state.status, system).length})` }))]} />;
 }
-export function EventList({ events, onHighlight, highlighted }: { events: SampleEvent[]; onHighlight?: (id: string) => void; highlighted?: string }) {
-  if (!events.length) return <EmptyEvents />;
-  return <ol aria-label="Visible event records" className="divide-y divide-border">{events.map((event) => <li key={event.id} className={cn("relative min-w-0 px-2", highlighted === event.id && "bg-accent")}>
-    <EventDetail event={event} />
-    {onHighlight ? <button type="button" aria-label={`Highlight ${event.title} on ${dateLabel(event.at)}, recorded by ${event.recordedBy}`} onFocus={() => onHighlight(event.id)} onMouseEnter={() => onHighlight(event.id)} onClick={() => onHighlight(event.id)} className={cn("absolute inset-0 w-full rounded", focusClass)} /> : null}
-  </li>)}</ol>;
+export function RangeSwitch({ state }: { state: IseauState }) {
+  return <Segmented label="Time range" value={state.range} onChange={state.setRange} options={RANGES.map((days) => ({ value: days, label: `${days} days` }))} />;
+}
+
+export function Tile({ className, children }: { className?: string; children: ReactNode }) {
+  return <div className={cn("rounded-3xl bg-muted p-6 sm:p-8", className)}>{children}</div>;
+}
+export function EmptyNote({ children }: { children: ReactNode }) {
+  return <p role="status" className="py-6 text-sm text-muted-foreground">{children}</p>;
+}
+
+export function StarCard({ star, href }: { star: Star; href: string }) {
+  const place = currentLocation(star);
+  const temperature = lastTemperature(star);
+  // Every line is a single truncated row, so all tiles keep the same height at any width.
+  return <Link href={href} className={cn("flex h-full w-full min-w-0 flex-col gap-1 rounded-3xl bg-muted p-5 text-left transition-colors hover:bg-accent", focusClass)}>
+    <span className="block truncate text-2xl font-semibold tracking-tight">{star.name}</span>
+    <span className="block truncate text-sm text-muted-foreground">{place.tank} in {place.system}</span>
+    <span className="my-2 block truncate text-sm"><SeverityLabel severity={lastHealth(star).severity} /></span>
+    <span className="block truncate text-sm text-muted-foreground">Last observed {relativeDay(lastHealth(star).at)}</span>
+    <span className="block truncate text-sm text-muted-foreground">AM check {temperature.celsius.toFixed(1)} °C</span>
+  </Link>;
+}
+
+// A native dialog gives focus trapping, Escape, and a backdrop without extra code.
+export function Sheet({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
+  const ref = useRef<HTMLDialogElement>(null);
+  useEffect(() => {
+    const opener = document.activeElement;
+    if (ref.current && !ref.current.open) ref.current.showModal();
+    return () => { if (opener instanceof HTMLElement) opener.focus(); };
+  }, []);
+  return <dialog ref={ref} aria-labelledby="iseau-sheet-title" onClose={onClose} onClick={(event) => { if (event.target === event.currentTarget) onClose(); }}
+    className="m-auto max-h-[92vh] w-[min(60rem,calc(100vw-1.5rem))] overflow-y-auto rounded-3xl bg-background p-0 text-foreground shadow-2xl backdrop:bg-black/50">
+    <div className="sticky top-0 z-10 flex items-center justify-between gap-4 bg-background/90 px-6 py-4 backdrop-blur sm:px-8">
+      <h2 id="iseau-sheet-title" className="text-2xl font-semibold tracking-tight">{title}</h2>
+      <button type="button" aria-label="Close" onClick={onClose} className={cn("rounded-full bg-muted p-2 hover:bg-accent", focusClass)}><X aria-hidden="true" className="h-4 w-4" /></button>
+    </div>
+    <div className="px-6 pb-8 sm:px-8">{children}</div>
+  </dialog>;
+}
+
+export function PageHeader({ title, description }: { title: string; description: string }) {
+  return <header className="max-w-3xl space-y-3">
+    <h1 className="text-4xl font-semibold tracking-tight sm:text-6xl">{title}</h1>
+    <p className="text-lg text-muted-foreground">{description}</p>
+  </header>;
+}
+export function SampleNote() {
+  return <p className="text-xs text-muted-foreground">Sample data as of Oct 5, 2026</p>;
 }

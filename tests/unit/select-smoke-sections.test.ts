@@ -137,6 +137,16 @@ test("maps each smoke section file back to only that section", () => {
   }
 });
 
+test("keeps ISeaU mock-data pages off the browser suite", () => {
+  const selection = selectSmokeSections([
+    "app/protected/iseau/page.tsx",
+    "app/protected/iseau/compare/page.tsx",
+    "components/iseau/widgets.tsx",
+  ]);
+  assert.equal(selection.escalatedToFullSuite, false);
+  assert.deepEqual(selection.sections, []);
+});
+
 test("escalates shared runtime files to the full suite", () => {
   const selection = selectSmokeSections(["components/ui/button.tsx"]);
   assert.equal(selection.escalatedToFullSuite, true);

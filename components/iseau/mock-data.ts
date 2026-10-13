@@ -1,158 +1,153 @@
-export const DAY = 86_400_000;
-export const SAMPLE_NOW = Date.parse("2026-10-05T23:59:59-07:00");
-export type WindowDays = 7 | 14 | 30;
+import { WATER_QUALITY_PARAMS, type WaterQualityParameter } from "@/lib/config/reference-data";
+
+const DAY = 86_400_000;
+const SAMPLE_NOW = Date.parse("2026-10-05T23:59:59-07:00");
+// A star counts as a current patient while its last health observation is this recent.
+const CURRENT_WINDOW_DAYS = 14;
+export const RANGES = [7, 14, 30, 60] as const;
+export type Range = (typeof RANGES)[number];
 export type Severity = "low" | "medium" | "high";
-export type Layer = "health" | "treatment" | "feeding" | "water" | "chemical" | "check" | "move";
-type Issue = "arm_drop" | "spine_drop" | "lesion" | "arm_curling" | "flattening" | "other";
-export const LAYERS: { id: Layer; label: string; color: string }[] = [
-  { id: "health", label: "Health observations", color: "hsl(var(--chart-1))" },
-  { id: "treatment", label: "Star treatments", color: "hsl(var(--chart-3))" },
-  { id: "feeding", label: "Feeding", color: "hsl(var(--chart-2))" },
-  { id: "water", label: "Water quality", color: "hsl(var(--chart-2))" },
-  { id: "chemical", label: "System chemical additions", color: "hsl(var(--chart-4))" },
-  { id: "check", label: "Daily check flags", color: "hsl(var(--chart-5))" },
-  { id: "move", label: "Tank moves", color: "hsl(var(--foreground))" },
-];
-export const PARAMETERS = {
-  ph: { label: "pH", unit: "", sampleBand: [7.9, 8.3] },
-  salinity: { label: "Salinity", unit: "ppt", sampleBand: [32, 35] },
-  magnesium: { label: "Magnesium", unit: "ppm", sampleBand: [1250, 1400] },
-  ammonia: { label: "Ammonia", unit: "ppm", sampleBand: [0, 0.1] },
-  alkalinity: { label: "Alkalinity", unit: "dKH", sampleBand: [7, 9] },
-  calcium: { label: "Calcium", unit: "ppm", sampleBand: [400, 450] },
-  phosphate: { label: "Phosphate", unit: "ppm", sampleBand: [0.02, 0.1] },
-  nitrate: { label: "Nitrate", unit: "ppm", sampleBand: [0, 10] },
-  nitrite: { label: "Nitrite", unit: "ppb", sampleBand: [0, 20] },
-} as const;
-export type Parameter = keyof typeof PARAMETERS;
-export type Location = { system: string; tank: string };
-export type Patient = {
-  id: string;
-  name: string;
-  locations: (Location & { since: string })[];
+export const SEVERITY_RANK: Record<Severity, number> = { low: 0, medium: 1, high: 2 };
+export type Issue = "arm_drop" | "spine_drop" | "lesion" | "arm_curling" | "flattening" | "other";
+export const ISSUE_LABELS: Record<Issue, string> = {
+  arm_drop: "Arm drop", spine_drop: "Spine drop", lesion: "Lesion", arm_curling: "Arm curling", flattening: "Flattening", other: "Other",
 };
-export type SampleEvent = {
-  id: string;
-  at: string;
-  layer: Layer;
-  starId?: string;
-  system: string;
-  tank?: string;
-  recordedBy: string;
-  title: string;
-  notes: string;
-  severity?: Severity;
-  issues?: [Issue, ...Issue[]];
-  photo?: boolean;
-  amount?: number;
-  amountUnit?: string;
-  concentration?: number;
-  concentrationUnit?: string;
-  eaten?: boolean;
-  followUpBy?: string;
-  followUpAt?: string;
-  readings?: Record<Parameter, number>;
+// Mock only: real systems come from the database.
+export const SYSTEMS = ["Graham", "Nursery", "Snack Shack"] as const;
+export type SystemName = (typeof SYSTEMS)[number];
+export type Parameter = WaterQualityParameter;
+// Placeholder bands; real target ranges live in core.water_quality_target_ranges.
+const MOCK_BANDS: Record<Parameter, readonly [number, number]> = {
+  ph: [7.9, 8.3], salinity: [32, 35], magnesium: [1250, 1400], ammonia: [0, 0.1], alkalinity: [7, 9],
+  calcium: [400, 450], phosphate: [0.02, 0.1], nitrate: [0, 10], nitrite: [0, 20],
 };
-export const PATIENTS: Patient[] = [
-  { id: "sol", name: "Sol", locations: [
-    { since: "2026-01-01T00:00:00-08:00", system: "Graham", tank: "G-04" },
-    { since: "2026-09-28T10:00:00-07:00", system: "Nursery", tank: "N-02" },
-  ] },
-  { id: "juniper", name: "Juniper", locations: [{ since: "2026-01-01T00:00:00-08:00", system: "Graham", tank: "G-02" }] },
-  { id: "poppy", name: "Poppy", locations: [{ since: "2026-01-01T00:00:00-08:00", system: "Nursery", tank: "N-01" }] },
-  { id: "atlas", name: "Atlas", locations: [{ since: "2026-01-01T00:00:00-08:00", system: "Snack Shack", tank: "S-03" }] },
-  { id: "moss", name: "Moss", locations: [{ since: "2026-01-01T00:00:00-08:00", system: "Graham", tank: "G-01" }] },
-];
-export function locationAt(patient: Patient, at: number): Location {
-  return [...patient.locations].reverse().find((location) => Date.parse(location.since) <= at) ?? patient.locations[0];
-}
-function timestamp(daysAgo: number, hour = 9) {
+export const PARAMETERS = Object.fromEntries(WATER_QUALITY_PARAMS.map((param) => [param.key, { label: param.label, unit: param.unit ?? "", band: MOCK_BANDS[param.key] }])) as
+  Record<Parameter, { label: string; unit: string; band: readonly [number, number] }>;
+
+type Health = { id: string; at: number; severity: Severity; issues: Issue[]; notes: string; photo: boolean; by: string; system: SystemName; tank: string };
+type Treatment = { id: string; at: number; type: string; amount: number; amountUnit: string; concentration: number; concentrationUnit: string; by: string };
+type Feeding = { id: string; at: number; food: string; grams: number; eaten: boolean; followUpBy: string };
+type WaterReading = { id: string; at: number; system: SystemName; by: string; values: Record<Parameter, number> };
+type Temperature = { at: number; system: SystemName; celsius: number };
+export type Star = {
+  id: string; name: string;
+  moves: { since: number; system: SystemName; tank: string }[];
+  health: Health[]; treatments: Treatment[]; feedings: Feeding[];
+};
+
+function at(daysAgo: number, hour = 9) {
   const date = new Date(Date.UTC(2026, 9, 5 - daysAgo));
-  return `${date.toISOString().slice(0, 10)}T${String(hour).padStart(2, "0")}:00:00-07:00`;
+  return Date.parse(`${date.toISOString().slice(0, 10)}T${String(hour).padStart(2, "0")}:00:00-07:00`);
 }
-function starEvent(patient: Patient, daysAgo: number, layer: Layer, details: Partial<SampleEvent>): SampleEvent {
-  const at = timestamp(daysAgo);
+const STAFF = ["Maya Chen", "Alex Rivera", "Sam Taylor"];
+const NOTES: Record<Severity, string[]> = {
+  high: ["Lesion margin spreading; photographed and separated from tank mates.", "Two arms curling inward; reduced grip on the glass."],
+  medium: ["Reduced extension during the morning check.", "Spines softer than yesterday; lesion margin unchanged."],
+  low: ["Margins unchanged; photographed for comparison.", "Moving normally; one small mark remains."],
+};
+
+type Def = { id: string; name: string; moves: [number, SystemName, string][]; health: [number, Severity, Issue[]][] };
+const DEFS: Def[] = [
+  { id: "sol", name: "Sol", moves: [[90, "Graham", "G-04"], [7, "Nursery", "N-02"]],
+    health: [[0, "low", ["lesion"]], [5, "medium", ["lesion", "arm_curling"]], [11, "high", ["lesion", "arm_curling"]], [22, "medium", ["spine_drop"]]] },
+  { id: "dune", name: "Dune", moves: [[90, "Snack Shack", "S-01"]],
+    health: [[1, "high", ["arm_drop", "flattening"]], [4, "medium", ["arm_drop"]]] },
+  { id: "juniper", name: "Juniper", moves: [[90, "Graham", "G-02"]],
+    health: [[2, "medium", ["spine_drop"]], [9, "medium", ["spine_drop", "other"]], [20, "low", ["spine_drop"]]] },
+  { id: "clay", name: "Clay", moves: [[90, "Graham", "G-03"]],
+    health: [[3, "medium", ["flattening"]], [6, "high", ["flattening", "lesion"]], [13, "medium", ["flattening"]]] },
+  { id: "poppy", name: "Poppy", moves: [[90, "Nursery", "N-01"]],
+    health: [[8, "low", ["arm_drop"]], [12, "medium", ["arm_drop"]], [26, "medium", ["arm_drop", "arm_curling"]]] },
+  { id: "fern", name: "Fern", moves: [[90, "Nursery", "N-03"]],
+    health: [[16, "low", ["spine_drop"]], [21, "medium", ["spine_drop"]], [29, "high", ["spine_drop", "lesion"]]] },
+  { id: "atlas", name: "Atlas", moves: [[90, "Snack Shack", "S-03"]],
+    health: [[18, "low", ["other"]], [24, "medium", ["flattening", "other"]], [40, "medium", ["flattening"]]] },
+  { id: "moss", name: "Moss", moves: [[90, "Graham", "G-01"]],
+    health: [[20, "low", ["arm_curling"]], [27, "medium", ["arm_curling"]], [34, "high", ["arm_curling", "lesion"]]] },
+];
+
+function locationAt(star: Pick<Star, "moves">, time: number) {
+  return [...star.moves].reverse().find((move) => move.since <= time) ?? star.moves[0];
+}
+function daysAgoOf(time: number) { return Math.round((at(0) - time) / DAY); }
+
+function buildStar(def: Def, index: number): Star {
+  const moves = def.moves.map(([days, system, tank]) => ({ since: at(days, 0), system, tank }));
+  const health: Health[] = def.health.map(([days, severity, issues], i) => ({
+    id: `${def.id}-h${days}`, at: at(days), severity, issues, notes: NOTES[severity][(index + i) % 2], photo: i % 2 === 0,
+    by: STAFF[(index + i) % 3], ...locationAt({ moves }, at(days)),
+  }));
+  const treatments: Treatment[] = health.flatMap((entry, i) => {
+    const days = daysAgoOf(entry.at);
+    if (entry.severity === "low" || days < 1) return [];
+    const high = entry.severity === "high";
+    return [{ id: `${def.id}-t${days}`, at: at(days - 1, 10), type: high ? "Reef dip" : "Probiotics", amount: high ? 2 : 0.5, amountUnit: "mL",
+      concentration: high ? 1 : 0.2, concentrationUnit: "mL/L", by: STAFF[(i + 1) % 3] }];
+  });
+  const newest = daysAgoOf(health[0].at);
+  const oldest = daysAgoOf(health[health.length - 1].at);
+  const feedings: Feeding[] = [];
+  for (let days = Math.min(oldest + 3, 89), n = 0; days >= newest; days -= 3, n++) {
+    const severity = health.find((candidate) => candidate.at <= at(days, 23))?.severity ?? "low";
+    feedings.push({ id: `${def.id}-f${days}`, at: at(days, 9), food: n % 2 ? "Clam" : "Mussel", grams: n % 2 ? 4 : 6,
+      eaten: severity === "high" ? n % 3 === 0 : severity === "medium" ? n % 4 !== 1 : true, followUpBy: "Sam Taylor" });
+  }
+  return { id: def.id, name: def.name, moves, health, treatments, feedings: feedings.reverse() };
+}
+export const STARS: Star[] = DEFS.map(buildStar);
+
+const WATER: WaterReading[] = SYSTEMS.flatMap((system, s) => Array.from({ length: 13 }, (_, i): WaterReading => {
+  const wave = Math.sin(i * 1.7 + s);
+  const spike = system === "Graham" && (i === 1 || i === 2);
+  return { id: `${system}-w${i}`, at: at(3 + i * 7), system, by: STAFF[(i + s) % 3], values: {
+    ph: 8.1 + s * 0.05 + wave * 0.08 - (spike ? 0.12 : 0), salinity: 33.4 + s * 0.4 + wave * 0.3, magnesium: 1310 + s * 15 + wave * 40,
+    ammonia: spike ? 0.13 : 0.03 + Math.abs(wave) * 0.02, alkalinity: 8 + wave * 0.5, calcium: 425 + wave * 10,
+    phosphate: 0.05 + Math.abs(wave) * 0.02, nitrate: 4 + s + Math.abs(wave) * 2, nitrite: 6 + Math.abs(wave) * 4 } };
+})).sort((first, second) => first.at - second.at);
+
+const TEMPERATURES: Temperature[] = SYSTEMS.flatMap((system, s) => Array.from({ length: 90 }, (_, days): Temperature => ({
+  // One reading per system from the daily AM check.
+  at: at(days, 8), system,
+  // Graham ran warm about ten days ago, which lines up with its health observations.
+  celsius: Math.round((12.2 + s * 0.4 + 0.5 * Math.sin(days / 4 + s) + (system === "Graham" && days >= 9 && days <= 13 ? 1.6 : 0)) * 10) / 10,
+}))).sort((first, second) => first.at - second.at);
+
+export function lastHealth(star: Star) { return star.health[0]; }
+export function isCurrent(star: Star) { return lastHealth(star).at >= SAMPLE_NOW - CURRENT_WINDOW_DAYS * DAY; }
+export function currentLocation(star: Star) { return locationAt(star, SAMPLE_NOW); }
+export function daysSince(time: number) { return Math.floor((SAMPLE_NOW - time) / DAY); }
+export function trend(star: Star): "improving" | "worsening" | "steady" | "new" {
+  const [latest, previous] = star.health;
+  if (!previous) return "new";
+  const delta = SEVERITY_RANK[latest.severity] - SEVERITY_RANK[previous.severity];
+  return delta < 0 ? "improving" : delta > 0 ? "worsening" : "steady";
+}
+
+// Past patients are shown over the weeks around their last observation, not today.
+function windowFor(star: Star, range: Range) {
+  const end = isCurrent(star) ? SAMPLE_NOW : lastHealth(star).at + DAY;
+  return { start: end - range * DAY, end };
+}
+export function starData(star: Star, range: Range) {
+  const { start, end } = windowFor(star, range);
+  const within = (time: number) => time >= start && time <= end;
+  const inSystem = (time: number, system: SystemName) => locationAt(star, time).system === system;
   return {
-    id: `${patient.id}-${layer}-${daysAgo}`, at, layer, starId: patient.id,
-    ...locationAt(patient, Date.parse(at)), recordedBy: "Maya Chen", title: "", notes: "", ...details,
+    start, end,
+    health: star.health.filter((entry) => within(entry.at)),
+    treatments: star.treatments.filter((entry) => within(entry.at)),
+    feedings: star.feedings.filter((entry) => within(entry.at)),
+    water: WATER.filter((entry) => within(entry.at) && inSystem(entry.at, entry.system)),
+    temperatures: TEMPERATURES.filter((entry) => within(entry.at) && inSystem(entry.at, entry.system)),
   };
 }
-const healthDays = [[0, 5, 11, 22], [2, 9, 20], [8, 12, 26], [18, 24, 40], [38, 45, 52]];
-const issueSets: [Issue, ...Issue[]][] = [["lesion", "arm_curling"], ["spine_drop"], ["flattening", "other"], ["arm_drop"]];
-const severities: Severity[] = ["low", "medium", "high"];
-const EVENTS: SampleEvent[] = [
-  ...PATIENTS.flatMap((patient, patientIndex) => [
-    ...healthDays[patientIndex].map((daysAgo, index) => starEvent(patient, daysAgo, "health", {
-      title: "Health observation", issues: issueSets[(patientIndex + index) % issueSets.length],
-      severity: severities[Math.min(index, 2)], photo: index % 2 === 0,
-      notes: index === 0 ? "Margins unchanged; photographed for comparison." : "Reduced extension observed during morning check.",
-      recordedBy: index % 2 ? "Alex Rivera" : "Maya Chen",
-    })),
-    ...[1, 6, 13, 21].map((daysAgo, index) => starEvent(patient, daysAgo, "treatment", {
-      title: index % 2 ? "Reef dip" : "Probiotics", amount: index % 2 ? 2 : 0.5, amountUnit: "mL",
-      concentration: index % 2 ? 1 : 0.2, concentrationUnit: "mL/L", notes: "Sample treatment record; no dosing recommendation.", recordedBy: "Alex Rivera",
-    })),
-    ...[0, 3, 7, 10, 17, 25].map((daysAgo, index) => starEvent(patient, daysAgo, "feeding", {
-      title: index % 2 ? "Clam" : "Mussel", amount: index % 2 ? 4 : 6, amountUnit: "g", eaten: index % 3 !== 1,
-      followUpBy: "Sam Taylor", followUpAt: timestamp(daysAgo, 17), notes: "PM consumption follow-up recorded.", recordedBy: "Maya Chen",
-    })),
-  ]),
-  ...["Graham", "Nursery", "Snack Shack"].flatMap((system, systemIndex) => [
-    ...[4, 11, 18, 25].map((daysAgo, index): SampleEvent => ({
-      id: `${system}-water-${daysAgo}`, at: timestamp(daysAgo), layer: "water", system,
-      recordedBy: "Sam Taylor", title: "Weekly manual water reading", notes: "Manual sample; no Apex probe data.",
-      readings: { ph: 8.05 + systemIndex * 0.08 - index * 0.03, salinity: 33 + systemIndex * 0.5,
-        magnesium: 1280 + index * 25 + systemIndex * 15, ammonia: 0.02 + index * 0.01,
-        alkalinity: 7.8 + index * 0.1, calcium: 415 + index * 5, phosphate: 0.04 + index * 0.01,
-        nitrate: 3 + index * 0.8, nitrite: 5 + index * 2 },
-    })),
-    ...[2, 9, 16, 23].map((daysAgo, index): SampleEvent => ({
-      id: `${system}-chemical-${daysAgo}`, at: timestamp(daysAgo, 11), layer: "chemical", system,
-      recordedBy: "Alex Rivera", title: ["C-Balance", "Mg", "DI Trace"][index % 3], amount: 10 + systemIndex * 2, amountUnit: "mL",
-      notes: "Sample system addition record.",
-    })),
-    ...[1, 8, 19].map((daysAgo): SampleEvent => ({
-      id: `${system}-check-${daysAgo}`, at: timestamp(daysAgo, 8), layer: "check", system,
-      recordedBy: "Maya Chen", title: "AM check: reduced activity", notes: "Flagged for observation; circulation checked.",
-    })),
-  ]),
-  { id: "sol-move", at: "2026-09-28T10:00:00-07:00", layer: "move", starId: "sol", system: "Nursery", tank: "N-02",
-    recordedBy: "Alex Rivera", title: "Graham / G-04 to Nursery / N-02", notes: "Moved for closer observation. Subsequent water readings use Nursery." },
-];
-export function windowStart(days: WindowDays) {
-  const date = new Date(Date.UTC(2026, 9, 6 - days)).toISOString().slice(0, 10);
-  return Date.parse(`${date}T00:00:00-07:00`);
+export function lastTemperature(star: Star) {
+  const { end } = windowFor(star, 7);
+  return [...TEMPERATURES].reverse().find((entry) => entry.at <= end && entry.system === locationAt(star, end).system)!;
 }
-export function patientEvents(patient: Patient) {
-  return EVENTS.filter((event) => event.starId ? event.starId === patient.id : locationAt(patient, Date.parse(event.at)).system === event.system)
-    .sort((first, second) => Date.parse(second.at) - Date.parse(first.at));
+
+// Weekly readings are sparse, so previews show the latest few regardless of the chosen range.
+export function recentWater(star: Star, count: number) {
+  const { end } = windowFor(star, 7);
+  return WATER.filter((entry) => entry.at <= end && locationAt(star, entry.at).system === entry.system).slice(-count);
 }
-export function visibleEvents(patient: Patient, days: WindowDays, layers: Layer[]) {
-  return patientEvents(patient).filter((event) => Date.parse(event.at) >= windowStart(days) && Date.parse(event.at) <= SAMPLE_NOW && layers.includes(event.layer));
-}
-export function lastObservation(patient: Patient) {
-  return patientEvents(patient).find((event) => event.layer === "health")!;
-}
-export function isCurrentPatient(patient: Patient, days: WindowDays) {
-  return Date.parse(lastObservation(patient).at) >= windowStart(days);
-}
-export function worstSeverity(patient: Patient, days: WindowDays): Severity {
-  const health = visibleEvents(patient, days, ["health"]);
-  return [...health, lastObservation(patient)].reduce<Severity>((worst, event) =>
-    severities.indexOf(event.severity ?? "low") > severities.indexOf(worst) ? event.severity! : worst, "low");
-}
-export function eventDetails(event: SampleEvent) {
-  return [event.issues?.map((issue) => issue.replaceAll("_", " ")).join(", "), event.severity,
-    event.amount !== undefined ? `${event.amount} ${event.amountUnit}` : undefined,
-    event.concentration !== undefined ? `${event.concentration} ${event.concentrationUnit}` : undefined,
-    event.eaten !== undefined ? `Eaten: ${event.eaten ? "yes" : "no"}; follow-up by ${event.followUpBy} at ${event.followUpAt}` : undefined,
-    event.readings ? Object.entries(event.readings).map(([parameter, value]) => `${PARAMETERS[parameter as Parameter].label}: ${Number(value.toFixed(2))} ${PARAMETERS[parameter as Parameter].unit}`).join("; ") : undefined,
-    event.notes].filter(Boolean).join(" | ");
-}
-export const DESIGNS = [
-  { id: 1, title: "Swimlane timeline", description: "Compare seven event layers along a shared date axis." },
-  { id: 2, title: "Overlay chart + event feed", description: "Connect weekly chemistry readings with individual care events." },
-  { id: 3, title: "Day-by-day grid", description: "Scan daily event counts and expand a day's records." },
-  { id: 4, title: "Patient chart", description: "Review a patient summary, chemistry sparklines, and chronological notes." },
-  { id: 5, title: "Ward board + detail", description: "Compare monitored patients, then open one patient's timeline." },
-];
