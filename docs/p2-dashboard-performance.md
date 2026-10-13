@@ -98,7 +98,7 @@ queries are unchanged from the before table.
 
 The Systems page already separated server loading (`data.ts`), client interaction
 (`systems-page-client.tsx`), and rendering components. Only the pure overview derivation was
-extracted; no broader component churn was justified.
+extracted (since replaced by `lib/systems/snapshot.ts`); no broader component churn was justified.
 
 ### Payload, hydration, and latency
 
@@ -122,6 +122,6 @@ was warranted.
   - `npm run lint`
   - `npx tsc --noEmit`
   - `npm run build`
-  - `npm run test:e2e:plan -- --files app/protected/home/data.ts app/protected/home/derivations.ts app/protected/home/page.tsx app/protected/systems/data.ts app/protected/systems/derivations.ts tests/unit/systems-derivations.test.ts tests/unit/home-derivations.test.ts`
+  - `npm run test:e2e:plan -- --files app/protected/home/data.ts app/protected/home/derivations.ts app/protected/home/page.tsx app/protected/systems/data.ts tests/unit/home-derivations.test.ts`
 - The selector's path rules request `daily-operations` and `systems-trends`. Per task
   direction, browser e2e is left for the lead's delegated verification.

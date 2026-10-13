@@ -29,7 +29,7 @@ don't jiggle the layout.
 Any time a system/tank name (or similarly-scoped entity) appears as a compact label in a
 list or feed — not as a page `<h1>` and not inside a `Badge` pill — use exactly
 `text-sm font-medium`. This is the pattern in
-[components/systems/grid-overview.tsx](../components/systems/grid-overview.tsx),
+[components/systems/system-lineup.tsx](../components/systems/system-lineup.tsx),
 [components/systems/highlights-feed.tsx](../components/systems/highlights-feed.tsx), and
 [app/protected/home/page.tsx](../app/protected/home/page.tsx). Page-level `<h1>` titles and
 `Badge`-wrapped names are different typographic roles and intentionally don't match this.
@@ -57,10 +57,12 @@ and dark mode. In SVG, prefer `fill="currentColor"`/`stroke="currentColor"` comb
 `text-*` className on the same or an ancestor element, since Tailwind's `fill-*`/`stroke-*`
 utilities don't reliably apply to raw SVG presentation attributes in this setup.
 
-## ISeaU (`components/iseau/`)
+## ISeaU (`components/iseau/`) and Systems (`components/systems/`)
 A deliberate exception to the page-title row above: ISeaU hero headlines use
 `text-4xl sm:text-6xl font-semibold tracking-tight` and star names on tiles use `text-3xl`
 (`text-5xl` to `text-7xl` in detail heroes). Content sits on `bg-muted` `rounded-3xl` tiles with
 no border or shadow; selectors are `rounded-full` pills (selected = `bg-foreground text-background`).
 Severity swatches use fixed teal / amber / red in `components/iseau/shared.tsx` so they read the same
-in both themes. Don't copy this scale to other pages without updating this section.
+in both themes. The Systems lineup, compare, and detail pages reuse these tiles, pills, and
+severity hues (status: teal on track, amber worth a look, coral needs attention). Don't copy
+this scale to other pages without updating this section.

@@ -1,10 +1,11 @@
 /**
- * Systems page (components/systems/grid-overview.tsx, charts.tsx, chart-data.ts,
- * systems-page-client.tsx) "Water quality trends" card: Page 1 chemical-isolate
+ * Systems page (components/systems/: lineup, compare, detail, water-trends-card.tsx,
+ * charts.tsx, chart-data.ts, systems-page-client.tsx). Covers the lineup -> detail ->
+ * compare navigation and the detail page's "Water quality trends" card: Page 1 chemical-isolate
  * pills, Page 2 dual-axis "Compare" swap selects, carousel chevrons/dots/keyboard
- * nav, and the existing range-days pills. UI-only, no DB writes (Tier 2 per
+ * nav, and the existing range-days pills. UI-only apart from seeded water readings (Tier 2 per
  * docs/testing-strategy.md) — no Supabase row assertions needed. Extend this file
- * for further Systems-page chart changes.
+ * for further Systems-page changes.
  */
 import { test, expect, type Locator, type Page } from "@playwright/test";
 import { cleanupStep, dbQuery, isAbortedRscPrefetch, login, RUN_TAG, sqlLiteral, TECH_EMAIL, TECH_PASSWORD } from "./helpers";
@@ -502,5 +503,30 @@ test.describe("systems page water quality trends card", () => {
       await expect(page).toHaveURL(new RegExp(`range=${label.replace("d", "")}`));
     }
 
+  });
+
+  test("Lineup opens a system, back returns to the lineup, and Compare lists every system", async ({
+    page,
+  }) => {
+    await login(page);
+    await page.goto("/protected/systems");
+    await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+
+    await page.getByRole("link", { name: /^Graham/ }).click();
+    await expect(page).toHaveURL(/system=graham/);
+    await expect(page.getByRole("heading", { level: 1, name: "Graham" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Latest readings" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Water and activity" })).toBeVisible();
+    await page.getByRole("button", { name: "Activity chart: Ammonia" }).click();
+    await expect(page.getByRole("img", { name: /^Ammonia over 30 days/ })).toBeVisible();
+    await expect(page.getByText("Water quality trends")).toBeVisible();
+
+    await page.getByRole("link", { name: "All systems" }).click();
+    await expect(page).not.toHaveURL(/system=/);
+
+    await page.getByRole("link", { name: "Compare systems" }).click();
+    await expect(page).toHaveURL(/compare=1/);
+    await expect(page.getByRole("columnheader", { name: /Graham/ })).toBeVisible();
+    await expect(page.getByRole("rowheader", { name: "AM check" })).toBeVisible();
   });
 });

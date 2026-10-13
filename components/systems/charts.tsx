@@ -5,7 +5,7 @@
 // gracefully: each series only draws through the points it actually has, no
 // interpolated/assumed values for missing days.
 
-import { useRef, useState, type PointerEvent } from "react";
+import { useEffect, useRef, useState, type PointerEvent } from "react";
 
 import { formatPacificDateTime } from "@/lib/pacific-date-time";
 
@@ -16,7 +16,8 @@ export type ChartSeries = {
   points: { at: string; value: number }[];
 };
 
-const CHART_WIDTH = 600;
+// Narrowest the chart draws; below this the wrapper scrolls sideways.
+const MIN_CHART_WIDTH = 600;
 
 function formatChartDate(value: number) {
   return formatPacificDateTime(new Date(value), {
@@ -54,7 +55,19 @@ function computeAxisPadding(labels: string[], fontSize: number, minPad = 34) {
 function useHoverState() {
   const svgRef = useRef<SVGSVGElement>(null);
   const [hoverTime, setHoverTime] = useState<number | null>(null);
-  return { svgRef, hoverTime, setHoverTime };
+  // The chart is drawn at its real pixel width (never scaled) so axis text keeps the UI font size.
+  // It starts at the minimum so server and client first renders match.
+  const [wrap, wrapRef] = useState<HTMLDivElement | null>(null);
+  const [width, setWidth] = useState(MIN_CHART_WIDTH);
+  useEffect(() => {
+    if (!wrap) return;
+    const update = () => setWidth(Math.max(MIN_CHART_WIDTH, Math.floor(wrap.clientWidth)));
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(wrap);
+    return () => observer.disconnect();
+  }, [wrap]);
+  return { svgRef, hoverTime, setHoverTime, wrapRef, width };
 }
 
 // Builds the pointer-move handler for a chart's overlay rect: converts the
@@ -76,8 +89,8 @@ function createPointerMoveHandler(
     if (!svg || times.length === 0) return;
     const bounds = svg.getBoundingClientRect();
     if (bounds.width === 0) return;
-    const relX = ((event.clientX - bounds.left) / bounds.width) * CHART_WIDTH;
-    const clampedX = Math.min(Math.max(relX, padX), CHART_WIDTH - padX);
+    const relX = event.clientX - bounds.left;
+    const clampedX = Math.min(Math.max(relX, padX), bounds.width - padX);
     const targetT = minT + ((clampedX - padX) / plotWidth) * timeRange;
     const nearest = times.reduce(
       (closest, t) => (Math.abs(t - targetT) < Math.abs(closest - targetT) ? t : closest),
@@ -95,11 +108,13 @@ function HoverIndicator({
   x,
   height,
   padY,
+  chartWidth,
 }: {
   hoverTime: number | null;
   x: (t: number) => number;
   height: number;
   padY: number;
+  chartWidth: number;
 }) {
   if (hoverTime == null) return null;
   const hx = x(hoverTime);
@@ -107,7 +122,7 @@ function HoverIndicator({
   const labelWidth = Math.ceil(estimateTextWidth(label, 12)) + 12;
   const boxHeight = 16;
   const boxY = Math.max(2, padY - boxHeight / 2);
-  const boxX = Math.min(Math.max(hx - labelWidth / 2, 2), CHART_WIDTH - labelWidth - 2);
+  const boxX = Math.min(Math.max(hx - labelWidth / 2, 2), chartWidth - labelWidth - 2);
 
   // Presentation attributes like `fill`/`stroke` don't reliably pick up
   // Tailwind's `fill-*`/`stroke-*` utilities on raw SVG shapes, so — same as
@@ -167,7 +182,7 @@ export function MultiLineChart({
 }) {
   const withPoints = series.filter((s) => s.points.length > 0);
   const allPoints = withPoints.flatMap((s) => s.points);
-  const { svgRef, hoverTime, setHoverTime } = useHoverState();
+  const { svgRef, hoverTime, setHoverTime, wrapRef, width: chartWidth } = useHoverState();
   if (allPoints.length === 0) {
     return <p className="text-sm text-muted-foreground">{emptyMessage}</p>;
   }
@@ -187,7 +202,7 @@ export function MultiLineChart({
   const padY = 12;
   const tickValues = minV === maxV ? [minV] : [maxV, (minV + maxV) / 2, minV];
   const padX = computeAxisPadding(tickValues.map(formatTick), 12); // room for the numeric y-axis tick labels
-  const plotWidth = CHART_WIDTH - padX * 2;
+  const plotWidth = chartWidth - padX * 2;
   const x = (t: number) => padX + ((t - minT) / timeRange) * plotWidth;
   const y = (v: number) => height - padY - ((v - minV) / valueRange) * (height - padY * 2);
 
@@ -207,13 +222,13 @@ export function MultiLineChart({
 
   return (
     <div className="flex flex-col gap-2">
-      <div className="overflow-x-auto">
+      <div ref={wrapRef} className="overflow-x-auto">
         <svg
           ref={svgRef}
-          viewBox={`0 0 ${CHART_WIDTH} ${height}`}
-          preserveAspectRatio="none"
-          className="w-full min-w-[600px] overflow-visible"
-          style={{ height }}
+          width={chartWidth}
+          height={height}
+          viewBox={`0 0 ${chartWidth} ${height}`}
+          className="max-w-none overflow-visible"
         >
         <g className="text-xs text-muted-foreground">
           {tickValues.map((v, i) => (
@@ -266,13 +281,13 @@ export function MultiLineChart({
         <rect
           x={0}
           y={0}
-          width={CHART_WIDTH}
+          width={chartWidth}
           height={height}
           fill="transparent"
           onPointerMove={handlePointerMove}
           onPointerLeave={handlePointerLeave}
         />
-        <HoverIndicator hoverTime={hoverTime} x={x} height={height} padY={padY} />
+        <HoverIndicator hoverTime={hoverTime} x={x} height={height} padY={padY} chartWidth={chartWidth} />
         </svg>
       </div>
       <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
@@ -312,7 +327,7 @@ export function DualAxisLineChart({
   emptyMessage?: string;
 }) {
   const allPoints = [...left.points, ...right.points];
-  const { svgRef, hoverTime, setHoverTime } = useHoverState();
+  const { svgRef, hoverTime, setHoverTime, wrapRef, width: chartWidth } = useHoverState();
   if (allPoints.length === 0) {
     return <p className="text-sm text-muted-foreground">{emptyMessage}</p>;
   }
@@ -347,7 +362,7 @@ export function DualAxisLineChart({
     [...tickValuesFor(leftScale), ...tickValuesFor(rightScale)].map(formatTick),
     12,
   ); // room for the tick labels on each side
-  const plotWidth = CHART_WIDTH - padX * 2;
+  const plotWidth = chartWidth - padX * 2;
   const x = (t: number) => padX + ((t - minT) / timeRange) * plotWidth;
 
   const renderLine = (series: ChartSeries, scale: Scale | null) => {
@@ -389,7 +404,7 @@ export function DualAxisLineChart({
   const renderTicks = (scale: Scale | null, series: ChartSeries, side: "left" | "right") => {
     if (!scale) return null;
     const anchor = side === "left" ? "end" : "start";
-    const tx = side === "left" ? padX - 6 : CHART_WIDTH - padX + 6;
+    const tx = side === "left" ? padX - 6 : chartWidth - padX + 6;
     const values = tickValuesFor(scale);
     return values.map((v, i) => (
       <text
@@ -422,13 +437,13 @@ export function DualAxisLineChart({
 
   return (
     <div className="flex flex-col gap-2">
-      <div className="overflow-x-auto">
+      <div ref={wrapRef} className="overflow-x-auto">
         <svg
           ref={svgRef}
-          viewBox={`0 0 ${CHART_WIDTH} ${height}`}
-          preserveAspectRatio="none"
-          className="w-full min-w-[600px] overflow-visible"
-          style={{ height }}
+          width={chartWidth}
+          height={height}
+          viewBox={`0 0 ${chartWidth} ${height}`}
+          className="max-w-none overflow-visible"
         >
           {renderTicks(leftScale, left, "left")}
           {renderTicks(rightScale, right, "right")}
@@ -437,13 +452,13 @@ export function DualAxisLineChart({
           <rect
             x={0}
             y={0}
-            width={CHART_WIDTH}
+            width={chartWidth}
             height={height}
             fill="transparent"
             onPointerMove={handlePointerMove}
             onPointerLeave={handlePointerLeave}
           />
-          <HoverIndicator hoverTime={hoverTime} x={x} height={height} padY={padY} />
+          <HoverIndicator hoverTime={hoverTime} x={x} height={height} padY={padY} chartWidth={chartWidth} />
         </svg>
       </div>
       <div className="flex items-center justify-end text-xs text-muted-foreground">
