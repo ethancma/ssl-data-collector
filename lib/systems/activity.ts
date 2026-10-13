@@ -1,3 +1,6 @@
+// Days of feedings, treatments, chemicals and maintenance the detail page loads and charts.
+export const ACTIVITY_WINDOW_DAYS = 30;
+
 export type ActivityKind = "feeding" | "probiotic" | "treatment" | "chemical" | "maintenance";
 
 export type ActivityEvent = {

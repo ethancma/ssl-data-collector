@@ -23,7 +23,7 @@ export function SystemCompare({ systems, onOpen, onBack }: {
       <table className="w-full border-collapse">
         <thead>
           <tr>
-            <td className="sticky left-0 z-10 bg-muted" />
+            <td className="sticky left-0 z-10 bg-muted"><span className="sr-only">Metric</span></td>
             {systems.map(({ slug, name, category }) => <th key={slug} scope="col" className="min-w-44 pb-4 pr-6 text-left align-bottom font-normal">
               <a href={`?system=${slug}`} onClick={onPlainClick(() => onOpen(slug))} className={cn("block rounded", focusClass)}>
                 <span className="block truncate text-2xl font-semibold tracking-tight">{name}</span>

@@ -56,7 +56,7 @@ export function fedText(snapshot: SystemSnapshot, hasAnimals: boolean) {
 }
 
 export function readingValue(reading: WaterReadingSummary) {
-  return <span className={cn("tabular-nums", reading.outOfRange && OUT_OF_RANGE_TEXT)}>{formatReading(reading)}</span>;
+  return <span className={cn("tabular-nums", reading.outOfRange && OUT_OF_RANGE_TEXT)}>{formatReading(reading)}{reading.outOfRange && <span className="sr-only"> (outside target)</span>}</span>;
 }
 
 // A track with the target band shaded and a marker at the latest value; no band when no target is set.

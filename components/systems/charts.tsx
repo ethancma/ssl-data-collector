@@ -52,21 +52,26 @@ function computeAxisPadding(labels: string[], fontSize: number, minPad = 34) {
 // unconditionally at the top of each component) so the actual nearest-point
 // lookup, which depends on chart-specific scales, can be computed later in
 // the render without violating the rules of hooks.
-function useHoverState() {
-  const svgRef = useRef<SVGSVGElement>(null);
-  const [hoverTime, setHoverTime] = useState<number | null>(null);
-  // The chart is drawn at its real pixel width (never scaled) so axis text keeps the UI font size.
-  // It starts at the minimum so server and client first renders match.
+// The chart is drawn at its real pixel width (never scaled) so axis text keeps the UI font size.
+// It starts at the minimum so server and client first renders match.
+export function useChartWidth(minWidth = MIN_CHART_WIDTH) {
   const [wrap, wrapRef] = useState<HTMLDivElement | null>(null);
-  const [width, setWidth] = useState(MIN_CHART_WIDTH);
+  const [width, setWidth] = useState(minWidth);
   useEffect(() => {
     if (!wrap) return;
-    const update = () => setWidth(Math.max(MIN_CHART_WIDTH, Math.floor(wrap.clientWidth)));
+    const update = () => setWidth(Math.max(minWidth, Math.floor(wrap.clientWidth)));
     update();
     const observer = new ResizeObserver(update);
     observer.observe(wrap);
     return () => observer.disconnect();
-  }, [wrap]);
+  }, [wrap, minWidth]);
+  return { wrapRef, width };
+}
+
+function useHoverState() {
+  const svgRef = useRef<SVGSVGElement>(null);
+  const [hoverTime, setHoverTime] = useState<number | null>(null);
+  const { wrapRef, width } = useChartWidth();
   return { svgRef, hoverTime, setHoverTime, wrapRef, width };
 }
 

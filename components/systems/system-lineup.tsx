@@ -30,8 +30,8 @@ export function SystemLineup({ systems, onOpen, onCompare }: {
     </div>
     <ul className="grid auto-rows-fr gap-3" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(18rem, 1fr))" }}>
       {systems.map(({ slug, name, category, hasAnimals, snapshot }) => {
-        const ph = snapshot.water.readings.find((reading) => reading.key === "ph")!;
-        const ammonia = snapshot.water.readings.find((reading) => reading.key === "ammonia")!;
+        const ph = snapshot.water.readings.find((reading) => reading.key === "ph");
+        const ammonia = snapshot.water.readings.find((reading) => reading.key === "ammonia");
         return <li key={slug} className="min-w-0">
           <a href={`?system=${slug}`} onClick={onPlainClick(() => onOpen(slug))}
             className={cn("flex h-full flex-col gap-4 rounded-3xl bg-muted p-6 transition-colors hover:bg-accent", focusClass)}>
@@ -49,8 +49,8 @@ export function SystemLineup({ systems, onOpen, onCompare }: {
             <div className="flex flex-wrap gap-2"><CheckChip type="AM" state={snapshot.am} /><CheckChip type="PM" state={snapshot.pm} /></div>
             <dl className="mt-auto grid grid-cols-3 gap-2 text-sm">
               <div><dt className="text-muted-foreground">Temp</dt><dd className="font-medium tabular-nums">{temperatureText(snapshot)}</dd></div>
-              <div><dt className="text-muted-foreground">pH</dt><dd className="font-medium">{readingValue(ph)}</dd></div>
-              <div><dt className="text-muted-foreground">Ammonia</dt><dd className="font-medium">{readingValue(ammonia)}</dd></div>
+              <div><dt className="text-muted-foreground">pH</dt><dd className="font-medium">{ph ? readingValue(ph) : "\u2014"}</dd></div>
+              <div><dt className="text-muted-foreground">Ammonia</dt><dd className="font-medium">{ammonia ? readingValue(ammonia) : "\u2014"}</dd></div>
             </dl>
             <p className="text-sm text-muted-foreground">{waterTestedText(snapshot)}. {fedText(snapshot, hasAnimals)}.</p>
           </a>

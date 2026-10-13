@@ -6,7 +6,7 @@ import {
 } from "@/lib/config/reference-data";
 import { createClient } from "@/lib/supabase/server";
 import type { WaterQualityTargetRange } from "@/lib/daily-operations/water-quality-targets";
-import { buildActivityEvents } from "@/lib/systems/activity";
+import { ACTIVITY_WINDOW_DAYS, buildActivityEvents } from "@/lib/systems/activity";
 import { deriveSystemKpis } from "@/lib/systems/kpis";
 import { deriveSystemSnapshot } from "@/lib/systems/snapshot";
 import {
@@ -48,6 +48,21 @@ const TASK_LABELS: Record<MaintenanceTaskType, string> = {
   other: "Other",
 };
 
+// PostgREST caps each response (max_rows, 1000), so tables that grow by a row
+// per animal or per check are read in pages instead of one truncated query.
+const PAGE_SIZE = 1000;
+async function selectAll<Row>(
+  page: (from: number, to: number) => PromiseLike<{ data: Row[] | null; error: { message: string; code?: string } | null }>,
+) {
+  const rows: Row[] = [];
+  for (let from = 0; ; from += PAGE_SIZE) {
+    const { data, error } = await page(from, from + PAGE_SIZE - 1);
+    if (error) return { data: null, error };
+    rows.push(...(data ?? []));
+    if (!data || data.length < PAGE_SIZE) return { data: rows, error: null };
+  }
+}
+
 // Fetches everything the systems page needs for all configured systems in one page
 // load: daily checks / water quality readings over a 60-day superset (so the
 // client-side 14d/30d/60d trend chart range toggle can slice locally with no
@@ -68,7 +83,7 @@ export async function fetchAllSystemsDetailData(): Promise<{
   const now = nowDate.getTime();
   const since14dMs = now - 14 * 24 * 60 * 60 * 1000;
   const since14d = new Date(since14dMs).toISOString();
-  const since30d = new Date(now - 30 * 24 * 60 * 60 * 1000).toISOString();
+  const since30d = new Date(now - ACTIVITY_WINDOW_DAYS * 24 * 60 * 60 * 1000).toISOString();
   const since60d = new Date(now - 60 * 24 * 60 * 60 * 1000).toISOString();
 
   const { data: systemRows, error: systemsError } = await supabase
@@ -83,7 +98,7 @@ export async function fetchAllSystemsDetailData(): Promise<{
     return { dataBySlug: {} };
   }
 
-  const systemIds = (systemRows ?? []).map((s) => s.id);
+  const systemIds = systemRows.map((s) => s.id);
 
   // Widened to `string` (not a literal) so postgrest-js's select-string
   // parser doesn't try (and fail) to statically parse this runtime-built list.
@@ -97,14 +112,18 @@ export async function fetchAllSystemsDetailData(): Promise<{
     { data: maintenanceRaw, error: maintenanceError },
     { data: targetsRaw, error: targetsError },
     { data: feedingRaw, error: feedingError },
-    { data: treatmentsRaw },
+    { data: treatmentsRaw, error: treatmentsError },
   ] = await Promise.all([
-    supabase
-      .from("daily_checks")
-      .select("id, system_id, check_type, water_running, temperature, checked_at")
-      .in("system_id", systemIds)
-      .gte("checked_at", since60d)
-      .order("checked_at", { ascending: true }),
+    selectAll((from, to) =>
+      supabase
+        .from("daily_checks")
+        .select("id, system_id, check_type, water_running, temperature, checked_at")
+        .in("system_id", systemIds)
+        .gte("checked_at", since60d)
+        .order("checked_at", { ascending: true })
+        .order("id", { ascending: true })
+        .range(from, to),
+    ),
     supabase
       .from("water_quality_readings")
       .select(waterQualityColumns)
@@ -132,19 +151,27 @@ export async function fetchAllSystemsDetailData(): Promise<{
     supabase
       .from("water_quality_target_ranges")
       .select("id, system_id, parameter_key, min_value, max_value"),
-    supabase
-      .from("feeding_logs")
-      .select("fed_at, tanks!inner(system_id)")
-      .in("tanks.system_id", systemIds)
-      .gte("fed_at", since30d)
-      .order("fed_at", { ascending: false }),
-    // Viewers have no read access to star treatments; their error is ignored so the page still loads.
-    supabase
-      .from("star_treatments")
-      .select("administered_at, treatment_type, amount, unit, tanks!star_treatments_tank_id_fkey!inner(system_id)")
-      .in("tanks.system_id", systemIds)
-      .gte("administered_at", since30d)
-      .order("administered_at", { ascending: false }),
+    selectAll((from, to) =>
+      supabase
+        .from("feeding_logs")
+        .select("fed_at, tanks!inner(system_id)")
+        .in("tanks.system_id", systemIds)
+        .gte("fed_at", since30d)
+        .order("fed_at", { ascending: false })
+        .order("id", { ascending: false })
+        .range(from, to),
+    ),
+    // Viewers have no read access to star treatments (42501); that one error is tolerated below.
+    selectAll((from, to) =>
+      supabase
+        .from("star_treatments")
+        .select("administered_at, treatment_type, amount, unit, tanks!inner(system_id)")
+        .in("tanks.system_id", systemIds)
+        .gte("administered_at", since30d)
+        .order("administered_at", { ascending: false })
+        .order("id", { ascending: false })
+        .range(from, to),
+    ),
   ]);
 
   const loadError =
@@ -154,7 +181,8 @@ export async function fetchAllSystemsDetailData(): Promise<{
     healthObservationsError ??
     maintenanceError ??
     targetsError ??
-    feedingError;
+    feedingError ??
+    (treatmentsError?.code === "42501" ? null : treatmentsError);
   if (loadError) {
     return { dataBySlug: {}, error: loadError.message };
   }
@@ -270,10 +298,12 @@ export async function fetchAllSystemsDetailData(): Promise<{
       maintenance: maintenanceLogs,
     });
 
-    // Newest non-null value per parameter, so a partial test doesn't blank the others.
+    // A partial test shouldn't blank the other parameters, but only back-fill from the same week.
+    const latestTestMs = waterQuality.length ? Date.parse(waterQuality[waterQuality.length - 1].testedAt) : 0;
+    const sameWeek = waterQuality.filter((r) => Date.parse(r.testedAt) >= latestTestMs - 7 * 24 * 60 * 60 * 1000);
     const latestWaterValues = {} as Record<WaterQualityParameter, number | null>;
     for (const key of WATER_QUALITY_PARAMETERS) {
-      latestWaterValues[key] = [...waterQuality].reverse().find((r) => r[key] != null)?.[key] ?? null;
+      latestWaterValues[key] = [...sameWeek].reverse().find((r) => r[key] != null)?.[key] ?? null;
     }
     const lastFedAt = feedingRows[0]?.fed_at ?? null;
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { usePathname, useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { SystemCompare } from "@/components/systems/system-compare";
@@ -14,16 +14,21 @@ function parseRange(value: string | null): ChartRangeDays {
   return (CHART_RANGE_DAYS as readonly number[]).includes(parsed) ? (parsed as ChartRangeDays) : 14;
 }
 
+// Snapshot statuses ("AM due by noon") and ages go stale; refetch when a tab returns after this long.
+const STALE_AFTER_MS = 10 * 60 * 1000;
+
 // The URL is the source of truth for the view (`?system=` for a system,
 // `?compare=1` for compare, nothing for the lineup). Moving between views uses
 // the History API, which Next syncs into useSearchParams, so switching is an
 // instant local render of the data already fetched for every system, and Back
-// still works. The chart range is local state (seeded from `?range=`) so its
-// pills respond immediately.
+// still works. The chart range is local state (seeded from and kept in sync
+// with `?range=`) so its pills respond immediately.
 export function SystemsPageClient({ dataBySlug }: { dataBySlug: Record<string, SystemDetailData> }) {
+  const router = useRouter();
   const pathname = usePathname();
   const params = useSearchParams();
   const top = useRef<HTMLDivElement>(null);
+  const mounted = useRef(false);
 
   const systems = useMemo(
     () => Object.values(dataBySlug).sort((a, b) =>
@@ -35,6 +40,19 @@ export function SystemsPageClient({ dataBySlug }: { dataBySlug: Record<string, S
   const selected = slug && Object.hasOwn(dataBySlug, slug) ? dataBySlug[slug] : undefined;
   const view = params.get("compare") === "1" ? "compare" : selected ? "detail" : "lineup";
   const [range, setRange] = useState<ChartRangeDays>(() => parseRange(params.get("range")));
+  const urlRange = params.get("range");
+  useEffect(() => {
+    if (urlRange) setRange(parseRange(urlRange));
+  }, [urlRange]);
+
+  const generatedAt = systems[0].generatedAt;
+  useEffect(() => {
+    const refreshIfStale = () => {
+      if (document.visibilityState === "visible" && Date.now() - Date.parse(generatedAt) > STALE_AFTER_MS) router.refresh();
+    };
+    document.addEventListener("visibilitychange", refreshIfStale);
+    return () => document.removeEventListener("visibilitychange", refreshIfStale);
+  }, [generatedAt, router]);
 
   const go = (next: { system?: string; compare?: boolean; range?: ChartRangeDays }, mode: "push" | "replace" = "push") => {
     const query = new URLSearchParams();
@@ -48,9 +66,17 @@ export function SystemsPageClient({ dataBySlug }: { dataBySlug: Record<string, S
     else window.history.replaceState(null, "", url);
   };
 
-  // The shell scrolls inside <main>, so a view change has to reset that element.
+  // The shell scrolls inside <main>, so a view change resets that element and moves focus
+  // to the new heading (the clicked link is gone).
   useEffect(() => {
     top.current?.closest("main")?.scrollTo({ top: 0 });
+    if (!mounted.current) {
+      mounted.current = true;
+      return;
+    }
+    const heading = top.current?.querySelector("h1");
+    heading?.setAttribute("tabindex", "-1");
+    heading?.focus({ preventScroll: true });
   }, [view, selected?.slug]);
 
   return (

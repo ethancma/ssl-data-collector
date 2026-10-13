@@ -4,14 +4,16 @@ import { useState } from "react";
 
 import { Tile, focusClass } from "@/components/iseau/shared";
 import { ALL_WATER_QUALITY_PARAMS, WATER_QUALITY_LABELS } from "@/components/systems/chart-data";
+import { useChartWidth } from "@/components/systems/charts";
 import type { SystemDetailData } from "@/components/systems/types";
 import { WATER_QUALITY_PARAMS } from "@/lib/config/reference-data";
-import type { ActivityKind } from "@/lib/systems/activity";
+import { ACTIVITY_WINDOW_DAYS, type ActivityKind } from "@/lib/systems/activity";
 import { getPacificDateTimeParts } from "@/lib/pacific-date-time";
 import { cn } from "@/lib/utils";
 
 const DAY = 86_400_000;
-const W = 640, LEFT = 88, RIGHT = 12, TOP = 12, PLOT_H = 200, LANE_H = 24;
+const DAYS = ACTIVITY_WINDOW_DAYS;
+const LEFT = 88, RIGHT = 12, TOP = 12, PLOT_H = 200, LANE_H = 24;
 const LANES: { kind: ActivityKind; label: string; color: string }[] = [
   { kind: "feeding", label: "Feeding", color: "text-foreground" },
   { kind: "probiotic", label: "Probiotics", color: "text-teal-500" },
@@ -48,8 +50,9 @@ function Marker({ kind, cx, cy, title }: { kind: ActivityKind; cx: number; cy: n
 // One water parameter (or temperature) over 30 days with a lane per activity on the same time axis,
 // so a dose and the chemistry that follows read together.
 export function WaterActivityCard({ data }: { data: SystemDetailData }) {
+  const { wrapRef, width: W } = useChartWidth(480);
   const end = Date.parse(data.generatedAt);
-  const start = end - 30 * DAY;
+  const start = end - DAYS * DAY;
   const x = (t: number) => LEFT + ((t - start) / (end - start)) * (W - LEFT - RIGHT);
 
   const pointsFor = (key: MetricKey): Point[] => key === "temperature"
@@ -82,12 +85,12 @@ export function WaterActivityCard({ data }: { data: SystemDetailData }) {
   const { testsInRange, temperature } = data.kpis;
   const kpis = [
     testsInRange.judged
-      ? { label: "Tests in range", value: `${testsInRange.inRange} of ${testsInRange.judged}`, note: "water tests, 30 days" }
+      ? { label: "Tests in range", value: `${testsInRange.inRange} of ${testsInRange.judged}`, note: `water tests, ${DAYS} days` }
       : { label: "Tests in range", value: "\u2014", note: "No targets set" },
     temperature
-      ? { label: "Temperature swing", value: `${(temperature.max - temperature.min).toFixed(1)} \u00b0C`, note: `${temperature.min.toFixed(1)} to ${temperature.max.toFixed(1)} \u00b0C, 30 days` }
-      : { label: "Temperature swing", value: "\u2014", note: "No checks in 30 days" },
-    { label: "Last water test", value: data.snapshot.water.testedAgo ?? "\u2014", note: data.snapshot.water.testedAgo ? "Tested weekly" : "No test yet" },
+      ? { label: "Temperature swing", value: `${(temperature.max - temperature.min).toFixed(1)} \u00b0C`, note: `${temperature.min.toFixed(1)} to ${temperature.max.toFixed(1)} \u00b0C, ${DAYS} days` }
+      : { label: "Temperature swing", value: "\u2014", note: `No checks in ${DAYS} days` },
+    { label: "Last water test", value: data.snapshot.water.testedAgo ?? "\u2014", note: data.snapshot.water.testedAt ? shortDate(Date.parse(data.snapshot.water.testedAt)) : "No test yet" },
   ];
 
   return <Tile className="flex min-w-0 flex-col gap-6">
@@ -95,7 +98,7 @@ export function WaterActivityCard({ data }: { data: SystemDetailData }) {
       <div className="space-y-1">
         <h2 className="text-2xl font-semibold tracking-tight">Water and activity</h2>
         <p className="text-sm text-muted-foreground">
-          {latest ? `${label} was ${Number(latest.v.toFixed(2))}${metric?.unit ? ` ${metric.unit}` : ""} on ${shortDate(latest.t)}. ` : `No ${label.toLowerCase()} readings in the last 30 days. `}
+          {latest ? `${label} was ${Number(latest.v.toFixed(2))}${metric?.unit ? ` ${metric.unit}` : ""} on ${shortDate(latest.t)}. ` : `No ${label.toLowerCase()} readings in the last ${DAYS} days. `}
           Markers show what was done to the system.
         </p>
       </div>
@@ -104,11 +107,11 @@ export function WaterActivityCard({ data }: { data: SystemDetailData }) {
           className={cn("rounded-full px-3 py-1 text-xs font-medium transition-colors", focusClass, m.key === key ? "bg-foreground text-background" : "text-muted-foreground hover:text-foreground")}>{m.label}</button>)}
       </div>
     </div>
-    <div className="overflow-x-auto">
-      <svg viewBox={`0 0 ${W} ${height}`} role="img" aria-label={`${label} over 30 days with feeding, probiotic, treatment, chemical and maintenance events`} className="w-full min-w-[30rem]">
+    <div ref={wrapRef} className="overflow-x-auto">
+      <svg width={W} height={height} viewBox={`0 0 ${W} ${height}`} role="group" aria-label={`${label} over ${DAYS} days with feeding, probiotic, treatment, chemical and maintenance events`} className="max-w-none">
         <g className="text-xs text-muted-foreground" fill="currentColor">
           {points.length > 0 && ticks.map((v, i) => <text key={i} x={LEFT - 8} y={y(v) + 4} textAnchor="end">{Number(v.toFixed(2))}</text>)}
-          {[0, 10, 20, 30].map((d) => <text key={d} x={x(start + d * DAY)} y={height - 6} textAnchor={d === 0 ? "start" : d === 30 ? "end" : "middle"}>{shortDate(start + d * DAY)}</text>)}
+          {[0, 1 / 3, 2 / 3, 1].map((f) => Math.round(f * DAYS)).map((d) => <text key={d} x={x(start + d * DAY)} y={height - 6} textAnchor={d === 0 ? "start" : d === DAYS ? "end" : "middle"}>{shortDate(start + d * DAY)}</text>)}
           {LANES.map((lane, i) => <text key={lane.kind} x={0} y={lanesTop + i * LANE_H + 4}>{lane.label}</text>)}
         </g>
         {band && <rect x={LEFT} y={band.max === null ? TOP : y(band.max)} width={W - LEFT - RIGHT}

@@ -4,8 +4,7 @@ import {
   resolveWaterQualityTarget,
   type WaterQualityTargetRange,
 } from "@/lib/daily-operations/water-quality-targets";
-
-export const KPI_WINDOW_DAYS = 30;
+import { ACTIVITY_WINDOW_DAYS } from "@/lib/systems/activity";
 
 export type SystemKpis = {
   // `judged` counts tests that had at least one value with a target range.
@@ -20,7 +19,7 @@ export function deriveSystemKpis(input: {
   checks: { checkedAt: string; temperature: number | null }[];
   targets: readonly WaterQualityTargetRange[];
 }): SystemKpis {
-  const since = input.now.getTime() - KPI_WINDOW_DAYS * 86_400_000;
+  const since = input.now.getTime() - ACTIVITY_WINDOW_DAYS * 86_400_000;
 
   let inRange = 0;
   let judged = 0;

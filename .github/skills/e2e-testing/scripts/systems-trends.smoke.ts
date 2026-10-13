@@ -518,7 +518,7 @@ test.describe("systems page water quality trends card", () => {
     await expect(page.getByRole("heading", { name: "Latest readings" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Water and activity" })).toBeVisible();
     await page.getByRole("button", { name: "Activity chart: Ammonia" }).click();
-    await expect(page.getByRole("img", { name: /^Ammonia over 30 days/ })).toBeVisible();
+    await expect(page.getByRole("group", { name: /^Ammonia over 30 days/ })).toBeVisible();
     await expect(page.getByText("Water quality trends")).toBeVisible();
 
     await page.getByRole("link", { name: "All systems" }).click();
