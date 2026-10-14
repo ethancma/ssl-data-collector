@@ -58,9 +58,11 @@ join core.animals a on a.id = fl.animal_id
 join core.food_catalog fc on fc.id = fl.food_catalog_id
 left join core.v_profile_names pn on pn.id = fl.recorded_by;
 
--- out_of_range lists parameter keys outside their target. A system-specific target wins
--- over the lab-wide one (system_id is null); either bound may be missing, bounds are
--- inclusive, and no target means never out of range. It is a scalar subquery so the
+-- out_of_range lists the parameters whose reading is outside its target. The parameters come
+-- from water_quality_target_ranges and each value is read from the reading row by column name,
+-- so a new test needs no change here. A system-specific target wins over the lab-wide one
+-- (system_id is null); either bound may be missing, bounds are inclusive, and a parameter with no
+-- target, no such column, or a null reading is never out of range. It is a scalar subquery so the
 -- planner drops it when a caller (such as v_history_events) does not select it.
 create view core.v_history_water_quality with (security_invoker = true) as
 select
@@ -90,22 +92,23 @@ select
   w.nitrate,
   w.nitrite,
   (
-    select coalesce(array_agg(p.key order by p.ord), '{}'::text[])
-    from (values
-      (1, 'ph', w.ph), (2, 'magnesium', w.magnesium), (3, 'ammonia', w.ammonia),
-      (4, 'alkalinity', w.alkalinity), (5, 'calcium', w.calcium), (6, 'phosphate', w.phosphate),
-      (7, 'salinity', w.salinity), (8, 'nitrate', w.nitrate), (9, 'nitrite', w.nitrite)
-    ) as p(ord, key, value)
+    select coalesce(array_agg(k.parameter_key order by k.parameter_key), '{}'::text[])
+    from (select to_jsonb(w) as doc) r
+    cross join (select distinct parameter_key from core.water_quality_target_ranges) k
+    cross join lateral (
+      select case when jsonb_typeof(r.doc -> k.parameter_key) = 'number'
+        then (r.doc ->> k.parameter_key)::numeric end as value
+    ) v
     join lateral (
-      select r.min_value, r.max_value
-      from core.water_quality_target_ranges r
-      where r.parameter_key = p.key
-        and (r.system_id = w.system_id or r.system_id is null)
-      order by r.system_id nulls last
+      select t.min_value, t.max_value
+      from core.water_quality_target_ranges t
+      where t.parameter_key = k.parameter_key
+        and (t.system_id = w.system_id or t.system_id is null)
+      order by t.system_id nulls last
       limit 1
     ) tr on true
-    where (tr.min_value is not null and p.value < tr.min_value)
-      or (tr.max_value is not null and p.value > tr.max_value)
+    where (tr.min_value is not null and v.value < tr.min_value)
+      or (tr.max_value is not null and v.value > tr.max_value)
   ) as out_of_range
 from core.water_quality_readings w
 join core.systems s on s.id = w.system_id

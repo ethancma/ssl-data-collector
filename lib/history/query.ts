@@ -1,4 +1,3 @@
-import { WATER_QUALITY_PARAMS } from "@/lib/config/reference-data";
 import { addPacificCalendarDays, pacificDayBoundaryToIso } from "@/lib/pacific-date-time";
 
 import type { HistoryParams } from "./params";
@@ -18,7 +17,7 @@ type Chain = {
   gte(column: string, value: string): Chain;
   lt(column: string, value: string): Chain;
   eq(column: string, value: string | number): Chain;
-  overlaps(column: string, value: string[]): Chain;
+  neq(column: string, value: string): Chain;
   or(filters: string): Chain;
   order(column: string, options: { ascending: boolean; nullsFirst?: boolean }): Chain;
 };
@@ -31,7 +30,7 @@ export function applyHistoryFilters<Q>(query: Q, params: HistoryParams): Q {
   if (params.system !== null) filtered = filtered.eq("system_id", params.system);
   if (params.recorder !== null) filtered = filtered.eq("recorded_by", params.recorder);
   if (params.source !== null) filtered = filtered.eq("data_source", params.source);
-  if (params.outOfRange) filtered = filtered.overlaps("out_of_range", WATER_QUALITY_PARAMS.map((param) => param.key));
+  if (params.outOfRange) filtered = filtered.neq("out_of_range", "{}");
   if (params.q) {
     const pattern = searchPattern(params.q);
     filtered = filtered.or(SEARCH_COLUMNS.map((column) => `${column}.ilike.${pattern}`).join(","));

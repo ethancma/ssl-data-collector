@@ -98,12 +98,10 @@ test("filters become Pacific day bounds and exact matches", () => {
   assert.match(String(calls[5][1]), /^notes\.ilike\."%ph%",system_name\.ilike\."%ph%",tank_name\./);
 });
 
-test("out of range overlaps every water quality parameter", () => {
+test("out of range keeps rows whose out_of_range array is not empty", () => {
   const { chain, calls } = recorder();
   applyHistoryFilters(chain, parseHistoryParams({ oor: "1" }, TODAY, true));
-  const overlap = calls.find((call) => call[0] === "overlaps");
-  assert.deepEqual(overlap?.slice(0, 2), ["overlaps", "out_of_range"]);
-  assert.deepEqual(overlap?.[2], ["ph", "magnesium", "ammonia", "alkalinity", "calcium", "phosphate", "salinity", "nitrate", "nitrite"]);
+  assert.deepEqual(calls.find((call) => call[0] === "neq"), ["neq", "out_of_range", "{}"]);
 });
 
 test("ordering ends with stable tie-breakers", () => {
