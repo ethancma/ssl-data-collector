@@ -9,7 +9,12 @@ agent: "agent"
 
 Admins and Technicians set when each system is fed. The app then shows when the next
 feeding is due and when one is overdue. Read [AGENTS.md](../../AGENTS.md) first and follow its
-rules (no push, never touch the port-3000 dev server, run `npm run verify`).
+rules (no push, never touch the port-3000 dev server, run `npm run verify` and
+`npm run check:dead-code`, which CI also runs).
+
+This work lives in its own worktree and branch (`feat/feeding-schedule`) so it can run in
+parallel with the History page session (`feat/history-page`). Do not touch History page files.
+Use this worktree's own `PORT` from `.env.local` for the dev server.
 
 ## Decisions already made
 - **Scope:** one schedule per system, with optional per-tank overrides. A tank without an
@@ -22,8 +27,11 @@ rules (no push, never touch the port-3000 dev server, run `npm run verify`).
   - Systems lineup tile and system detail hero: next feeding due, plus an explicit
     **Overdue** indicator.
   - Home to-do list: a "feeding due today" item.
-- **Overdue** is shown as its own label. Whether it also raises the overall system status
-  to "worth a look" is not decided. Default to display only and confirm with the human.
+- **Overdue** is shown as its own **Overdue** label and also puts the system at "worth a
+  look" (not "needs attention"). It expires at the end of the day: a scheduled feeding not
+  logged by the end of its due day shows as Overdue (and worth a look) through the end of the
+  next Pacific day, then rolls off so a missed feeding stops nagging. Confirm this reading with
+  the human before coding it; the history of the missed feeding is not deleted.
 - **No feeding cadence is hardcoded.** Schedules come from the database. Do not invent
   values (the checklist marks cadence by species and life stage as BLOCKED).
 
@@ -43,7 +51,8 @@ different schedules are expressed with per-tank overrides.
    `tests/unit/`. Input: weekdays, last feeding time, now. Output: `due today`, `next due`
    and `overdue since`. Use Pacific dates from
    [lib/pacific-date-time.ts](../../lib/pacific-date-time.ts). A feeding is overdue once a
-   scheduled day has ended with no feeding that day.
+   scheduled day has ended with no feeding that day, and the overdue state expires at the end
+   of the following Pacific day (see the decision above).
 3. **Settings page** at `app/protected/settings/feeding-schedules/`, modeled on
    `app/protected/settings/water-quality-targets/` and
    [water-quality-target-manager.tsx](../../components/settings/water-quality-target-manager.tsx).
@@ -53,7 +62,8 @@ different schedules are expressed with per-tank overrides.
 4. **Systems page.** Extend `fetchAllSystemsDetailData` in
    [app/protected/systems/data.ts](../../app/protected/systems/data.ts) to read schedules,
    and add `nextFeedingDue` and `feedingOverdue` to the snapshot in
-   [lib/systems/snapshot.ts](../../lib/systems/snapshot.ts). Show them with the shared
+   [lib/systems/snapshot.ts](../../lib/systems/snapshot.ts) (overdue adds a "watch" concern,
+   so the system shows as worth a look). Show them with the shared
    pieces in [snapshot-ui.tsx](../../components/systems/snapshot-ui.tsx) on the lineup tile,
    compare table, and detail hero. The feeding lookback is currently 30 days, so
    `fedText` says "No feedings in 30 days" beyond that.
