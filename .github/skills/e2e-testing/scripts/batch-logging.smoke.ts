@@ -109,14 +109,14 @@ test.beforeAll(() => {
   refs.otherTankId = Number(controlTank.id);
   expect(refs.otherTankId).toBeGreaterThan(0);
   const rows = dbQuery(`insert into core.animals
-    (tank_id, species_id, name, tracking_type, quantity, status, date_added, notes) values
-    (${refs.middleTankId}, ${refs.starSpeciesId}, ${lit(fixtureNames.middleStar)}, 'individual', 1, 'active', current_date, ${lit(TAG)}),
-    (${refs.smallTankId}, ${refs.starSpeciesId}, ${lit(fixtureNames.smallStar)}, 'individual', 1, 'active', current_date, ${lit(TAG)}),
-    (${refs.smallTankId}, ${refs.starSpeciesId}, ${lit(fixtureNames.excludedStar)}, 'individual', 1, 'active', current_date, ${lit(TAG)}),
-    (${refs.middleTankId}, ${refs.starSpeciesId}, ${lit(fixtureNames.inactiveStar)}, 'individual', 1, 'deceased', current_date, ${lit(TAG)}),
-    (${refs.middleTankId}, ${refs.starSpeciesId}, ${lit(fixtureNames.cohort)}, 'cohort', 2, 'active', current_date, ${lit(TAG)}),
-    (${refs.middleTankId}, ${refs.nonStarSpeciesId}, ${lit(fixtureNames.nonStar)}, 'individual', 1, 'active', current_date, ${lit(TAG)}),
-    (${refs.otherTankId}, ${refs.starSpeciesId}, ${lit(fixtureNames.otherSystem)}, 'individual', 1, 'active', current_date, ${lit(TAG)})
+    (tank_id, species_id, name, tracking_type, quantity, status, date_added, retired_on, notes) values
+    (${refs.middleTankId}, ${refs.starSpeciesId}, ${lit(fixtureNames.middleStar)}, 'individual', 1, 'active', current_date, null, ${lit(TAG)}),
+    (${refs.smallTankId}, ${refs.starSpeciesId}, ${lit(fixtureNames.smallStar)}, 'individual', 1, 'active', current_date, null, ${lit(TAG)}),
+    (${refs.smallTankId}, ${refs.starSpeciesId}, ${lit(fixtureNames.excludedStar)}, 'individual', 1, 'active', current_date, null, ${lit(TAG)}),
+    (${refs.middleTankId}, ${refs.starSpeciesId}, ${lit(fixtureNames.inactiveStar)}, 'individual', 1, 'deceased', current_date, current_date, ${lit(TAG)}),
+    (${refs.middleTankId}, ${refs.starSpeciesId}, ${lit(fixtureNames.cohort)}, 'cohort', 2, 'active', current_date, null, ${lit(TAG)}),
+    (${refs.middleTankId}, ${refs.nonStarSpeciesId}, ${lit(fixtureNames.nonStar)}, 'individual', 1, 'active', current_date, null, ${lit(TAG)}),
+    (${refs.otherTankId}, ${refs.starSpeciesId}, ${lit(fixtureNames.otherSystem)}, 'individual', 1, 'active', current_date, null, ${lit(TAG)})
     returning id, name, tank_id, status, tracking_type`);
   animals = Object.fromEntries(rows.map((item) => [String(item.name).replace(`${TAG}_`, "").replace(/_([a-z])/g, (_, letter: string) => letter.toUpperCase()), {
     id: Number(item.id), name: String(item.name), tank_id: Number(item.tank_id),

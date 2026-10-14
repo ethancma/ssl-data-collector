@@ -5,6 +5,7 @@ import {
   deriveFeedingScheduleStatus,
   deriveSystemFeeding,
   formatTankGroup,
+  formatTankName,
   formatWeekdays,
   isoWeekday,
   listOverrideScopes,
@@ -93,6 +94,16 @@ test("parseTankName reads the position prefix and size from the name", () => {
   assert.deepEqual(parseTankName("200L"), { position: null, sizeLiters: 200 });
   assert.deepEqual(parseTankName("Large"), { position: null, sizeLiters: null });
   assert.deepEqual(parseTankName("Lowerlevel 5"), { position: null, sizeLiters: null });
+});
+
+test("formatTankName builds names parseTankName reads back", () => {
+  assert.equal(formatTankName("Lower", 9.6), "Lower-9.6L");
+  assert.equal(formatTankName(" Middle ", 9.6), "Middle-9.6L");
+  assert.equal(formatTankName(null, 200), "200L");
+  assert.equal(formatTankName("  ", 3), "3L");
+  assert.deepEqual(parseTankName(formatTankName("Lower", 9.6)), { position: "lower", sizeLiters: 9.6 });
+  assert.deepEqual(parseTankName(formatTankName("Middle", 9.6)), { position: null, sizeLiters: 9.6 });
+  assert.deepEqual(parseTankName(formatTankName(null, 0.125)), { position: null, sizeLiters: 0.125 });
 });
 
 test("formatTankGroup labels a group", () => {
