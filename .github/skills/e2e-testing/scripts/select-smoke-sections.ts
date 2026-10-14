@@ -119,6 +119,7 @@ const rules: SelectionRule[] = [
     matches: (file) =>
       /^app\/protected\/systems(\/|$)/.test(file) ||
       file === "lib/pacific-date-time.ts" ||
+      /^lib\/systems\//.test(file) ||
       /^components\/systems\//.test(file),
     sections: ["systems-trends"],
   },

@@ -5,6 +5,10 @@ import {
   type WaterQualityParameter,
 } from "@/lib/config/reference-data";
 import { createClient } from "@/lib/supabase/server";
+import type { WaterQualityTargetRange } from "@/lib/daily-operations/water-quality-targets";
+import { ACTIVITY_WINDOW_DAYS, buildActivityEvents } from "@/lib/systems/activity";
+import { deriveSystemKpis } from "@/lib/systems/kpis";
+import { deriveSystemSnapshot } from "@/lib/systems/snapshot";
 import {
   addPacificCalendarDays,
   pacificDateKey,
@@ -19,8 +23,6 @@ import type {
   SystemDetailData,
   WaterQualityPoint,
 } from "@/components/systems/types";
-
-import { deriveSystemOverview } from "./derivations";
 
 // Explicit shape for the water_quality_readings row, since its select string
 // is built dynamically (see waterQualityColumns below) and can't be inferred.
@@ -46,14 +48,30 @@ const TASK_LABELS: Record<MaintenanceTaskType, string> = {
   other: "Other",
 };
 
+// PostgREST caps each response (max_rows, 1000), so tables that grow by a row
+// per animal or per check are read in pages instead of one truncated query.
+const PAGE_SIZE = 1000;
+async function selectAll<Row>(
+  page: (from: number, to: number) => PromiseLike<{ data: Row[] | null; error: { message: string; code?: string } | null }>,
+) {
+  const rows: Row[] = [];
+  for (let from = 0; ; from += PAGE_SIZE) {
+    const { data, error } = await page(from, from + PAGE_SIZE - 1);
+    if (error) return { data: null, error };
+    rows.push(...(data ?? []));
+    if (!data || data.length < PAGE_SIZE) return { data: rows, error: null };
+  }
+}
+
 // Fetches everything the systems page needs for all configured systems in one page
 // load: daily checks / water quality readings over a 60-day superset (so the
 // client-side 14d/30d/60d trend chart range toggle can slice locally with no
-// re-fetch), plus the last 14 days of chemical additions / health
-// observations / maintenance logs (which feed the fixed 14-day Key
-// Highlights panel), scoped with a single `system_id IN (...)` query per
-// table (instead of one round trip per system), plus a lightweight
-// all-systems overview (used by the grid rail). Returns a map keyed by
+// re-fetch), 30 days of chemical additions / maintenance logs / feedings /
+// star treatments (the Water and activity chart; the Key Highlights panel
+// uses the last 14 days), the last 14 days of health observations, the lab's
+// water-quality target ranges, and a status snapshot per system for the
+// lineup and compare views. Scoped with a single `system_id IN (...)` query
+// per table (instead of one round trip per system). Returns a map keyed by
 // system slug so the client can switch the selected system instantly
 // without re-fetching.
 export async function fetchAllSystemsDetailData(): Promise<{
@@ -61,14 +79,16 @@ export async function fetchAllSystemsDetailData(): Promise<{
   error?: string;
 }> {
   const supabase = await createClient();
-  const now = Date.now();
-  const since14d = new Date(now - 14 * 24 * 60 * 60 * 1000).toISOString();
+  const nowDate = new Date();
+  const now = nowDate.getTime();
+  const since14dMs = now - 14 * 24 * 60 * 60 * 1000;
+  const since14d = new Date(since14dMs).toISOString();
+  const since30d = new Date(now - ACTIVITY_WINDOW_DAYS * 24 * 60 * 60 * 1000).toISOString();
   const since60d = new Date(now - 60 * 24 * 60 * 60 * 1000).toISOString();
-  const since36h = new Date(now - 36 * 60 * 60 * 1000).toISOString();
 
   const { data: systemRows, error: systemsError } = await supabase
     .from("systems")
-    .select("id, slug, name, category, layout_notes")
+    .select("id, slug, name, category, layout_notes, has_animals")
     .order("name", { ascending: true })
     .order("id", { ascending: true });
   if (systemsError) {
@@ -78,7 +98,7 @@ export async function fetchAllSystemsDetailData(): Promise<{
     return { dataBySlug: {} };
   }
 
-  const systemIds = (systemRows ?? []).map((s) => s.id);
+  const systemIds = systemRows.map((s) => s.id);
 
   // Widened to `string` (not a literal) so postgrest-js's select-string
   // parser doesn't try (and fail) to statically parse this runtime-built list.
@@ -90,13 +110,20 @@ export async function fetchAllSystemsDetailData(): Promise<{
     { data: chemicalAdditionsRaw, error: chemicalAdditionsError },
     { data: healthObsRaw, error: healthObservationsError },
     { data: maintenanceRaw, error: maintenanceError },
+    { data: targetsRaw, error: targetsError },
+    { data: feedingRaw, error: feedingError },
+    { data: treatmentsRaw, error: treatmentsError },
   ] = await Promise.all([
-    supabase
-      .from("daily_checks")
-      .select("id, system_id, check_type, water_running, temperature, checked_at")
-      .in("system_id", systemIds)
-      .gte("checked_at", since60d)
-      .order("checked_at", { ascending: true }),
+    selectAll((from, to) =>
+      supabase
+        .from("daily_checks")
+        .select("id, system_id, check_type, water_running, temperature, checked_at")
+        .in("system_id", systemIds)
+        .gte("checked_at", since60d)
+        .order("checked_at", { ascending: true })
+        .order("id", { ascending: true })
+        .range(from, to),
+    ),
     supabase
       .from("water_quality_readings")
       .select(waterQualityColumns)
@@ -107,7 +134,7 @@ export async function fetchAllSystemsDetailData(): Promise<{
       .from("chemical_additions")
       .select("id, system_id, chemical_name, amount, unit, added_at, reason")
       .in("system_id", systemIds)
-      .gte("added_at", since14d)
+      .gte("added_at", since30d)
       .order("added_at", { ascending: false }),
     supabase
       .from("health_observations")
@@ -119,8 +146,32 @@ export async function fetchAllSystemsDetailData(): Promise<{
       .from("maintenance_logs")
       .select("id, system_id, performed_at, task_type, notes")
       .in("system_id", systemIds)
-      .gte("performed_at", since14d)
+      .gte("performed_at", since30d)
       .order("performed_at", { ascending: false }),
+    supabase
+      .from("water_quality_target_ranges")
+      .select("id, system_id, parameter_key, min_value, max_value"),
+    selectAll((from, to) =>
+      supabase
+        .from("feeding_logs")
+        .select("fed_at, tanks!inner(system_id)")
+        .in("tanks.system_id", systemIds)
+        .gte("fed_at", since30d)
+        .order("fed_at", { ascending: false })
+        .order("id", { ascending: false })
+        .range(from, to),
+    ),
+    // Viewers have no read access to star treatments (42501); that one error is tolerated below.
+    selectAll((from, to) =>
+      supabase
+        .from("star_treatments")
+        .select("administered_at, treatment_type, amount, unit, tanks!inner(system_id)")
+        .in("tanks.system_id", systemIds)
+        .gte("administered_at", since30d)
+        .order("administered_at", { ascending: false })
+        .order("id", { ascending: false })
+        .range(from, to),
+    ),
   ]);
 
   const loadError =
@@ -128,13 +179,28 @@ export async function fetchAllSystemsDetailData(): Promise<{
     waterQualityError ??
     chemicalAdditionsError ??
     healthObservationsError ??
-    maintenanceError;
+    maintenanceError ??
+    targetsError ??
+    feedingError ??
+    (treatmentsError?.code === "42501" ? null : treatmentsError);
   if (loadError) {
     return { dataBySlug: {}, error: loadError.message };
   }
 
-  const todayKey = pacificDateKey(new Date());
-  const overview = deriveSystemOverview(systemRows, dailyChecksRaw ?? [], since36h, todayKey);
+  const todayKey = pacificDateKey(nowDate);
+  const targets: WaterQualityTargetRange[] = (targetsRaw ?? []).flatMap((target) =>
+    (WATER_QUALITY_PARAMETERS as readonly string[]).includes(target.parameter_key)
+      ? [
+          {
+            id: target.id,
+            systemId: target.system_id,
+            parameterKey: target.parameter_key as WaterQualityParameter,
+            minValue: target.min_value === null ? null : Number(target.min_value),
+            maxValue: target.max_value === null ? null : Number(target.max_value),
+          },
+        ]
+      : [],
+  );
 
   const result: Record<string, SystemDetailData> = {};
 
@@ -207,11 +273,58 @@ export async function fetchAllSystemsDetailData(): Promise<{
 
     const highlights = buildHighlights({
       dailyChecks,
-      chemicalAdditions,
+      chemicalAdditions: chemicalAdditions.filter((c) => Date.parse(c.addedAt) >= since14dMs),
       healthObservations,
-      maintenanceLogs,
+      maintenanceLogs: maintenanceLogs.filter((m) => Date.parse(m.performedAt) >= since14dMs),
       since14d,
       todayKey,
+    });
+
+    const feedingRows = (feedingRaw ?? []).filter((r) => {
+      const tank = r.tanks as unknown as { system_id: number } | null;
+      return tank?.system_id === systemId;
+    });
+    const activity = buildActivityEvents({
+      feedings: feedingRows.map((r) => ({ fedAt: r.fed_at })),
+      treatments: (treatmentsRaw ?? [])
+        .filter((r) => (r.tanks as unknown as { system_id: number } | null)?.system_id === systemId)
+        .map((r) => ({
+          administeredAt: r.administered_at,
+          treatmentType: r.treatment_type,
+          amount: r.amount === null ? null : Number(r.amount),
+          unit: r.unit,
+        })),
+      chemicals: chemicalAdditions,
+      maintenance: maintenanceLogs,
+    });
+
+    // A partial test shouldn't blank the other parameters, but only back-fill from the same week.
+    const latestTestMs = waterQuality.length ? Date.parse(waterQuality[waterQuality.length - 1].testedAt) : 0;
+    const sameWeek = waterQuality.filter((r) => Date.parse(r.testedAt) >= latestTestMs - 7 * 24 * 60 * 60 * 1000);
+    const latestWaterValues = {} as Record<WaterQualityParameter, number | null>;
+    for (const key of WATER_QUALITY_PARAMETERS) {
+      latestWaterValues[key] = [...sameWeek].reverse().find((r) => r[key] != null)?.[key] ?? null;
+    }
+    const lastFedAt = feedingRows[0]?.fed_at ?? null;
+
+    const snapshot = deriveSystemSnapshot({
+      systemId,
+      now: nowDate,
+      checks: dailyChecks.map((c) => ({
+        type: c.checkType,
+        checkedAt: c.checkedAt,
+        waterRunning: c.waterRunning,
+        temperature: c.temperature,
+      })),
+      healthObservations: healthObservations.map((h) => ({
+        observedAt: h.observedAt,
+        severity: h.severity,
+      })),
+      latestWater: waterQuality.length
+        ? { testedAt: waterQuality[waterQuality.length - 1].testedAt, values: latestWaterValues }
+        : null,
+      lastFedAt,
+      targets,
     });
 
     result[system.slug] = {
@@ -219,7 +332,17 @@ export async function fetchAllSystemsDetailData(): Promise<{
       name: system.name,
       category: system.category,
       layoutNotes: system.layout_notes ?? "",
-      overview,
+      hasAnimals: system.has_animals,
+      snapshot,
+      kpis: deriveSystemKpis({
+        now: nowDate,
+        systemId,
+        waterReadings: waterQuality.map((w) => ({ testedAt: w.testedAt, values: w })),
+        checks: dailyChecks,
+        targets,
+      }),
+      generatedAt: nowDate.toISOString(),
+      activity,
       dailyChecks,
       waterQuality,
       chemicalAdditions,

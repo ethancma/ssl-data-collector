@@ -1,67 +1,104 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useEffect, useMemo, useRef, useState } from "react";
 
-import { GridOverview } from "@/components/systems/grid-overview";
-import type { ChartRangeDays, SystemDetailData } from "@/components/systems/types";
+import { SystemCompare } from "@/components/systems/system-compare";
+import { SystemDetail } from "@/components/systems/system-detail";
+import { SystemLineup } from "@/components/systems/system-lineup";
+import { CHART_RANGE_DAYS, type ChartRangeDays, type SystemDetailData } from "@/components/systems/types";
+import { statusRank } from "@/lib/systems/snapshot";
 
-// Owns "which system is selected" and "which trend chart range is selected"
-// as client state so switching either is an instant local re-render from
-// data already fetched for all configured systems (60 days' worth), with no network
-// round-trip. The URL (`?system=&range=`) is kept in sync via router.replace
-// for shareable/bookmarkable links, but that sync never blocks the state
-// update that drives the UI.
-export function SystemsPageClient({
-  dataBySlug,
-  initialSlug,
-  initialRange,
-}: {
-  dataBySlug: Record<string, SystemDetailData>;
-  initialSlug: string;
-  initialRange: ChartRangeDays;
-}) {
+function parseRange(value: string | null): ChartRangeDays {
+  const parsed = Number(value);
+  return (CHART_RANGE_DAYS as readonly number[]).includes(parsed) ? (parsed as ChartRangeDays) : 14;
+}
+
+// Snapshot statuses ("AM due by noon") and ages go stale; refetch when a tab returns after this long.
+const STALE_AFTER_MS = 10 * 60 * 1000;
+
+// The URL is the source of truth for the view (`?system=` for a system,
+// `?compare=1` for compare, nothing for the lineup). Moving between views uses
+// the History API, which Next syncs into useSearchParams, so switching is an
+// instant local render of the data already fetched for every system, and Back
+// still works. The chart range is local state (seeded from and kept in sync
+// with `?range=`) so its pills respond immediately.
+export function SystemsPageClient({ dataBySlug }: { dataBySlug: Record<string, SystemDetailData> }) {
   const router = useRouter();
-  const [slug, setSlug] = useState(initialSlug);
-  const [range, setRange] = useState<ChartRangeDays>(initialRange);
+  const pathname = usePathname();
+  const params = useSearchParams();
+  const top = useRef<HTMLDivElement>(null);
+  const mounted = useRef(false);
 
-  const data = dataBySlug[slug];
+  const systems = useMemo(
+    () => Object.values(dataBySlug).sort((a, b) =>
+      statusRank(a.snapshot.status) - statusRank(b.snapshot.status) || a.name.localeCompare(b.name)),
+    [dataBySlug],
+  );
 
-  const syncUrl = (nextSlug: string, nextRange: ChartRangeDays) => {
-    router.replace(`/protected/systems?system=${nextSlug}&range=${nextRange}`, {
-      scroll: false,
-    });
+  const slug = params.get("system");
+  const selected = slug && Object.hasOwn(dataBySlug, slug) ? dataBySlug[slug] : undefined;
+  const view = params.get("compare") === "1" ? "compare" : selected ? "detail" : "lineup";
+  const [range, setRange] = useState<ChartRangeDays>(() => parseRange(params.get("range")));
+  const urlRange = params.get("range");
+  useEffect(() => {
+    if (urlRange) setRange(parseRange(urlRange));
+  }, [urlRange]);
+
+  const generatedAt = systems[0].generatedAt;
+  useEffect(() => {
+    const refreshIfStale = () => {
+      if (document.visibilityState === "visible" && Date.now() - Date.parse(generatedAt) > STALE_AFTER_MS) router.refresh();
+    };
+    document.addEventListener("visibilitychange", refreshIfStale);
+    return () => document.removeEventListener("visibilitychange", refreshIfStale);
+  }, [generatedAt, router]);
+
+  const go = (next: { system?: string; compare?: boolean; range?: ChartRangeDays }, mode: "push" | "replace" = "push") => {
+    const query = new URLSearchParams();
+    if (next.compare) query.set("compare", "1");
+    else if (next.system) {
+      query.set("system", next.system);
+      query.set("range", String(next.range ?? range));
+    }
+    const url = query.size ? `${pathname}?${query}` : pathname;
+    if (mode === "push") window.history.pushState(null, "", url);
+    else window.history.replaceState(null, "", url);
   };
 
-  const handleSelectSystem = (nextSlug: string) => {
-    setSlug(nextSlug);
-    syncUrl(nextSlug, range);
-  };
-
-  const handleSelectRange = (nextRange: ChartRangeDays) => {
-    setRange(nextRange);
-    syncUrl(slug, nextRange);
-  };
-
-  // The page chooses from the same database-backed keys, so this only guards
-  // against stale client state during navigation.
-  if (!data) {
-    throw new Error(`No data found for system "${slug}"`);
-  }
+  // The shell scrolls inside <main>, so a view change resets that element and moves focus
+  // to the new heading (the clicked link is gone).
+  useEffect(() => {
+    top.current?.closest("main")?.scrollTo({ top: 0 });
+    if (!mounted.current) {
+      mounted.current = true;
+      return;
+    }
+    const heading = top.current?.querySelector("h1");
+    heading?.setAttribute("tabindex", "-1");
+    heading?.focus({ preventScroll: true });
+  }, [view, selected?.slug]);
 
   return (
-    <div className="flex flex-col gap-6">
-      <header className="flex flex-col gap-1">
-        <p className="text-sm text-muted-foreground">Systems</p>
-        <h1 className="text-3xl font-semibold tracking-tight">{data.name}</h1>
-      </header>
-      <GridOverview
-        key={data.slug}
-        data={data}
-        range={range}
-        onSelectSystem={handleSelectSystem}
-        onSelectRange={handleSelectRange}
-      />
+    <div ref={top} className="mx-auto w-full min-w-0 max-w-7xl">
+      {view === "compare" ? (
+        <SystemCompare systems={systems} onOpen={(next) => go({ system: next })} onBack={() => go({})} />
+      ) : view === "detail" && selected ? (
+        <SystemDetail
+          key={selected.slug}
+          data={selected}
+          systems={systems}
+          range={range}
+          onSelectRange={(next) => {
+            setRange(next);
+            go({ system: selected.slug, range: next }, "replace");
+          }}
+          onOpen={(next) => go({ system: next })}
+          onBack={() => go({})}
+        />
+      ) : (
+        <SystemLineup systems={systems} onOpen={(next) => go({ system: next })} onCompare={() => go({ compare: true })} />
+      )}
     </div>
   );
 }

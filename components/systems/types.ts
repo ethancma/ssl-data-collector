@@ -1,20 +1,15 @@
-// Shared types for the systems detail page (Grid Overview layout).
+// Shared types for the systems pages (lineup, compare, and per-system detail).
 // See app/protected/systems/data.ts for how these are populated from Supabase.
 
 import type { WaterQualityParameter } from "@/lib/config/reference-data";
+import type { ActivityEvent } from "@/lib/systems/activity";
+import type { SystemKpis } from "@/lib/systems/kpis";
+import type { SystemSnapshot } from "@/lib/systems/snapshot";
 
 // Trend chart window options — the client slices the already-fetched 60-day
 // superset down to one of these rather than re-fetching per selection.
 export const CHART_RANGE_DAYS = [14, 30, 60] as const;
 export type ChartRangeDays = (typeof CHART_RANGE_DAYS)[number];
-
-export type SystemOverviewEntry = {
-  slug: string;
-  name: string;
-  latestTemperature: number | null;
-  amDoneToday: boolean;
-  pmDoneToday: boolean;
-};
 
 export type DailyCheckPoint = {
   id: number;
@@ -76,13 +71,20 @@ export type SystemDetailData = {
   name: string;
   category: string;
   layoutNotes: string;
-  overview: SystemOverviewEntry[];
+  hasAnimals: boolean;
+  snapshot: SystemSnapshot;
+  kpis: SystemKpis;
+  // When the server fetched this data; charts anchor their time axis here so
+  // server and client renders match.
+  generatedAt: string;
+  // 30 days of feedings, star treatments, chemical additions and maintenance,
+  // newest first (the Water and activity chart).
+  activity: ActivityEvent[];
   // 60-day superset (trend charts slice this client-side per the range
   // toggle instead of re-fetching).
   dailyChecks: DailyCheckPoint[];
   waterQuality: WaterQualityPoint[];
-  // Fixed 14-day window (used for the Key Highlights feed, unaffected by
-  // the trend chart range toggle).
+  // 30-day window; the Key Highlights feed uses only the last 14 days of these.
   chemicalAdditions: ChemicalAdditionPoint[];
   healthObservations: HealthObservationPoint[];
   maintenanceLogs: MaintenanceLogPoint[];
