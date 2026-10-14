@@ -41,11 +41,12 @@ The selector applies this policy:
 | Star treatments and the Probiotics boundary | `star-treatments.smoke.ts` |
 | Batch feeding and batch Star treatment logging | `batch-logging.smoke.ts` |
 | Systems page and water-quality trend charts | `systems-trends.smoke.ts` |
+| History page (`app/protected/history`, `components/history`, `lib/history`) | `history.smoke.ts` |
 | Shared application or runtime files, unknown application or runtime files, shared e2e helpers | Full suite |
 | Supabase migrations, RLS/grants, database config, or seed data | Full suite (Tier 3+) |
 | Documentation or other non-runtime files only | No browser section |
 
-The full suite includes all seven section scripts, so migration and broad changes cannot
+The full suite includes all eight section scripts, so migration and broad changes cannot
 silently omit operational RBAC coverage. The selector only chooses sections; it does not
 weaken each section's UI and direct-Supabase assertions.
 
@@ -123,6 +124,9 @@ growing an existing one indefinitely:
   audit table.
 - [systems-trends.smoke.ts](./scripts/systems-trends.smoke.ts) — systems-page water-quality
   trend controls, chart rendering, carousel behavior, and responsive layout.
+- [history.smoke.ts](./scripts/history.smoke.ts) — History page filters, sort, paging,
+  out-of-range filter, CSV export row count, viewer/volunteer visibility, and the
+  `core.v_history_*` view grants.
 
 Run a single section directly by file path instead of the whole suite, e.g.
 `npx playwright test .github/skills/e2e-testing/scripts/daily-logging-forms.smoke.ts`.

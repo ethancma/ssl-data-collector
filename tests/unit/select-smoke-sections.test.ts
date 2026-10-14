@@ -120,6 +120,16 @@ test("maps the reorganized component folders to their sections", () => {
   ]);
 });
 
+test("selects only the history section for History page files", () => {
+  for (const file of [
+    "app/protected/history/page.tsx",
+    "components/history/ui.tsx",
+    "lib/history/query.ts",
+  ]) {
+    assert.deepEqual(selectedIds([file]), ["history"]);
+  }
+});
+
 test("combines known surfaces in stable section order", () => {
   assert.deepEqual(
     selectedIds([
