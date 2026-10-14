@@ -7,7 +7,7 @@ import { DEFAULTS, EXPORT_CHUNK, PAGE_SIZE, buildCsv, dateBounds, filterRows, pa
 import { MOCK_ROWS, SOURCE_LABELS, type Dataset } from "./mock-rows";
 
 // The URL is the source of truth. Writes go through the History API, which Next syncs into useSearchParams.
-export function useHistoryPreview(columnsFor: (dataset: Dataset | "all") => Column[]) {
+export function useHistory(columnsFor: (dataset: Dataset | "all") => Column[]) {
   const pathname = usePathname();
   const params = useSearchParams();
   const filters = parseFilters(params);
@@ -92,4 +92,4 @@ export function useHistoryPreview(columnsFor: (dataset: Dataset | "all") => Colu
   };
 }
 
-export type HistoryPreview = ReturnType<typeof useHistoryPreview>;
+export type HistoryState = ReturnType<typeof useHistory>;

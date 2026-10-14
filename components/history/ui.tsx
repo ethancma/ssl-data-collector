@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { DATASETS, DATASET_LABELS, DATA_SOURCES, RECORDER_NAMES, SAMPLE_TODAY, SOURCE_LABELS, SYSTEM_NAMES, type DataSource, type Dataset, type HistoryRow } from "./mock-rows";
 import { PAGE_SIZE, RANGE_OPTIONS, detailFields, formatTime, type Column, type RangeKey } from "./logic";
-import type { HistoryPreview } from "./use-history-preview";
+import type { HistoryState } from "./use-history";
 
 const OUT_OF_RANGE_TEXT = "font-medium text-amber-600 dark:text-amber-400";
 const pillClass = "h-9 rounded-full bg-muted px-4 text-sm";
@@ -18,7 +18,7 @@ export function HistorySampleNote() {
   return <p className="text-xs text-muted-foreground">Sample data as of Oct 14, 2026</p>;
 }
 
-export function HistoryHeader({ h }: { h: HistoryPreview }) {
+export function HistoryHeader({ h }: { h: HistoryState }) {
   return <PageHeader title="History" description={h.headline} />;
 }
 
@@ -80,7 +80,7 @@ function FilterSelect({ label, value, options, onChange }: { label: string; valu
   </div>;
 }
 
-function ExportButton({ h }: { h: HistoryPreview }) {
+function ExportButton({ h }: { h: HistoryState }) {
   if (h.exporting) {
     return <div role="status" className="inline-flex items-center gap-3 text-sm">
       <span className="tabular-nums">Exporting {h.exporting.done.toLocaleString()} of {h.exporting.total.toLocaleString()} rows</span>
@@ -132,7 +132,7 @@ function DatasetCombobox({ value, onChange }: { value: Dataset | "all"; onChange
   </div>;
 }
 
-export function FilterBar({ h }: { h: HistoryPreview }) {
+export function FilterBar({ h }: { h: HistoryState }) {
   const { filters, update } = h;
   const toggle = (pressed: boolean) => cn("inline-flex h-9 items-center rounded-full px-4 text-sm font-medium transition-colors", focusClass,
     pressed ? "bg-foreground text-background" : "bg-muted text-muted-foreground hover:text-foreground");
@@ -178,7 +178,7 @@ export function RowsSkeleton() {
   </div>;
 }
 
-export function Pager({ h }: { h: HistoryPreview }) {
+export function Pager({ h }: { h: HistoryState }) {
   const first = h.rows.length === 0 ? 0 : (h.page - 1) * PAGE_SIZE + 1;
   const last = Math.min(h.page * PAGE_SIZE, h.rows.length);
   const go = (page: number) => h.update({ page: page <= 1 ? null : String(page) });
@@ -192,7 +192,7 @@ export function Pager({ h }: { h: HistoryPreview }) {
   </nav>;
 }
 
-export function EntryCard({ row, h, columns }: { row: HistoryRow; h: HistoryPreview; columns: Column[] }) {
+export function EntryCard({ row, h, columns }: { row: HistoryRow; h: HistoryState; columns: Column[] }) {
   const shown = columns.filter((column) => !CARD_SKIPPED.has(column.key) && column.text(row));
   return <button type="button" onClick={() => h.update({ row: row.id })} className={cn("block w-full space-y-2 rounded-2xl bg-background p-4 text-left", focusClass)}>
     <span className="flex flex-wrap items-center justify-between gap-2">
@@ -208,7 +208,7 @@ export function EntryCard({ row, h, columns }: { row: HistoryRow; h: HistoryPrev
   </button>;
 }
 
-export function HistoryTable({ h, columns }: { h: HistoryPreview; columns: Column[] }) {
+export function HistoryTable({ h, columns }: { h: HistoryState; columns: Column[] }) {
   const { filters, update } = h;
   function sortBy(column: Column) {
     const active = filters.sort === column.key;
@@ -257,7 +257,7 @@ export function HistoryTable({ h, columns }: { h: HistoryPreview; columns: Colum
   </Tile>;
 }
 
-export function RowDetail({ h }: { h: HistoryPreview }) {
+export function RowDetail({ h }: { h: HistoryState }) {
   const row = h.openRow;
   if (!row) return null;
   const fields = detailFields(row);
