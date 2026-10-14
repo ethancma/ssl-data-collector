@@ -6,13 +6,13 @@ import { cn } from "@/lib/utils";
 import { formatReading, type CheckState, type SnapshotStatus, type SystemSnapshot, type WaterReadingSummary } from "@/lib/systems/snapshot";
 
 // Status reuses the ISeaU severity hues so teal/amber/coral mean the same thing app-wide.
-export const STATUS = {
+const STATUS = {
   ok: { label: "On track", dot: SEVERITY.low.bg },
   watch: { label: "Worth a look", dot: SEVERITY.medium.bg },
   attention: { label: "Needs attention", dot: SEVERITY.high.bg },
 } satisfies Record<SnapshotStatus, { label: string; dot: string }>;
 
-export const OUT_OF_RANGE_TEXT = "text-amber-600 dark:text-amber-400";
+const OUT_OF_RANGE_TEXT = "text-amber-600 dark:text-amber-400";
 
 // Keeps real hrefs for open-in-new-tab while a plain click navigates without a server round trip.
 export function onPlainClick(handler: () => void) {
@@ -23,7 +23,7 @@ export function onPlainClick(handler: () => void) {
   };
 }
 
-export function StatusDot({ status, className }: { status: SnapshotStatus; className?: string }) {
+function StatusDot({ status, className }: { status: SnapshotStatus; className?: string }) {
   return <span aria-hidden="true" className={cn("inline-block h-2.5 w-2.5 shrink-0 rounded-full", STATUS[status].dot, className)} />;
 }
 

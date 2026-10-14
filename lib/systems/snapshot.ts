@@ -8,15 +8,15 @@ import {
 import { addPacificCalendarDays, getPacificDateTimeParts, pacificDateKey } from "@/lib/pacific-date-time";
 
 // Pacific hour after which a check that is still unlogged counts as missed.
-export const AM_DUE_HOUR = 12;
-export const PM_DUE_HOUR = 18;
-export const HEALTH_WINDOW_DAYS = 14;
+const AM_DUE_HOUR = 12;
+const PM_DUE_HOUR = 18;
+const HEALTH_WINDOW_DAYS = 14;
 
 export type SnapshotStatus = "ok" | "watch" | "attention";
 export type CheckState = "done" | "due" | "missed";
-export type Severity = "low" | "medium" | "high";
+type Severity = "low" | "medium" | "high";
 
-export type Concern = {
+type Concern = {
   kind: "check_missed" | "water_off" | "health" | "out_of_range" | "yesterday_missed";
   status: Exclude<SnapshotStatus, "ok">;
   text: string;
@@ -71,7 +71,7 @@ function dayDiff(laterKey: string, earlierKey: string) {
   return Math.round((Date.parse(`${laterKey}T00:00:00Z`) - Date.parse(`${earlierKey}T00:00:00Z`)) / 86_400_000);
 }
 
-export function relativeDays(iso: string, now: Date) {
+function relativeDays(iso: string, now: Date) {
   const days = dayDiff(pacificDateKey(now), pacificDateKey(iso));
   return days <= 0 ? "today" : days === 1 ? "yesterday" : `${days} days ago`;
 }
