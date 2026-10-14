@@ -6,12 +6,10 @@ import { EmptyNote, Segmented, Tile, focusClass } from "@/components/iseau/share
 import { MultiLineChart, type ChartSeries } from "@/components/systems/charts";
 import { addPacificCalendarDays, formatPacificDateTime } from "@/lib/pacific-date-time";
 import { cn } from "@/lib/utils";
-import { ALL_COLUMNS } from "./logic";
+import { columnsForDataset } from "./logic";
 import { DATASET_LABELS, type HistoryRow } from "./mock-rows";
 import { useHistoryPreview, type HistoryPreview } from "./use-history-preview";
 import { DesignSwitcher, FilterBar, HistoryHeader, HistoryTable, Pager, RowDetail, RowsSkeleton, SourceBadge } from "./ui";
-
-const columnsFor = () => ALL_COLUMNS;
 
 function ActivityChart({ h }: { h: HistoryPreview }) {
   const { from, to } = h.bounds;
@@ -81,7 +79,7 @@ function Timeline({ h }: { h: HistoryPreview }) {
 
 // Design C: a stat strip and daily chart above entries grouped by Pacific day. A toggle switches to the table.
 export default function DesignC() {
-  const h = useHistoryPreview(columnsFor);
+  const h = useHistoryPreview(columnsForDataset);
   const activeDays = new Set(h.rows.map((row) => row.occurred_on)).size;
   const days = Math.round((Date.parse(h.bounds.to) - Date.parse(h.bounds.from)) / 86_400_000) + 1;
   return <div className="mx-auto w-full min-w-0 max-w-7xl space-y-8">
@@ -94,7 +92,7 @@ export default function DesignC() {
       <Stat label="Health observations" value={h.rows.filter((row) => row.dataset === "health_observation").length.toLocaleString()} />
     </dl>
     <ActivityChart h={h} />
-    <FilterBar h={h} dataset="pills">
+    <FilterBar h={h} dataset="select">
       <Segmented label="View" value={h.view} onChange={(view) => h.update(view === "table" ? { view } : { view: null, sort: null, dir: null })}
         options={[{ value: "timeline", label: "Timeline" }, { value: "table", label: "Table" }]} />
     </FilterBar>

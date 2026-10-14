@@ -1,16 +1,14 @@
 "use client";
 
 import { Segmented } from "@/components/iseau/shared";
-import { ALL_COLUMNS, DATASET_COLUMNS } from "./logic";
-import { DATASETS, DATASET_LABELS, type Dataset } from "./mock-rows";
+import { columnsForDataset } from "./logic";
+import { DATASETS, DATASET_LABELS } from "./mock-rows";
 import { useHistoryPreview } from "./use-history-preview";
 import { DesignSwitcher, FilterBar, HistoryHeader, HistoryTable, RowDetail } from "./ui";
 
-const columnsFor = (dataset: Dataset | "all") => (dataset === "all" ? ALL_COLUMNS : DATASET_COLUMNS[dataset]);
-
 // Design B: a tab per dataset, each with its own typed columns. Out-of-range water readings are coloured.
 export default function DesignB() {
-  const h = useHistoryPreview(columnsFor);
+  const h = useHistoryPreview(columnsForDataset);
   const total = DATASETS.reduce((sum, dataset) => sum + h.counts[dataset], 0);
   return <div className="mx-auto w-full min-w-0 max-w-7xl space-y-8">
     <DesignSwitcher current="b" />

@@ -83,10 +83,10 @@ const TANK = text("tank", "Tank", (row) => row.tank_name);
 const ANIMAL = text("animal", "Animal", (row) => row.animal_name);
 const RECORDED_BY = text("recorded_by", "Recorded by", (row) => row.recorded_by_name ?? "Unknown");
 const SOURCE = text("source", "Source", (row) => SOURCE_LABELS[row.data_source], false);
-const SUMMARY = text("summary", "Summary", (row) => row.summary, false);
 const NOTES = text("notes", "Notes", (row) => row.notes, false);
 
-export const ALL_COLUMNS: Column[] = [TIME, DATASET, SYSTEM, TANK, ANIMAL, SUMMARY, RECORDED_BY, SOURCE];
+// Columns shared by every dataset; each dataset's own view adds its typed columns.
+export const ALL_COLUMNS: Column[] = [TIME, DATASET, SYSTEM, TANK, ANIMAL, RECORDED_BY, SOURCE];
 
 export const DATASET_COLUMNS: Record<Dataset, Column[]> = {
   daily_check: [TIME, SYSTEM, text("check_type", "Check", (row) => row.check_type),
@@ -113,6 +113,8 @@ export const DATASET_COLUMNS: Record<Dataset, Column[]> = {
     text("concentration", "Concentration", (row) => (row.concentration === undefined ? "" : `${row.concentration} ${row.concentration_unit ?? ""}`.trim())),
     RECORDED_BY, SOURCE, NOTES],
 };
+
+export const columnsForDataset = (dataset: Dataset | "all") => (dataset === "all" ? ALL_COLUMNS : DATASET_COLUMNS[dataset]);
 
 export function sortRows(rows: HistoryRow[], columns: Column[], filters: Filters) {
   const column = columns.find((candidate) => candidate.key === filters.sort && candidate.sortable) ?? TIME;

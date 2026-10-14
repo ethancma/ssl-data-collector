@@ -1,18 +1,19 @@
 "use client";
 
 import Link from "next/link";
-import type { ReactNode } from "react";
+import { useId, useState, type ReactNode } from "react";
 import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, ChevronsUpDown, Download, ImageIcon, Search, X } from "lucide-react";
 
 import { EmptyNote, PageHeader, Segmented, Sheet, Tile, focusClass } from "@/components/iseau/shared";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { DATASETS, DATASET_LABELS, DATA_SOURCES, RECORDER_NAMES, SAMPLE_TODAY, SOURCE_LABELS, SYSTEM_NAMES, type DataSource, type HistoryRow } from "./mock-rows";
+import { DATASETS, DATASET_LABELS, DATA_SOURCES, RECORDER_NAMES, SAMPLE_TODAY, SOURCE_LABELS, SYSTEM_NAMES, type DataSource, type Dataset, type HistoryRow } from "./mock-rows";
 import { PAGE_SIZE, RANGE_OPTIONS, detailFields, formatTime, type Column, type RangeKey } from "./logic";
 import type { HistoryPreview } from "./use-history-preview";
 
 const OUT_OF_RANGE_TEXT = "font-medium text-amber-600 dark:text-amber-400";
 const pillClass = "h-9 rounded-full bg-muted px-4 text-sm";
+const CARD_SKIPPED = new Set(["time", "source", "notes"]);
 
 export function HistorySampleNote() {
   return <p className="text-xs text-muted-foreground">Sample data as of Oct 14, 2026</p>;
@@ -28,7 +29,7 @@ export function DesignSwitcher({ current }: { current: "a" | "b" | "c" }) {
 }
 
 export function HistoryHeader({ h }: { h: HistoryPreview }) {
-  return <PageHeader title={h.headline} description="Every log in one place. Filter, sort, open a row for detail, or export what you see." />;
+  return <PageHeader title="History" description={h.headline} />;
 }
 
 export function SourceBadge({ source }: { source: DataSource }) {
@@ -56,15 +57,59 @@ function ExportButton({ h }: { h: HistoryPreview }) {
   </Button>;
 }
 
-// `dataset="pills"` adds the dataset switcher; Design B renders its own tabs instead.
-export function FilterBar({ h, dataset, children }: { h: HistoryPreview; dataset: "pills" | "none"; children?: ReactNode }) {
+// Type to filter; the first match is highlighted, so Enter or Tab fills it in.
+function DatasetCombobox({ value, onChange }: { value: Dataset | "all"; onChange: (value: Dataset | "all") => void }) {
+  const options: { value: Dataset | "all"; label: string }[] = [{ value: "all", label: "All datasets" }, ...DATASETS.map((dataset) => ({ value: dataset, label: DATASET_LABELS[dataset] }))];
+  const selected = options.find((option) => option.value === value) ?? options[0];
+  const id = useId();
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState<string | null>(null);
+  const [active, setActive] = useState(0);
+  const needle = (query ?? "").trim().toLowerCase();
+  const matches = options.filter((option) => option.label.toLowerCase().includes(needle));
+  const close = () => { setOpen(false); setQuery(null); };
+  const choose = (option: (typeof options)[number]) => { onChange(option.value); close(); };
+  return <div className="relative">
+    <label htmlFor={id} className="sr-only">Dataset</label>
+    <input id={id} role="combobox" aria-expanded={open} aria-controls={`${id}-list`} aria-autocomplete="list" autoComplete="off"
+      aria-activedescendant={open && matches[active] ? `${id}-${active}` : undefined}
+      value={query ?? selected.label} className={cn(pillClass, "w-56 pr-9", focusClass)}
+      onFocus={(event) => { setOpen(true); event.target.select(); }}
+      onBlur={close}
+      onChange={(event) => { setQuery(event.target.value); setActive(0); setOpen(true); }}
+      onKeyDown={(event) => {
+        if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+          event.preventDefault();
+          setOpen(true);
+          setActive((current) => Math.max(0, Math.min(matches.length - 1, current + (event.key === "ArrowDown" ? 1 : -1))));
+        } else if (event.key === "Enter" && open && matches[active]) {
+          event.preventDefault();
+          choose(matches[active]);
+        } else if (event.key === "Tab" && query !== null && matches[active]) {
+          choose(matches[active]);
+        } else if (event.key === "Escape" && open) {
+          event.preventDefault();
+          close();
+        }
+      }} />
+    <ChevronsUpDown aria-hidden="true" className="pointer-events-none absolute right-3.5 top-2.5 h-4 w-4 text-muted-foreground" />
+    {open && <ul id={`${id}-list`} role="listbox" aria-label="Datasets" className="absolute z-20 mt-1 max-h-72 w-64 overflow-auto rounded-2xl bg-popover p-1 text-popover-foreground shadow-lg">
+      {matches.length === 0 && <li role="presentation" className="px-3 py-2 text-sm text-muted-foreground">No matching dataset</li>}
+      {matches.map((option, index) => <li key={option.value} id={`${id}-${index}`} role="option" aria-selected={option.value === value}
+        onMouseDown={(event) => { event.preventDefault(); choose(option); }} onMouseEnter={() => setActive(index)}
+        className={cn("cursor-pointer rounded-xl px-3 py-2 text-sm", index === active && "bg-accent", option.value === value && "font-semibold")}>{option.label}</li>)}
+    </ul>}
+  </div>;
+}
+
+// `dataset="select"` adds the dataset combobox; Design B renders its own tabs instead.
+export function FilterBar({ h, dataset, children }: { h: HistoryPreview; dataset: "select" | "none"; children?: ReactNode }) {
   const { filters, update } = h;
   const toggle = (pressed: boolean) => cn("inline-flex h-9 items-center rounded-full px-4 text-sm font-medium transition-colors", focusClass,
     pressed ? "bg-foreground text-background" : "bg-muted text-muted-foreground hover:text-foreground");
   return <div className="space-y-3">
-    {dataset === "pills" && <Segmented label="Dataset" value={filters.dataset} onChange={(value) => update({ dataset: value })}
-      options={[{ value: "all", label: "All" }, ...DATASETS.map((value) => ({ value, label: DATASET_LABELS[value] }))]} />}
     <div className="flex flex-wrap items-center gap-3">
+      {dataset === "select" && <DatasetCombobox value={filters.dataset} onChange={(value) => update({ dataset: value, sort: null, dir: null })} />}
       <Segmented<RangeKey> label="Date range" value={filters.range} onChange={(value) => update({ range: value })} options={[...RANGE_OPTIONS]} />
       {filters.range === "custom" && <>
         {(["from", "to"] as const).map((key) => <label key={key} className="inline-flex items-center gap-2 text-sm text-muted-foreground">
@@ -119,18 +164,19 @@ export function Pager({ h }: { h: HistoryPreview }) {
   </nav>;
 }
 
-function placeText(row: HistoryRow) {
-  return [row.system_name, row.tank_name, row.animal_name].filter(Boolean).join(" · ");
-}
-
-export function EntryCard({ row, h }: { row: HistoryRow; h: HistoryPreview }) {
-  return <button type="button" onClick={() => h.update({ row: row.id })} className={cn("block w-full space-y-1 rounded-2xl bg-background p-4 text-left", focusClass)}>
+export function EntryCard({ row, h, columns }: { row: HistoryRow; h: HistoryPreview; columns: Column[] }) {
+  const shown = columns.filter((column) => !CARD_SKIPPED.has(column.key) && column.text(row));
+  return <button type="button" onClick={() => h.update({ row: row.id })} className={cn("block w-full space-y-2 rounded-2xl bg-background p-4 text-left", focusClass)}>
     <span className="flex flex-wrap items-center justify-between gap-2">
       <span className="text-sm font-medium">{formatTime(row.occurred_at)}</span><SourceBadge source={row.data_source} />
     </span>
-    <span className="block text-sm text-muted-foreground">{DATASET_LABELS[row.dataset]}{placeText(row) && ` · ${placeText(row)}`}</span>
-    <span className={cn("block", row.out_of_range?.length && OUT_OF_RANGE_TEXT)}>{row.summary}</span>
-    <span className="block text-sm text-muted-foreground">{row.recorded_by_name ?? "Unknown"}</span>
+    <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
+      {shown.map((column) => <div key={column.key} className="min-w-0">
+        <dt className="text-muted-foreground">{column.label}</dt>
+        <dd className={cn("truncate", column.flag?.(row) && OUT_OF_RANGE_TEXT)}>{column.text(row)}{column.flag?.(row) && <span className="sr-only"> (outside target)</span>}</dd>
+      </div>)}
+    </dl>
+    {row.notes && <span className="line-clamp-2 block text-sm text-muted-foreground">{row.notes}</span>}
   </button>;
 }
 
@@ -165,7 +211,7 @@ export function HistoryTable({ h, columns }: { h: HistoryPreview; columns: Colum
               {columns.map((column) => {
                 const value = column.text(row);
                 const flagged = column.flag?.(row) ?? false;
-                return <td key={column.key} className={cn("px-3 py-2.5", column.numeric ? "text-right tabular-nums" : "text-left", column.key === "notes" ? "max-w-64 truncate" : column.key === "summary" ? "min-w-48" : "whitespace-nowrap", flagged && OUT_OF_RANGE_TEXT)}>
+                return <td key={column.key} className={cn("px-3 py-2.5", column.numeric ? "text-right tabular-nums" : "text-left", column.key === "notes" ? "max-w-64 truncate" : "whitespace-nowrap", flagged && OUT_OF_RANGE_TEXT)}>
                   {column.key === "time"
                     ? <button type="button" onClick={(event) => { event.stopPropagation(); update({ row: row.id }); }} className={cn("rounded-md text-left font-medium underline-offset-4 hover:underline", focusClass)}>{value}</button>
                     : column.key === "source" ? <SourceBadge source={row.data_source} />
@@ -177,7 +223,7 @@ export function HistoryTable({ h, columns }: { h: HistoryPreview; columns: Colum
           </tbody>
         </table>
       </div>
-      <ul className="space-y-2 sm:hidden">{h.pageRows.map((row) => <li key={row.id}><EntryCard row={row} h={h} /></li>)}</ul>
+      <ul className="space-y-2 sm:hidden">{h.pageRows.map((row) => <li key={row.id}><EntryCard row={row} h={h} columns={columns} /></li>)}</ul>
     </>}
     <Pager h={h} />
   </Tile>;
