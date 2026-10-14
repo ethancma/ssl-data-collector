@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useId, useState, type ReactNode } from "react";
-import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, ChevronsUpDown, Download, ImageIcon, Search, X } from "lucide-react";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { ArrowDown, ArrowUp, ChevronDown, ChevronLeft, ChevronRight, ChevronsUpDown, Download, ImageIcon, Search, X } from "lucide-react";
 
 import { EmptyNote, PageHeader, Segmented, Sheet, Tile, focusClass } from "@/components/iseau/shared";
 import { Button } from "@/components/ui/button";
@@ -36,13 +36,58 @@ export function SourceBadge({ source }: { source: DataSource }) {
   return <span className="inline-flex whitespace-nowrap rounded-full bg-foreground/10 px-2.5 py-0.5 text-xs font-medium">{SOURCE_LABELS[source]}</span>;
 }
 
-function FilterSelect({ label, value, options, onChange }: { label: string; value: string; options: { value: string; label: string }[]; onChange: (value: string) => void }) {
-  return <label className="inline-flex">
-    <span className="sr-only">{label}</span>
-    <select value={value} onChange={(event) => onChange(event.target.value)} className={cn(pillClass, focusClass)}>
-      {options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-    </select>
-  </label>;
+type Choice<T extends string> = { value: T; label: string };
+
+// Own popup instead of the native one, so every browser opens it directly below the control.
+function OptionList<T extends string>({ id, options, active, value, empty, onChoose, onHover }: {
+  id: string; options: Choice<T>[]; active: number; value: T; empty?: string; onChoose: (option: Choice<T>) => void; onHover: (index: number) => void;
+}) {
+  return <ul id={`${id}-list`} role="listbox" className="absolute left-0 top-full z-20 mt-1 max-h-72 w-max min-w-full overflow-auto rounded-2xl bg-popover p-1 text-popover-foreground shadow-lg ring-1 ring-border">
+    {options.length === 0 && <li role="presentation" className="px-3 py-2 text-sm text-muted-foreground">{empty}</li>}
+    {options.map((option, index) => <li key={option.value} id={`${id}-${index}`} role="option" aria-selected={option.value === value}
+      onMouseDown={(event) => { event.preventDefault(); onChoose(option); }} onMouseEnter={() => onHover(index)}
+      className={cn("cursor-pointer whitespace-nowrap rounded-xl px-3 py-2 text-sm", index === active && "bg-accent", option.value === value && "font-semibold")}>{option.label}</li>)}
+  </ul>;
+}
+
+function FilterSelect({ label, value, options, onChange }: { label: string; value: string; options: Choice<string>[]; onChange: (value: string) => void }) {
+  const id = useId();
+  const ref = useRef<HTMLDivElement>(null);
+  const [open, setOpen] = useState(false);
+  const [active, setActive] = useState(0);
+  const selectedIndex = Math.max(0, options.findIndex((option) => option.value === value));
+  const show = () => { setActive(selectedIndex); setOpen(true); };
+  const choose = (option: Choice<string>) => { onChange(option.value); setOpen(false); };
+  // Safari does not focus a button on click, so blur alone would leave the menu open.
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (event: PointerEvent) => { if (!ref.current?.contains(event.target as Node)) setOpen(false); };
+    document.addEventListener("pointerdown", onDown);
+    return () => document.removeEventListener("pointerdown", onDown);
+  }, [open]);
+  return <div ref={ref} className="relative">
+    <button type="button" role="combobox" aria-label={label} aria-expanded={open} aria-haspopup="listbox" aria-controls={`${id}-list`}
+      aria-activedescendant={open ? `${id}-${active}` : undefined} className={cn(pillClass, "inline-flex items-center gap-2 pr-3", focusClass)}
+      onClick={(event) => { event.currentTarget.focus(); if (open) setOpen(false); else show(); }}
+      onBlur={() => setOpen(false)}
+      onKeyDown={(event) => {
+        if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+          event.preventDefault();
+          if (!open) show();
+          else setActive((current) => Math.max(0, Math.min(options.length - 1, current + (event.key === "ArrowDown" ? 1 : -1))));
+        } else if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          if (open) choose(options[active]);
+          else show();
+        } else if (event.key === "Escape" && open) {
+          event.preventDefault();
+          setOpen(false);
+        }
+      }}>
+      <span>{options[selectedIndex]?.label}</span><ChevronDown aria-hidden="true" className="h-4 w-4 shrink-0 text-muted-foreground" />
+    </button>
+    {open && <OptionList id={id} options={options} active={active} value={value} onChoose={choose} onHover={setActive} />}
+  </div>;
 }
 
 function ExportButton({ h }: { h: HistoryPreview }) {
@@ -92,13 +137,8 @@ function DatasetCombobox({ value, onChange }: { value: Dataset | "all"; onChange
           close();
         }
       }} />
-    <ChevronsUpDown aria-hidden="true" className="pointer-events-none absolute right-3.5 top-2.5 h-4 w-4 text-muted-foreground" />
-    {open && <ul id={`${id}-list`} role="listbox" aria-label="Datasets" className="absolute z-20 mt-1 max-h-72 w-64 overflow-auto rounded-2xl bg-popover p-1 text-popover-foreground shadow-lg">
-      {matches.length === 0 && <li role="presentation" className="px-3 py-2 text-sm text-muted-foreground">No matching dataset</li>}
-      {matches.map((option, index) => <li key={option.value} id={`${id}-${index}`} role="option" aria-selected={option.value === value}
-        onMouseDown={(event) => { event.preventDefault(); choose(option); }} onMouseEnter={() => setActive(index)}
-        className={cn("cursor-pointer rounded-xl px-3 py-2 text-sm", index === active && "bg-accent", option.value === value && "font-semibold")}>{option.label}</li>)}
-    </ul>}
+    <ChevronDown aria-hidden="true" className="pointer-events-none absolute right-3 top-2.5 h-4 w-4 text-muted-foreground" />
+    {open && <OptionList id={id} options={matches} active={active} value={value} empty="No matching dataset" onChoose={choose} onHover={setActive} />}
   </div>;
 }
 
