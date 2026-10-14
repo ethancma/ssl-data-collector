@@ -1,28 +1,29 @@
 "use client";
 
+import { ArrowDown, ArrowUp, ChevronDown, ChevronLeft, ChevronRight, ChevronsUpDown, Download, Search, X } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
-import { ArrowDown, ArrowUp, ChevronDown, ChevronLeft, ChevronRight, ChevronsUpDown, Download, ImageIcon, Search, X } from "lucide-react";
 
 import { EmptyNote, PageHeader, Segmented, Sheet, Tile, focusClass } from "@/components/iseau/shared";
 import { Button } from "@/components/ui/button";
+import {
+  DATASET_LABELS, DATA_SOURCES, HISTORY_DATASETS, SOURCE_LABELS, detailFields, formatHistoryTime,
+  type HistoryColumn, type HistoryDataSource, type HistoryDataset, type HistoryRow,
+} from "@/lib/history/datasets";
+import { HISTORY_PAGE_SIZE, RANGE_OPTIONS, type HistoryRange } from "@/lib/history/params";
+import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
-import { DATASETS, DATASET_LABELS, DATA_SOURCES, RECORDER_NAMES, SAMPLE_TODAY, SOURCE_LABELS, SYSTEM_NAMES, type DataSource, type Dataset, type HistoryRow } from "./mock-rows";
-import { PAGE_SIZE, RANGE_OPTIONS, detailFields, formatTime, type Column, type RangeKey } from "./logic";
 import type { HistoryState } from "./use-history";
 
 const OUT_OF_RANGE_TEXT = "font-medium text-amber-600 dark:text-amber-400";
 const pillClass = "h-9 rounded-full bg-muted px-4 text-sm";
-const CARD_SKIPPED = new Set(["time", "source", "notes"]);
-
-export function HistorySampleNote() {
-  return <p className="text-xs text-muted-foreground">Sample data as of Oct 14, 2026</p>;
-}
+const CARD_SKIPPED = new Set(["occurred_at", "data_source", "notes"]);
+const rowKey = (row: HistoryRow) => `${row.dataset}-${row.id}`;
 
 export function HistoryHeader({ h }: { h: HistoryState }) {
   return <PageHeader title="History" description={h.headline} />;
 }
 
-export function SourceBadge({ source }: { source: DataSource }) {
+function SourceBadge({ source }: { source: HistoryDataSource }) {
   return <span className="inline-flex whitespace-nowrap rounded-full bg-foreground/10 px-2.5 py-0.5 text-xs font-medium">{SOURCE_LABELS[source]}</span>;
 }
 
@@ -80,21 +81,12 @@ function FilterSelect({ label, value, options, onChange }: { label: string; valu
   </div>;
 }
 
-function ExportButton({ h }: { h: HistoryState }) {
-  if (h.exporting) {
-    return <div role="status" className="inline-flex items-center gap-3 text-sm">
-      <span className="tabular-nums">Exporting {h.exporting.done.toLocaleString()} of {h.exporting.total.toLocaleString()} rows</span>
-      <Button type="button" variant="outline" size="sm" onClick={h.cancelExport}>Cancel</Button>
-    </div>;
-  }
-  return <Button type="button" variant="outline" disabled={h.rows.length === 0} onClick={() => void h.exportCsv()}>
-    <Download aria-hidden="true" />Export {h.rows.length.toLocaleString()} {h.rows.length === 1 ? "row" : "rows"}
-  </Button>;
-}
-
 // Type to filter; the first match is highlighted, so Enter or Tab fills it in.
-function DatasetCombobox({ value, onChange }: { value: Dataset | "all"; onChange: (value: Dataset | "all") => void }) {
-  const options: { value: Dataset | "all"; label: string }[] = [{ value: "all", label: "All datasets" }, ...DATASETS.map((dataset) => ({ value: dataset, label: DATASET_LABELS[dataset] }))];
+function DatasetCombobox({ value, canViewStar, onChange }: { value: HistoryDataset | "all"; canViewStar: boolean; onChange: (value: HistoryDataset | "all") => void }) {
+  const options: Choice<HistoryDataset | "all">[] = [
+    { value: "all", label: "All datasets" },
+    ...HISTORY_DATASETS.filter((dataset) => canViewStar || dataset !== "star_treatment").map((dataset) => ({ value: dataset, label: DATASET_LABELS[dataset] })),
+  ];
   const selected = options.find((option) => option.value === value) ?? options[0];
   const id = useId();
   const [open, setOpen] = useState(false);
@@ -132,33 +124,49 @@ function DatasetCombobox({ value, onChange }: { value: Dataset | "all"; onChange
   </div>;
 }
 
+function ExportButton({ h }: { h: HistoryState }) {
+  if (h.exporting) {
+    return <div role="status" className="inline-flex items-center gap-3 text-sm">
+      <span className="tabular-nums">Exporting {h.exporting.done.toLocaleString()} of {h.exporting.total.toLocaleString()} rows</span>
+      <Button type="button" variant="outline" size="sm" onClick={h.cancelExport}>Cancel</Button>
+    </div>;
+  }
+  return <div className="flex flex-col items-end gap-1">
+    <Button type="button" variant="outline" disabled={h.total === 0} onClick={() => void h.exportCsv()}>
+      <Download aria-hidden="true" />Export {h.total.toLocaleString()} {h.total === 1 ? "row" : "rows"}
+    </Button>
+    {h.exportError && <p role="alert" className="text-sm text-red-500">Export failed: {h.exportError}</p>}
+  </div>;
+}
+
 export function FilterBar({ h }: { h: HistoryState }) {
-  const { filters, update } = h;
+  const { params, update } = h;
   const toggle = (pressed: boolean) => cn("inline-flex h-9 items-center rounded-full px-4 text-sm font-medium transition-colors", focusClass,
     pressed ? "bg-foreground text-background" : "bg-muted text-muted-foreground hover:text-foreground");
   return <div className="space-y-3">
     <div className="flex flex-wrap items-center gap-3">
-      <DatasetCombobox value={filters.dataset} onChange={(value) => update({ dataset: value, sort: null, dir: null })} />
-      <Segmented<RangeKey> label="Date range" value={filters.range} onChange={(value) => update({ range: value })} options={[...RANGE_OPTIONS]} />
-      {filters.range === "custom" && <>
-        {(["from", "to"] as const).map((key) => <label key={key} className="inline-flex items-center gap-2 text-sm text-muted-foreground">
-          <span className="capitalize">{key}</span>
-          <input type="date" value={h.bounds[key]} max={SAMPLE_TODAY} onChange={(event) => event.target.value && update({ [key]: event.target.value })} className={cn(pillClass, "text-foreground", focusClass)} />
-        </label>)}
-      </>}
-      <FilterSelect label="System" value={filters.system} onChange={(value) => update({ system: value })}
-        options={[{ value: "all", label: "All systems" }, ...SYSTEM_NAMES.map((value) => ({ value, label: value }))]} />
-      <FilterSelect label="Recorded by" value={filters.recorder} onChange={(value) => update({ recorder: value })}
-        options={[{ value: "all", label: "Anyone" }, ...RECORDER_NAMES.map((value) => ({ value, label: value }))]} />
-      <FilterSelect label="Data source" value={filters.source} onChange={(value) => update({ source: value })}
+      <DatasetCombobox value={params.dataset} canViewStar={h.canViewStar} onChange={(value) => update({ dataset: value, sort: null, dir: null, oor: null })} />
+      <Segmented<HistoryRange> label="Date range" value={params.range} onChange={(value) => update(value === "custom" ? { range: value, from: params.from, to: params.to } : { range: value, from: null, to: null })} options={[...RANGE_OPTIONS]} />
+      {params.range === "custom" && (["from", "to"] as const).map((key) => <label key={key} className="inline-flex items-center gap-2 text-sm text-muted-foreground">
+        <span className="capitalize">{key}</span>
+        <input type="date" value={params[key]} onChange={(event) => event.target.value && update({ [key]: event.target.value })} className={cn(pillClass, "text-foreground", focusClass)} />
+      </label>)}
+      <FilterSelect label="System" value={params.system === null ? "all" : String(params.system)} onChange={(value) => update({ system: value })}
+        options={[{ value: "all", label: "All systems" }, ...h.systems.map((system) => ({ value: String(system.id), label: system.name }))]} />
+      <FilterSelect label="Recorded by" value={params.recorder === null ? "all" : String(params.recorder)} onChange={(value) => update({ recorder: value })}
+        options={[{ value: "all", label: "Anyone" }, ...h.recorders.map((recorder) => ({ value: String(recorder.id), label: recorder.name }))]} />
+      <FilterSelect label="Data source" value={params.source ?? "all"} onChange={(value) => update({ source: value })}
         options={[{ value: "all", label: "Any source" }, ...DATA_SOURCES.map((value) => ({ value, label: SOURCE_LABELS[value] }))]} />
-      <label className="relative inline-flex items-center">
-        <span className="sr-only">Search notes, system, tank, animal, or recorder</span>
+      <form role="search" className="relative inline-flex items-center" onSubmit={(event) => {
+        event.preventDefault();
+        update({ q: String(new FormData(event.currentTarget).get("q") ?? "").trim() });
+      }}>
+        <label className="sr-only" htmlFor="history-search">Search notes, system, tank, animal, or recorder (press Enter)</label>
         <Search aria-hidden="true" className="pointer-events-none absolute left-3.5 h-4 w-4 text-muted-foreground" />
-        <input key={h.searchKey} type="search" defaultValue={filters.q} placeholder="Search" maxLength={100} onChange={(event) => update({ q: event.target.value.trim() })}
-          className={cn(pillClass, "w-48 pl-10 placeholder:text-muted-foreground", focusClass)} />
-      </label>
-      <button type="button" aria-pressed={filters.oor} onClick={() => update({ oor: filters.oor ? null : "1" })} className={toggle(filters.oor)}>Out of range only</button>
+        <input key={params.q} id="history-search" name="q" type="search" defaultValue={params.q} placeholder="Search, then Enter" maxLength={100}
+          className={cn(pillClass, "w-52 pl-10 placeholder:text-muted-foreground", focusClass)} />
+      </form>
+      <button type="button" aria-pressed={params.outOfRange} onClick={() => update({ oor: params.outOfRange ? null : "1" })} className={toggle(params.outOfRange)}>Out of range only</button>
       <div className="ml-auto"><ExportButton h={h} /></div>
     </div>
     {h.chips.length > 0 && <ul aria-label="Active filters" className="flex flex-wrap items-center gap-2">
@@ -178,25 +186,26 @@ export function RowsSkeleton() {
   </div>;
 }
 
-export function Pager({ h }: { h: HistoryState }) {
-  const first = h.rows.length === 0 ? 0 : (h.page - 1) * PAGE_SIZE + 1;
-  const last = Math.min(h.page * PAGE_SIZE, h.rows.length);
-  const go = (page: number) => h.update({ page: page <= 1 ? null : String(page) });
+function Pager({ h }: { h: HistoryState }) {
+  const page = Math.min(h.params.page, h.pages);
+  const first = h.total === 0 ? 0 : (page - 1) * HISTORY_PAGE_SIZE + 1;
+  const last = Math.min(page * HISTORY_PAGE_SIZE, h.total);
+  const go = (next: number) => h.update({ page: next <= 1 ? null : String(next) });
   return <nav aria-label="Pages" className="flex flex-wrap items-center justify-between gap-3 text-sm">
-    <p className="text-muted-foreground tabular-nums">Showing {first.toLocaleString()}–{last.toLocaleString()} of {h.rows.length.toLocaleString()}</p>
+    <p className="text-muted-foreground tabular-nums">Showing {first.toLocaleString()}–{last.toLocaleString()} of {h.total.toLocaleString()}</p>
     <div className="flex items-center gap-2">
-      <Button type="button" variant="outline" size="sm" disabled={h.page <= 1} onClick={() => go(h.page - 1)}><ChevronLeft aria-hidden="true" />Previous</Button>
-      <span className="tabular-nums">Page {h.page} of {h.pages}</span>
-      <Button type="button" variant="outline" size="sm" disabled={h.page >= h.pages} onClick={() => go(h.page + 1)}>Next<ChevronRight aria-hidden="true" /></Button>
+      <Button type="button" variant="outline" size="sm" disabled={page <= 1 || h.loading} onClick={() => go(page - 1)}><ChevronLeft aria-hidden="true" />Previous</Button>
+      <span className="tabular-nums">Page {page} of {h.pages}</span>
+      <Button type="button" variant="outline" size="sm" disabled={page >= h.pages || h.loading} onClick={() => go(page + 1)}>Next<ChevronRight aria-hidden="true" /></Button>
     </div>
   </nav>;
 }
 
-export function EntryCard({ row, h, columns }: { row: HistoryRow; h: HistoryState; columns: Column[] }) {
+function EntryCard({ row, h, columns }: { row: HistoryRow; h: HistoryState; columns: HistoryColumn[] }) {
   const shown = columns.filter((column) => !CARD_SKIPPED.has(column.key) && column.text(row));
-  return <button type="button" onClick={() => h.update({ row: row.id })} className={cn("block w-full space-y-2 rounded-2xl bg-background p-4 text-left", focusClass)}>
+  return <button type="button" onClick={() => h.setOpenKey(rowKey(row))} className={cn("block w-full space-y-2 rounded-2xl bg-background p-4 text-left", focusClass)}>
     <span className="flex flex-wrap items-center justify-between gap-2">
-      <span className="text-sm font-medium">{formatTime(row.occurred_at)}</span><SourceBadge source={row.data_source} />
+      <span className="text-sm font-medium">{formatHistoryTime(row.occurred_at)}</span><SourceBadge source={row.data_source} />
     </span>
     <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
       {shown.map((column) => <div key={column.key} className="min-w-0">
@@ -208,11 +217,11 @@ export function EntryCard({ row, h, columns }: { row: HistoryRow; h: HistoryStat
   </button>;
 }
 
-export function HistoryTable({ h, columns }: { h: HistoryState; columns: Column[] }) {
-  const { filters, update } = h;
-  function sortBy(column: Column) {
-    const active = filters.sort === column.key;
-    update({ sort: column.key, dir: active ? (filters.dir === "asc" ? "desc" : "asc") : column.key === "time" ? "desc" : "asc" });
+export function HistoryTable({ h }: { h: HistoryState }) {
+  const { params, update, columns } = h;
+  function sortBy(column: HistoryColumn) {
+    const active = params.sort === column.key;
+    update({ sort: column.key, dir: active ? (params.dir === "asc" ? "desc" : "asc") : column.key === "occurred_at" ? "desc" : "asc" });
   }
   return <Tile className="space-y-4 p-4 sm:p-6">
     {h.loading ? <RowsSkeleton /> : h.rows.length === 0 ? <EmptyNote>No entries match these filters. Try a wider date range or clear a filter.</EmptyNote> : <>
@@ -221,9 +230,9 @@ export function HistoryTable({ h, columns }: { h: HistoryState; columns: Column[
           <thead>
             <tr>
               {columns.map((column) => {
-                const active = filters.sort === column.key;
-                const Icon = !active ? ChevronsUpDown : filters.dir === "asc" ? ArrowUp : ArrowDown;
-                return <th key={column.key} scope="col" aria-sort={column.sortable ? (active ? (filters.dir === "asc" ? "ascending" : "descending") : "none") : undefined}
+                const active = params.sort === column.key;
+                const Icon = !active ? ChevronsUpDown : params.dir === "asc" ? ArrowUp : ArrowDown;
+                return <th key={column.key} scope="col" aria-sort={column.sortable ? (active ? (params.dir === "asc" ? "ascending" : "descending") : "none") : undefined}
                   className={cn("whitespace-nowrap px-3 py-2 font-medium text-muted-foreground", column.numeric ? "text-right" : "text-left")}>
                   {column.sortable
                     ? <button type="button" onClick={() => sortBy(column)} className={cn("inline-flex items-center gap-1 rounded-md hover:text-foreground", focusClass, active && "text-foreground")}>
@@ -235,14 +244,14 @@ export function HistoryTable({ h, columns }: { h: HistoryState; columns: Column[
             </tr>
           </thead>
           <tbody>
-            {h.pageRows.map((row) => <tr key={row.id} onClick={() => update({ row: row.id })} className="cursor-pointer even:bg-background/50 hover:bg-background">
+            {h.rows.map((row) => <tr key={rowKey(row)} onClick={() => h.setOpenKey(rowKey(row))} className="cursor-pointer even:bg-background/50 hover:bg-background">
               {columns.map((column) => {
                 const value = column.text(row);
                 const flagged = column.flag?.(row) ?? false;
                 return <td key={column.key} className={cn("px-3 py-2.5", column.numeric ? "text-right tabular-nums" : "text-left", column.key === "notes" ? "max-w-64 truncate" : "whitespace-nowrap", flagged && OUT_OF_RANGE_TEXT)}>
-                  {column.key === "time"
-                    ? <button type="button" onClick={(event) => { event.stopPropagation(); update({ row: row.id }); }} className={cn("rounded-md text-left font-medium underline-offset-4 hover:underline", focusClass)}>{value}</button>
-                    : column.key === "source" ? <SourceBadge source={row.data_source} />
+                  {column.key === "occurred_at"
+                    ? <button type="button" onClick={(event) => { event.stopPropagation(); h.setOpenKey(rowKey(row)); }} className={cn("rounded-md text-left font-medium underline-offset-4 hover:underline", focusClass)}>{value}</button>
+                    : column.key === "data_source" ? <SourceBadge source={row.data_source} />
                       : value || <span aria-label="No value" className="text-muted-foreground">—</span>}
                   {flagged && <span className="sr-only"> (outside target)</span>}
                 </td>;
@@ -251,29 +260,61 @@ export function HistoryTable({ h, columns }: { h: HistoryState; columns: Column[
           </tbody>
         </table>
       </div>
-      <ul className="space-y-2 sm:hidden">{h.pageRows.map((row) => <li key={row.id}><EntryCard row={row} h={h} columns={columns} /></li>)}</ul>
+      <ul className="space-y-2 sm:hidden">{h.rows.map((row) => <li key={rowKey(row)}><EntryCard row={row} h={h} columns={columns} /></li>)}</ul>
     </>}
     <Pager h={h} />
   </Tile>;
+}
+
+type Photo = { path: string; url: string };
+
+// Signed in the browser, and only once the sheet is open.
+function RowPhotos({ id }: { id: number }) {
+  const [photos, setPhotos] = useState<Photo[] | null>(null);
+  const [failed, setFailed] = useState(false);
+  useEffect(() => {
+    let ignore = false;
+    (async () => {
+      const supabase = createClient();
+      const { data: attachments, error } = await supabase.from("attachments").select("storage_path").eq("parent_table", "health_observations").eq("parent_id", id);
+      if (error) { if (!ignore) setFailed(true); return; }
+      const paths = (attachments ?? []).map((attachment) => attachment.storage_path as string);
+      if (paths.length === 0) { if (!ignore) setPhotos([]); return; }
+      const { data: signed, error: signError } = await supabase.storage.from("attachments").createSignedUrls(paths, 3600);
+      if (ignore) return;
+      if (signError) { setFailed(true); return; }
+      setPhotos(signed.flatMap((item) => (item.signedUrl && item.path ? [{ path: item.path, url: item.signedUrl }] : [])));
+    })();
+    return () => { ignore = true; };
+  }, [id]);
+  return <div className="mt-6 space-y-2">
+    <h3 className="text-sm text-muted-foreground">Photos</h3>
+    {failed ? <p role="alert" className="text-sm text-red-500">Photos could not be loaded.</p>
+      : photos === null ? <div role="status" aria-label="Loading photos" className="size-28 animate-pulse rounded-2xl bg-muted" />
+        : photos.length === 0 ? <p className="text-sm text-muted-foreground">No photos attached.</p>
+          : <ul className="flex flex-wrap gap-3">{photos.map((photo, index) => <li key={photo.path}>
+            <a href={photo.url} target="_blank" rel="noreferrer" aria-label={`Open photo ${index + 1}`} className={cn("block overflow-hidden rounded-2xl bg-muted", focusClass)}>
+              {/* Signed private URLs are not in next/image's allowed remote patterns. */}
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={photo.url} alt={`Health observation photo ${index + 1}`} className="size-28 object-cover" />
+            </a>
+          </li>)}</ul>}
+  </div>;
 }
 
 export function RowDetail({ h }: { h: HistoryState }) {
   const row = h.openRow;
   if (!row) return null;
   const fields = detailFields(row);
-  return <Sheet title={`${DATASET_LABELS[row.dataset]} · ${formatTime(row.occurred_at)}`} onClose={() => h.update({ row: null })}>
+  return <Sheet title={`${DATASET_LABELS[row.dataset]} · ${formatHistoryTime(row.occurred_at)}`} onClose={() => h.setOpenKey(null)}>
     <dl className="grid gap-x-8 gap-y-4 sm:grid-cols-2">
       {fields.map((field) => <div key={field.label}>
         <dt className="text-sm text-muted-foreground">{field.label}</dt>
         <dd className={cn("text-lg", field.flag && OUT_OF_RANGE_TEXT)}>{field.value || "—"}{field.flag && <span className="sr-only"> (outside target)</span>}</dd>
       </div>)}
-      <div><dt className="text-sm text-muted-foreground">Entered</dt><dd className="text-lg">{formatTime(row.entered_at)}</dd></div>
+      <div><dt className="text-sm text-muted-foreground">Entered</dt><dd className="text-lg">{formatHistoryTime(row.entered_at)}</dd></div>
       <div className="sm:col-span-2"><dt className="text-sm text-muted-foreground">Notes</dt><dd className="whitespace-pre-wrap text-lg">{row.notes || "—"}</dd></div>
     </dl>
-    {row.has_photo && <div className="mt-6 space-y-2">
-      <h3 className="text-sm text-muted-foreground">Photos</h3>
-      <ul className="flex flex-wrap gap-3">{[1, 2].map((index) => <li key={index} role="img" aria-label={`Sample photo ${index}`} className="grid size-28 place-items-center rounded-2xl bg-muted text-muted-foreground"><ImageIcon aria-hidden="true" /></li>)}</ul>
-    </div>}
+    {row.dataset === "health_observation" && row.has_photo && <RowPhotos id={row.id} />}
   </Sheet>;
 }
-

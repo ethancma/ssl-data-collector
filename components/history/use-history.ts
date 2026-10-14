@@ -1,94 +1,108 @@
 "use client";
 
-import { usePathname, useSearchParams } from "next/navigation";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useRef, useState, useTransition } from "react";
 
-import { DEFAULTS, EXPORT_CHUNK, PAGE_SIZE, buildCsv, dateBounds, filterRows, parseFilters, sortRows, type Column } from "./logic";
-import { MOCK_ROWS, SOURCE_LABELS, type Dataset } from "./mock-rows";
+import { buildCsv } from "@/lib/history/csv";
+import { DATASET_VIEWS, SOURCE_LABELS, columnsFor, type HistoryRow } from "@/lib/history/datasets";
+import { DEFAULT_SORT, HISTORY_PAGE_SIZE, type HistoryParams } from "@/lib/history/params";
+import { applyHistoryFilters, applyHistoryOrder } from "@/lib/history/query";
+import { formatPacificDateTime } from "@/lib/pacific-date-time";
+import { createClient } from "@/lib/supabase/client";
 
-// The URL is the source of truth. Writes go through the History API, which Next syncs into useSearchParams.
-export function useHistory(columnsFor: (dataset: Dataset | "all") => Column[]) {
+type HistoryOption = { id: number; name: string };
+
+export type HistoryData = {
+  params: HistoryParams;
+  rows: HistoryRow[];
+  total: number;
+  // Water tests out of range under the current filters; null when the dataset has none.
+  outOfRange: number | null;
+  systems: HistoryOption[];
+  recorders: HistoryOption[];
+  canViewStar: boolean;
+};
+
+// PostgREST returns at most this many rows per request (max_rows in supabase/config.toml).
+const EXPORT_CHUNK = 1000;
+
+const URL_DEFAULTS: Record<string, string> = { dataset: "all", range: "30", system: "all", recorder: "all", source: "all", sort: DEFAULT_SORT, dir: "desc" };
+
+const dateLabel = (date: string) => formatPacificDateTime(`${date}T20:00:00Z`, { month: "short", day: "numeric", year: "numeric" });
+
+// The URL is the source of truth: a change rewrites the query string and the server page re-queries.
+export function useHistory(data: HistoryData) {
+  const { params } = data;
+  const router = useRouter();
   const pathname = usePathname();
-  const params = useSearchParams();
-  const filters = parseFilters(params);
-  const openId = params.get("row");
-  const queryKey = [...params.entries()].filter(([key]) => key !== "row" && key !== "page").map(([key, value]) => `${key}=${value}`).join("&");
-
-  const [loadedKey, setLoadedKey] = useState<string | null>(null);
-  useEffect(() => {
-    const timer = setTimeout(() => setLoadedKey(queryKey), 350);
-    return () => clearTimeout(timer);
-  }, [queryKey]);
+  const searchParams = useSearchParams();
+  const [pending, startTransition] = useTransition();
+  const [openKey, setOpenKey] = useState<string | null>(null);
 
   function update(patch: Record<string, string | null>) {
-    const next = new URLSearchParams(window.location.search);
+    const next = new URLSearchParams(searchParams.toString());
     for (const [key, value] of Object.entries(patch)) {
-      if (value === null || value === "" || DEFAULTS[key as keyof typeof DEFAULTS] === value) next.delete(key);
+      if (value === null || value === "" || URL_DEFAULTS[key] === value) next.delete(key);
       else next.set(key, value);
     }
-    if (!("page" in patch) && !("row" in patch)) next.delete("page");
-    window.history.replaceState(null, "", next.size ? `${pathname}?${next}` : pathname);
+    if (!("page" in patch)) next.delete("page");
+    startTransition(() => router.replace(next.size ? `${pathname}?${next}` : pathname, { scroll: false }));
   }
 
-  const [searchKey, setSearchKey] = useState(0);
   function clearAll() {
-    update({ system: null, recorder: null, source: null, q: null, oor: null, from: null, to: null });
-    setSearchKey((key) => key + 1);
+    update({ system: null, recorder: null, source: null, q: null, oor: null });
   }
 
-  const columns = columnsFor(filters.dataset);
-  const matching = useMemo(() => filterRows(MOCK_ROWS, { ...filters, dataset: "all" }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on the URL, not the parsed object identity
-    [queryKey]);
-  const rows = useMemo(() => sortRows(filters.dataset === "all" ? matching : matching.filter((row) => row.dataset === filters.dataset), columns, filters),
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on the URL, not the parsed object identity
-    [queryKey]);
-  const pages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
-  const page = Math.min(filters.page, pages);
-  const pageRows = rows.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
-  const outOfRange = rows.filter((row) => (row.out_of_range?.length ?? 0) > 0).length;
-  const bounds = dateBounds(filters);
+  const columns = columnsFor(params.dataset);
+  const pages = Math.max(1, Math.ceil(data.total / HISTORY_PAGE_SIZE));
 
   const chips = [
-    filters.system !== "all" && { id: "system", label: filters.system, clear: () => update({ system: null }) },
-    filters.recorder !== "all" && { id: "recorder", label: filters.recorder, clear: () => update({ recorder: null }) },
-    filters.source !== "all" && { id: "source", label: SOURCE_LABELS[filters.source], clear: () => update({ source: null }) },
-    filters.q && { id: "q", label: `“${filters.q}”`, clear: () => { update({ q: null }); setSearchKey((key) => key + 1); } },
-    filters.oor && { id: "oor", label: "Out of range only", clear: () => update({ oor: null }) },
+    params.system !== null && { id: "system", label: data.systems.find((system) => system.id === params.system)?.name ?? "System", clear: () => update({ system: null }) },
+    params.recorder !== null && { id: "recorder", label: data.recorders.find((recorder) => recorder.id === params.recorder)?.name ?? "Recorder", clear: () => update({ recorder: null }) },
+    params.source !== null && { id: "source", label: SOURCE_LABELS[params.source], clear: () => update({ source: null }) },
+    params.q && { id: "q", label: `“${params.q}”`, clear: () => update({ q: null }) },
+    params.outOfRange && { id: "oor", label: "Out of range only", clear: () => update({ oor: null }) },
   ].filter((chip): chip is { id: string; label: string; clear: () => void } => Boolean(chip));
 
   const [exporting, setExporting] = useState<{ done: number; total: number } | null>(null);
+  const [exportError, setExportError] = useState<string | null>(null);
   const cancelled = useRef(false);
-  // The real export pages through the view 1,000 rows at a time; the mock fakes that cadence.
+
   async function exportCsv() {
     cancelled.current = false;
-    const collected = [] as typeof rows;
-    for (let from = 0; from < rows.length; from += EXPORT_CHUNK) {
+    setExportError(null);
+    const supabase = createClient();
+    const collected: HistoryRow[] = [];
+    setExporting({ done: 0, total: data.total });
+    for (let from = 0; ; from += EXPORT_CHUNK) {
+      const { data: chunk, error } = await applyHistoryOrder(applyHistoryFilters(supabase.from(DATASET_VIEWS[params.dataset]).select("*"), params), params)
+        .range(from, from + EXPORT_CHUNK - 1);
       if (cancelled.current) { setExporting(null); return; }
-      collected.push(...rows.slice(from, from + EXPORT_CHUNK));
-      setExporting({ done: collected.length, total: rows.length });
-      await new Promise((resolve) => setTimeout(resolve, 150));
+      if (error) { setExportError(error.message); setExporting(null); return; }
+      collected.push(...(chunk as HistoryRow[]));
+      setExporting({ done: collected.length, total: data.total });
+      if (chunk.length < EXPORT_CHUNK) break;
     }
-    if (cancelled.current) { setExporting(null); return; }
     const url = URL.createObjectURL(new Blob([buildCsv(columns, collected)], { type: "text/csv;charset=utf-8" }));
     const anchor = document.createElement("a");
     anchor.href = url;
-    anchor.download = `history-${filters.dataset === "all" ? "all" : filters.dataset}-${bounds.from}-${bounds.to}.csv`;
+    anchor.download = `history-${params.dataset}-${params.from}-${params.to}.csv`;
     anchor.click();
     URL.revokeObjectURL(url);
     setExporting(null);
   }
 
-  const rangeText = filters.range === "custom" ? `from ${bounds.from} to ${bounds.to}`
-    : filters.range === "365" ? "in the last year" : `in the last ${filters.range} days`;
-  const headline = rows.length === 0 ? `Nothing logged ${rangeText}.`
-    : `${rows.length.toLocaleString()} ${rows.length === 1 ? "entry" : "entries"} ${rangeText}.${outOfRange ? ` ${outOfRange} water ${outOfRange === 1 ? "test" : "tests"} out of range.` : ""}`;
+  const rangeText = params.range === "custom" ? `from ${dateLabel(params.from)} to ${dateLabel(params.to)}`
+    : params.range === "365" ? "in the last year" : `in the last ${params.range} days`;
+  const outOfRange = data.outOfRange;
+  const headline = data.total === 0 ? `Nothing logged ${rangeText}.`
+    : `${data.total.toLocaleString()} ${data.total === 1 ? "entry" : "entries"} ${rangeText}.${outOfRange ? ` ${outOfRange} water ${outOfRange === 1 ? "test" : "tests"} out of range.` : ""}`;
 
   return {
-    filters, update, clearAll, chips, columns, rows, pageRows, page, pages, headline, bounds,
-    openRow: openId ? MOCK_ROWS.find((row) => row.id === openId) : undefined,
-    loading: loadedKey !== queryKey, searchKey,
-    exporting, exportCsv, cancelExport: () => { cancelled.current = true; },
+    ...data, update, clearAll, chips, columns, pages, headline, loading: pending,
+    openRow: openKey ? data.rows.find((row) => `${row.dataset}-${row.id}` === openKey) : undefined,
+    setOpenKey,
+    exporting, exportError, exportCsv, cancelExport: () => { cancelled.current = true; },
   };
 }
 
