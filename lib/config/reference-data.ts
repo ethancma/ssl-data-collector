@@ -14,6 +14,15 @@ export const HEALTH_ISSUE_TYPES = [
 ] as const;
 export type HealthIssueType = (typeof HEALTH_ISSUE_TYPES)[number];
 
+export const HEALTH_ISSUE_LABELS: Record<HealthIssueType, string> = {
+  arm_drop: "Arm drop",
+  spine_drop: "Spine drop",
+  lesion: "Lesion",
+  arm_curling: "Arm curling",
+  flattening: "Flattening",
+  other: "Other",
+};
+
 // These always require a photo regardless of severity (lab-operations-plan.md §3).
 export const PHOTO_ALWAYS_REQUIRED_ISSUES: readonly HealthIssueType[] = [
   "arm_drop",
@@ -29,6 +38,12 @@ export const CHECK_TYPES = ["AM", "PM"] as const;
 
 export const MAINTENANCE_TASK_TYPES = ["filter_change", "sump_flush", "other"] as const;
 export type MaintenanceTaskType = (typeof MAINTENANCE_TASK_TYPES)[number];
+
+export const MAINTENANCE_TASK_LABELS: Record<MaintenanceTaskType, string> = {
+  filter_change: "Filter change",
+  sump_flush: "Sump flush",
+  other: "Other",
+};
 
 export const PH_SOURCES = ["manual", "apex_probe"] as const;
 

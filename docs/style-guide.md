@@ -57,12 +57,14 @@ and dark mode. In SVG, prefer `fill="currentColor"`/`stroke="currentColor"` comb
 `text-*` className on the same or an ancestor element, since Tailwind's `fill-*`/`stroke-*`
 utilities don't reliably apply to raw SVG presentation attributes in this setup.
 
-## ISeaU (`components/iseau/`) and Systems (`components/systems/`)
+## ISeaU (`components/iseau/`), Systems (`components/systems/`), and History (`components/history/`)
 A deliberate exception to the page-title row above: ISeaU hero headlines use
 `text-4xl sm:text-6xl font-semibold tracking-tight` and star names on tiles use `text-3xl`
 (`text-5xl` to `text-7xl` in detail heroes). Content sits on `bg-muted` `rounded-3xl` tiles with
 no border or shadow; selectors are `rounded-full` pills (selected = `bg-foreground text-background`).
 Severity swatches use fixed teal / amber / red in `components/iseau/shared.tsx` so they read the same
 in both themes. The Systems lineup, compare, and detail pages reuse these tiles, pills, and
-severity hues (status: teal on track, amber worth a look, coral needs attention). Don't copy
+severity hues (status: teal on track, amber worth a look, coral needs attention). History puts a
+sentence headline under its title, its table on a `Tile`, filters as pills and `rounded-full`
+menus, and amber for out-of-range water readings. Don't copy
 this scale to other pages without updating this section.

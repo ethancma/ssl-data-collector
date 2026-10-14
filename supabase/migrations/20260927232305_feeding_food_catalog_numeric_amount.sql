@@ -67,10 +67,6 @@ comment on table core.food_catalog is
 	'Admin-managed feeding quick picks; deactivate entries to retire them without changing feeding history.';
 comment on column core.feeding_logs.food_catalog_id is
 	'Required food catalog reference; food names and units are read from the catalog.';
-comment on column analytics.fact_feeding.food_name is
-	'Catalog food name from core.food_catalog.name via core.feeding_logs.food_catalog_id.';
-comment on column analytics.fact_feeding.amount is
-	'Text rendering of core.feeding_logs.amount_value; include the referenced catalog default_unit when reporting units.';
 comment on column core.feeding_logs.amount_value is
 	'Optional positive finite numeric amount; its unit is core.food_catalog.default_unit.';
 

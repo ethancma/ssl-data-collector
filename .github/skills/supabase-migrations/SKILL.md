@@ -8,8 +8,7 @@ description: 'Supabase CLI workflow for the SSL Data Collection project — writ
 ## Project state
 - Hosted project ref `bqylxmsifagnztxhixyl` (dummy data only; becomes staging at go-live).
   The CLI is already linked and logged in; don't re-run `link`/`login`.
-- Schemas: `core` (operational tables, int PKs), `analytics` (reporting layer), `public`
-  (kept empty).
+- Schemas: `core` (operational tables, int PKs), `public` (kept empty).
 - One local Docker stack is shared by the main checkout and every worktree. Don't
   `supabase stop` it while worktrees may be using it.
 

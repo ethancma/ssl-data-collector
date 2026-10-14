@@ -31,6 +31,10 @@ export const SMOKE_SECTIONS = [
     id: "systems-trends",
     file: ".github/skills/e2e-testing/scripts/systems-trends.smoke.ts",
   },
+  {
+    id: "history",
+    file: ".github/skills/e2e-testing/scripts/history.smoke.ts",
+  },
 ] as const;
 
 export type SmokeSectionId = (typeof SMOKE_SECTIONS)[number]["id"];
@@ -122,6 +126,11 @@ const rules: SelectionRule[] = [
       /^lib\/systems\//.test(file) ||
       /^components\/systems\//.test(file),
     sections: ["systems-trends"],
+  },
+  {
+    description: "History page",
+    matches: (file) => /^(app\/protected\/history|components\/history|lib\/history)(\/|$)/.test(file),
+    sections: ["history"],
   },
   ...SMOKE_SECTIONS.map<SelectionRule>(({ id, file }) => ({
     description: `the ${id} smoke section itself`,

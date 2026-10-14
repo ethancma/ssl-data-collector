@@ -113,7 +113,7 @@ begin
 		select n.nspname, c.relname
 		from pg_catalog.pg_class c
 		join pg_catalog.pg_namespace n on n.oid = c.relnamespace
-		where n.nspname in ('core', 'analytics')
+		where n.nspname = 'core'
 			and c.relkind in ('r', 'p') and c.relrowsecurity
 		union all select 'storage', 'objects'
 	loop
