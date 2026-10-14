@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { Fragment, useEffect, useState } from "react";
 import { useTheme } from "next-themes";
 import {
+  CalendarDays,
   ClipboardList,
   FlaskConical,
   HeartPulse,
@@ -353,6 +354,11 @@ export function ProtectedSidebar({
               href: "/protected/settings/water-quality-targets",
               label: "Water quality targets",
               icon: SlidersHorizontal,
+            },
+            {
+              href: "/protected/settings/feeding-schedules",
+              label: "Feeding schedules",
+              icon: CalendarDays,
             },
             {
               href: "/protected/settings/quick-picks",

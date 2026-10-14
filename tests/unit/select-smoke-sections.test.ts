@@ -219,3 +219,16 @@ test("does not require browser coverage for docs-only changes", () => {
   assert.deepEqual(selection.sections, []);
   assert.equal(selection.escalatedToFullSuite, false);
 });
+test("selects the feeding-schedules section for schedule surfaces", () => {
+  assert.deepEqual(selectedIds(["app/protected/settings/feeding-schedules/page.tsx"]), [
+    "feeding-schedules",
+  ]);
+  assert.deepEqual(selectedIds(["lib/systems/feeding-schedule.ts"]), [
+    "systems-trends",
+    "feeding-schedules",
+  ]);
+  assert.deepEqual(selectedIds(["app/protected/home/derivations.ts"]), [
+    "daily-operations",
+    "feeding-schedules",
+  ]);
+});

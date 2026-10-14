@@ -7,7 +7,7 @@ import { WaterTrendsCard } from "@/components/systems/water-trends-card";
 import type { ChartRangeDays, SystemDetailData } from "@/components/systems/types";
 import { cn } from "@/lib/utils";
 
-import { CheckChip, Gauge, StatusLabel, fedText, onPlainClick, readingValue, temperatureText, waterTestedText } from "./snapshot-ui";
+import { CheckChip, FeedingChips, Gauge, StatusLabel, fedText, onPlainClick, readingValue, temperatureText, waterTestedText } from "./snapshot-ui";
 
 // `systems` is the lineup order, used for the previous/next switcher.
 export function SystemDetail({ data, systems, range, onSelectRange, onOpen, onBack }: {
@@ -39,7 +39,7 @@ export function SystemDetail({ data, systems, range, onSelectRange, onOpen, onBa
         <h1 className="break-words text-5xl font-semibold tracking-tight sm:text-7xl">{data.name}</h1>
         <p className="max-w-xl text-xl leading-snug">{snapshot.headline}</p>
         {snapshot.concerns.length > 1 && <ul className="space-y-1 text-muted-foreground">{snapshot.concerns.slice(1).map((concern) => <li key={concern.text}>{concern.text}</li>)}</ul>}
-        <div className="flex flex-wrap gap-2"><CheckChip type="AM" state={snapshot.am} /><CheckChip type="PM" state={snapshot.pm} /></div>
+        <div className="flex flex-wrap gap-2"><CheckChip type="AM" state={snapshot.am} /><CheckChip type="PM" state={snapshot.pm} /><FeedingChips snapshot={snapshot} /></div>
       </div>
       <div className="space-y-1">
         <p className="text-5xl font-semibold tracking-tight tabular-nums">{temperatureText(snapshot)}</p>

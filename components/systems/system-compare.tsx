@@ -4,7 +4,7 @@ import { PageHeader, focusClass } from "@/components/iseau/shared";
 import type { SystemDetailData } from "@/components/systems/types";
 import { cn } from "@/lib/utils";
 
-import { CheckChip, StatusLabel, fedText, onPlainClick, readingValue, temperatureText, waterTestedText } from "./snapshot-ui";
+import { CheckChip, FeedingChips, StatusLabel, fedText, onPlainClick, readingValue, temperatureText, waterTestedText } from "./snapshot-ui";
 
 const ROW = "border-t border-background/70";
 const HEAD = cn("sticky left-0 z-10 bg-muted py-3 pr-6 text-left text-sm font-normal text-muted-foreground", ROW);
@@ -52,6 +52,9 @@ export function SystemCompare({ systems, onOpen, onBack }: {
           </tr>)}
           <tr><th scope="row" className={HEAD}>Last water test</th>{systems.map(({ slug, snapshot }) => <td key={slug} className={CELL}>{waterTestedText(snapshot).replace("Water tested ", "")}</td>)}</tr>
           <tr><th scope="row" className={HEAD}>Last fed</th>{systems.map(({ slug, hasAnimals, snapshot }) => <td key={slug} className={CELL}>{fedText(snapshot, hasAnimals).replace("Fed ", "")}</td>)}</tr>
+          <tr><th scope="row" className={HEAD}>Next feeding</th>{systems.map(({ slug, snapshot }) => <td key={slug} className={CELL}>
+            {snapshot.nextFeedingText || snapshot.feedingOverdue ? <div className="flex flex-wrap gap-2"><FeedingChips snapshot={snapshot} /></div> : <span className="text-muted-foreground">No schedule</span>}
+          </td>)}</tr>
         </tbody>
       </table>
     </div>

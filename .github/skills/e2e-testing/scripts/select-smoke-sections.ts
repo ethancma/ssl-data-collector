@@ -35,6 +35,10 @@ export const SMOKE_SECTIONS = [
     id: "history",
     file: ".github/skills/e2e-testing/scripts/history.smoke.ts",
   },
+  {
+    id: "feeding-schedules",
+    file: ".github/skills/e2e-testing/scripts/feeding-schedules.smoke.ts",
+  },
 ] as const;
 
 export type SmokeSectionId = (typeof SMOKE_SECTIONS)[number]["id"];
@@ -131,6 +135,17 @@ const rules: SelectionRule[] = [
     description: "History page",
     matches: (file) => /^(app\/protected\/history|components\/history|lib\/history)(\/|$)/.test(file),
     sections: ["history"],
+  },
+  {
+    description: "feeding schedules (settings, Home due-today item, Systems display)",
+    matches: (file) =>
+      /^app\/protected\/settings\/feeding-schedules(\/|$)/.test(file) ||
+      file === "components/settings/feeding-schedule-manager.tsx" ||
+      file === "lib/systems/feeding-schedule.ts" ||
+      file === "lib/systems/snapshot.ts" ||
+      file === "components/systems/snapshot-ui.tsx" ||
+      /^app\/protected\/(systems\/data|home\/(data|derivations))\.ts$/.test(file),
+    sections: ["feeding-schedules"],
   },
   ...SMOKE_SECTIONS.map<SelectionRule>(({ id, file }) => ({
     description: `the ${id} smoke section itself`,

@@ -6,6 +6,7 @@ import {
   type WaterQualityTargetRange,
 } from "@/lib/daily-operations/water-quality-targets";
 import { addPacificCalendarDays, getPacificDateTimeParts, pacificDateKey } from "@/lib/pacific-date-time";
+import { isoWeekday, WEEKDAY_NAMES, type SystemFeedingSummary } from "@/lib/systems/feeding-schedule";
 
 // Pacific hour after which a check that is still unlogged counts as missed.
 const AM_DUE_HOUR = 12;
@@ -17,7 +18,7 @@ export type CheckState = "done" | "due" | "missed";
 type Severity = "low" | "medium" | "high";
 
 type Concern = {
-  kind: "check_missed" | "water_off" | "health" | "out_of_range" | "yesterday_missed";
+  kind: "check_missed" | "water_off" | "health" | "out_of_range" | "yesterday_missed" | "feeding_overdue";
   status: Exclude<SnapshotStatus, "ok">;
   text: string;
 };
@@ -29,6 +30,7 @@ export type SystemSnapshotInput = {
   healthObservations: { observedAt: string; severity: Severity }[];
   latestWater: { testedAt: string; values: Partial<Record<WaterQualityParameter, number | null>> } | null;
   lastFedAt: string | null;
+  feeding: SystemFeedingSummary | null;
   targets: readonly WaterQualityTargetRange[];
 };
 
@@ -52,6 +54,10 @@ export type SystemSnapshot = {
   water: { testedAt: string | null; testedAgo: string | null; readings: WaterReadingSummary[] };
   lastFedAt: string | null;
   fedAgo: string | null;
+  // Null when the system has no feeding schedule.
+  nextFeedingDue: string | null;
+  nextFeedingText: string | null;
+  feedingOverdue: boolean;
 };
 
 const STATUS_RANK: Record<SnapshotStatus, number> = { attention: 0, watch: 1, ok: 2 };
@@ -59,8 +65,9 @@ const KIND_RANK: Record<Concern["kind"], number> = {
   check_missed: 0,
   water_off: 1,
   health: 2,
-  yesterday_missed: 3,
-  out_of_range: 4,
+  feeding_overdue: 3,
+  yesterday_missed: 4,
+  out_of_range: 5,
 };
 
 export function statusRank(status: SnapshotStatus) {
@@ -78,6 +85,13 @@ function relativeDays(iso: string, now: Date) {
 
 function formatValue(value: number) {
   return value.toLocaleString("en-US", { maximumFractionDigits: Math.abs(value) >= 100 ? 0 : 2 });
+}
+
+function nextFeedingText(dateKey: string, todayKey: string) {
+  const days = dayDiff(dateKey, todayKey);
+  if (days <= 0) return "Feeding due today";
+  if (days === 1) return "Next feeding tomorrow";
+  return `Next feeding ${WEEKDAY_NAMES[isoWeekday(dateKey) - 1]}`;
 }
 
 export function formatReading(reading: Pick<WaterReadingSummary, "value" | "unit">) {
@@ -142,6 +156,15 @@ export function deriveSystemSnapshot(input: SystemSnapshotInput): SystemSnapshot
     });
   }
 
+  if (input.feeding?.overdueSince) {
+    const tanks = input.feeding.overdueScopeLabels;
+    concerns.push({
+      kind: "feeding_overdue",
+      status: "watch",
+      text: `Feeding was missed yesterday${tanks.length > 0 ? ` (${tanks.join(", ")})` : ""}`,
+    });
+  }
+
   const readings: WaterReadingSummary[] = WATER_QUALITY_PARAMS.map((param) => {
     const value = input.latestWater?.values[param.key] ?? null;
     const target = resolveWaterQualityTarget(input.targets, systemId, param.key);
@@ -186,5 +209,8 @@ export function deriveSystemSnapshot(input: SystemSnapshotInput): SystemSnapshot
     },
     lastFedAt: input.lastFedAt,
     fedAgo: input.lastFedAt ? relativeDays(input.lastFedAt, now) : null,
+    nextFeedingDue: input.feeding?.nextDueDate ?? null,
+    nextFeedingText: input.feeding?.nextDueDate ? nextFeedingText(input.feeding.nextDueDate, todayKey) : null,
+    feedingOverdue: Boolean(input.feeding?.overdueSince),
   };
 }

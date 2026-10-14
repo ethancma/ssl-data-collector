@@ -44,6 +44,18 @@ export function CheckChip({ type, state }: { type: "AM" | "PM"; state: CheckStat
   </span>;
 }
 
+// Overdue is its own label; it also marks the system "worth a look" through the snapshot concerns.
+export function FeedingChips({ snapshot }: { snapshot: SystemSnapshot }) {
+  return <>
+    {snapshot.feedingOverdue && <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-500/15 px-3 py-1 text-sm font-medium text-amber-700 dark:text-amber-400">
+      <AlertTriangle aria-hidden="true" className="h-3.5 w-3.5" />Feeding overdue
+    </span>}
+    {snapshot.nextFeedingText && <span className="inline-flex items-center gap-1.5 rounded-full bg-background px-3 py-1 text-sm text-muted-foreground">
+      <Clock aria-hidden="true" className="h-3.5 w-3.5" />{snapshot.nextFeedingText}
+    </span>}
+  </>;
+}
+
 export function temperatureText(snapshot: SystemSnapshot) {
   return snapshot.latestTemperature === null ? "—" : `${snapshot.latestTemperature.toFixed(1)} °C`;
 }
