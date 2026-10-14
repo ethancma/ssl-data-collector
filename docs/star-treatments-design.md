@@ -302,9 +302,7 @@ the UI so a direct API request cannot reintroduce probiotics.
 - Deferred: Home recent activity, Systems highlights, full cross-log History, CSV export,
   and treatment markers on animal/system timelines.
 - Future exports use treatment-time tank/system, not the star's current location.
-- Defer `analytics.fact_star_treatment` until the existing analytics schema has a general
-  synchronization pipeline. Current dashboards query `core` directly and the analytics
-  migration explicitly leaves synchronization for later.
+- No analytics fact table: dashboards and History query `core` directly.
 
 ## 12. Existing Data And Reconciliation
 
@@ -317,7 +315,7 @@ reset, so it must be extracted from migrations into a CSV-backed, one-time impor
 ### Migration-history strategy
 
 - Delete migration `20260920130000` from local history and fully rebuild the disposable
-  hosted `core`, `analytics`, and `public` schemas from the remaining migrations.
+  hosted `core` and `public` schemas from the remaining migrations.
 - Mark all hosted migration versions reverted after the schema wipe, including the removed
   `20260920130000`, before running `supabase db push`.
 - Do not add a compensating DELETE migration. The filtered Graham CSV import remains a
@@ -439,9 +437,7 @@ the result against the source CSVs.
 - **Delete consequences:** treatment FKs with delete restriction mean systems/tanks/animals
   with treatment history cannot be hard-deleted through existing cascades. Prefer retiring
   roster/reference records over deleting them, and make admin UI errors explicit.
-- **Analytics is not populated:** the analytics schema exists but has no sync triggers.
-  Query `core` for the first treatment release and avoid adding an empty or stale fact
-  table prematurely.
+- **No analytics schema:** it was removed. Query `core` for the first treatment release.
 - **History is a placeholder:** keep full cross-log filters and export out of the first
   implementation; build only the treatment discovery surface required for correction and
   authorized deletion.

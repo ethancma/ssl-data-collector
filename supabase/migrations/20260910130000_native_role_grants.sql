@@ -52,8 +52,8 @@ grant admin, technician, volunteer, viewer to authenticator;
 
 -- Membership/inheritance so core.profiles's `to authenticated` policies still apply
 -- once a session's active role is one of these 4. This also means each role
--- inherits authenticated's existing schema-level USAGE grants on core and
--- analytics automatically — no separate USAGE grants needed here.
+-- inherits authenticated's existing schema-level USAGE grants on core
+-- automatically — no separate USAGE grants needed here.
 grant authenticated to admin, technician, volunteer, viewer;
 
 -- core.is_admin/is_active_member/is_full_access/is_editor/current_profile_id have
@@ -252,106 +252,7 @@ create policy "attachments_viewer_select" on core.attachments
   for select to viewer using (true);
 
 -- ---------------------------------------------------------------------------
--- 4. Analytics schema — RLS stays enabled on all 13 tables; drop the old
--- row-filtering policies (idempotent), revoke authenticated's broad grant, and add
--- an admin/technician all-policy per table. No volunteer/viewer grants here —
--- deliberately deferred to a future migration — so no policy for them either.
--- admin/technician also get access via the schema-wide grant below.
--- ---------------------------------------------------------------------------
-
-alter table analytics.dim_date enable row level security;
-drop policy if exists "dim_date_read_active_member" on analytics.dim_date;
-drop policy if exists "dim_date_admin_all" on analytics.dim_date;
-revoke select, insert, update, delete on analytics.dim_date from authenticated;
-create policy "dim_date_admin_technician_all" on analytics.dim_date
-  for all to admin, technician using (true) with check (true);
-
-alter table analytics.dim_system enable row level security;
-drop policy if exists "dim_system_read_active_member" on analytics.dim_system;
-drop policy if exists "dim_system_admin_all" on analytics.dim_system;
-revoke select, insert, update, delete on analytics.dim_system from authenticated;
-create policy "dim_system_admin_technician_all" on analytics.dim_system
-  for all to admin, technician using (true) with check (true);
-
-alter table analytics.dim_tank enable row level security;
-drop policy if exists "dim_tank_read_active_member" on analytics.dim_tank;
-drop policy if exists "dim_tank_admin_all" on analytics.dim_tank;
-revoke select, insert, update, delete on analytics.dim_tank from authenticated;
-create policy "dim_tank_admin_technician_all" on analytics.dim_tank
-  for all to admin, technician using (true) with check (true);
-
-alter table analytics.dim_species enable row level security;
-drop policy if exists "dim_species_read_active_member" on analytics.dim_species;
-drop policy if exists "dim_species_admin_all" on analytics.dim_species;
-revoke select, insert, update, delete on analytics.dim_species from authenticated;
-create policy "dim_species_admin_technician_all" on analytics.dim_species
-  for all to admin, technician using (true) with check (true);
-
-alter table analytics.dim_animal enable row level security;
-drop policy if exists "dim_animal_read_active_member" on analytics.dim_animal;
-drop policy if exists "dim_animal_admin_all" on analytics.dim_animal;
-revoke select, insert, update, delete on analytics.dim_animal from authenticated;
-create policy "dim_animal_admin_technician_all" on analytics.dim_animal
-  for all to admin, technician using (true) with check (true);
-
-alter table analytics.dim_chemical enable row level security;
-drop policy if exists "dim_chemical_read_active_member" on analytics.dim_chemical;
-drop policy if exists "dim_chemical_admin_all" on analytics.dim_chemical;
-revoke select, insert, update, delete on analytics.dim_chemical from authenticated;
-create policy "dim_chemical_admin_technician_all" on analytics.dim_chemical
-  for all to admin, technician using (true) with check (true);
-
-alter table analytics.dim_profile enable row level security;
-drop policy if exists "dim_profile_read_active_member" on analytics.dim_profile;
-drop policy if exists "dim_profile_admin_all" on analytics.dim_profile;
-revoke select, insert, update, delete on analytics.dim_profile from authenticated;
-create policy "dim_profile_admin_technician_all" on analytics.dim_profile
-  for all to admin, technician using (true) with check (true);
-
-alter table analytics.fact_daily_check enable row level security;
-drop policy if exists "fact_daily_check_read_active_member" on analytics.fact_daily_check;
-drop policy if exists "fact_daily_check_admin_all" on analytics.fact_daily_check;
-revoke select, insert, update, delete on analytics.fact_daily_check from authenticated;
-create policy "fact_daily_check_admin_technician_all" on analytics.fact_daily_check
-  for all to admin, technician using (true) with check (true);
-
-alter table analytics.fact_water_quality enable row level security;
-drop policy if exists "fact_water_quality_read_active_member" on analytics.fact_water_quality;
-drop policy if exists "fact_water_quality_admin_all" on analytics.fact_water_quality;
-revoke select, insert, update, delete on analytics.fact_water_quality from authenticated;
-create policy "fact_water_quality_admin_technician_all" on analytics.fact_water_quality
-  for all to admin, technician using (true) with check (true);
-
-alter table analytics.fact_chemical_addition enable row level security;
-drop policy if exists "fact_chemical_addition_read_active_member" on analytics.fact_chemical_addition;
-drop policy if exists "fact_chemical_addition_admin_all" on analytics.fact_chemical_addition;
-revoke select, insert, update, delete on analytics.fact_chemical_addition from authenticated;
-create policy "fact_chemical_addition_admin_technician_all" on analytics.fact_chemical_addition
-  for all to admin, technician using (true) with check (true);
-
-alter table analytics.fact_feeding enable row level security;
-drop policy if exists "fact_feeding_read_active_member" on analytics.fact_feeding;
-drop policy if exists "fact_feeding_admin_all" on analytics.fact_feeding;
-revoke select, insert, update, delete on analytics.fact_feeding from authenticated;
-create policy "fact_feeding_admin_technician_all" on analytics.fact_feeding
-  for all to admin, technician using (true) with check (true);
-
-alter table analytics.fact_health_observation enable row level security;
-drop policy if exists "fact_health_observation_read_active_member" on analytics.fact_health_observation;
-drop policy if exists "fact_health_observation_admin_all" on analytics.fact_health_observation;
-revoke select, insert, update, delete on analytics.fact_health_observation from authenticated;
-create policy "fact_health_observation_admin_technician_all" on analytics.fact_health_observation
-  for all to admin, technician using (true) with check (true);
-
-alter table analytics.fact_health_observation_issue enable row level security;
-drop policy if exists "fact_health_observation_issue_read_active_member" on analytics.fact_health_observation_issue;
-drop policy if exists "fact_health_observation_issue_admin_all" on analytics.fact_health_observation_issue;
-revoke select, insert, update, delete on analytics.fact_health_observation_issue from authenticated;
-create policy "fact_health_observation_issue_admin_technician_all" on analytics.fact_health_observation_issue
-  for all to admin, technician using (true) with check (true);
-
--- ---------------------------------------------------------------------------
--- 5. Schema-wide grants for admin/technician — covers every core/analytics
+-- 4. Schema-wide grants for admin/technician — covers every core
 -- table above (including core.profiles) plus, via ALTER DEFAULT PRIVILEGES,
 -- any table added by a future migration without needing a follow-up grant.
 -- Sequences are granted alongside: table-level GRANTs don't cascade to the
@@ -361,14 +262,10 @@ create policy "fact_health_observation_issue_admin_technician_all" on analytics.
 -- ---------------------------------------------------------------------------
 
 grant all privileges on all tables in schema core to admin, technician;
-grant all privileges on all tables in schema analytics to admin, technician;
 alter default privileges in schema core grant all on tables to admin, technician;
-alter default privileges in schema analytics grant all on tables to admin, technician;
 
 grant usage, select on all sequences in schema core to admin, technician;
-grant usage, select on all sequences in schema analytics to admin, technician;
 alter default privileges in schema core grant usage, select on sequences to admin, technician;
-alter default privileges in schema analytics grant usage, select on sequences to admin, technician;
 
 -- volunteer: only the sequences behind operational-log tables it can INSERT into.
 grant usage, select on sequence
@@ -382,8 +279,8 @@ grant usage, select on sequence
 to volunteer;
 
 -- ---------------------------------------------------------------------------
--- 6. storage.objects (attachments bucket) — same RLS-enabled + permissive-per-role
--- policy model as core/analytics above, governed by the GRANTs below. storage.objects
+-- 5. storage.objects (attachments bucket) — same RLS-enabled + permissive-per-role
+-- policy model as core above, governed by the GRANTs below. storage.objects
 -- is owned by supabase_storage_admin, so ALTER TABLE ... ROW LEVEL SECURITY isn't ours
 -- to run — but RLS is already enabled on it by Supabase, and CREATE POLICY doesn't
 -- require ownership, so the per-role policies below are all that's needed here.
