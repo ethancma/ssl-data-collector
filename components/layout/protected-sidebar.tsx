@@ -8,6 +8,7 @@ import {
   ClipboardList,
   FlaskConical,
   HeartPulse,
+  History,
   Home,
   LogOut,
   Monitor,
@@ -341,6 +342,7 @@ export function ProtectedSidebar({
           : []),
         { href: "/protected/iseau", label: "ISeaU", icon: HeartPulse },
         { href: "/protected/systems", label: "Systems", icon: Waves },
+        { href: "/protected/history", label: "History", icon: History },
       ],
     },
     {

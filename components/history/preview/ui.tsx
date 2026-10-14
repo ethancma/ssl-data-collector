@@ -1,7 +1,6 @@
 "use client";
 
-import Link from "next/link";
-import { useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { ArrowDown, ArrowUp, ChevronDown, ChevronLeft, ChevronRight, ChevronsUpDown, Download, ImageIcon, Search, X } from "lucide-react";
 
 import { EmptyNote, PageHeader, Segmented, Sheet, Tile, focusClass } from "@/components/iseau/shared";
@@ -17,15 +16,6 @@ const CARD_SKIPPED = new Set(["time", "source", "notes"]);
 
 export function HistorySampleNote() {
   return <p className="text-xs text-muted-foreground">Sample data as of Oct 14, 2026</p>;
-}
-
-export function DesignSwitcher({ current }: { current: "a" | "b" | "c" }) {
-  return <nav aria-label="Sample designs" className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
-    <Link href="/protected/history" className={cn("rounded-full px-1 underline-offset-4 hover:underline", focusClass)}>All designs</Link>
-    {(["a", "b", "c"] as const).map((design) => <Link key={design} href={`/protected/history?design=${design}`} aria-current={design === current ? "page" : undefined}
-      className={cn("rounded-full px-3 py-1", focusClass, design === current ? "bg-foreground text-background" : "bg-muted hover:text-foreground")}>Design {design.toUpperCase()}</Link>)}
-    <HistorySampleNote />
-  </nav>;
 }
 
 export function HistoryHeader({ h }: { h: HistoryPreview }) {
@@ -142,14 +132,13 @@ function DatasetCombobox({ value, onChange }: { value: Dataset | "all"; onChange
   </div>;
 }
 
-// `dataset="select"` adds the dataset combobox; Design B renders its own tabs instead.
-export function FilterBar({ h, dataset, children }: { h: HistoryPreview; dataset: "select" | "none"; children?: ReactNode }) {
+export function FilterBar({ h }: { h: HistoryPreview }) {
   const { filters, update } = h;
   const toggle = (pressed: boolean) => cn("inline-flex h-9 items-center rounded-full px-4 text-sm font-medium transition-colors", focusClass,
     pressed ? "bg-foreground text-background" : "bg-muted text-muted-foreground hover:text-foreground");
   return <div className="space-y-3">
     <div className="flex flex-wrap items-center gap-3">
-      {dataset === "select" && <DatasetCombobox value={filters.dataset} onChange={(value) => update({ dataset: value, sort: null, dir: null })} />}
+      <DatasetCombobox value={filters.dataset} onChange={(value) => update({ dataset: value, sort: null, dir: null })} />
       <Segmented<RangeKey> label="Date range" value={filters.range} onChange={(value) => update({ range: value })} options={[...RANGE_OPTIONS]} />
       {filters.range === "custom" && <>
         {(["from", "to"] as const).map((key) => <label key={key} className="inline-flex items-center gap-2 text-sm text-muted-foreground">
@@ -170,7 +159,6 @@ export function FilterBar({ h, dataset, children }: { h: HistoryPreview; dataset
           className={cn(pillClass, "w-48 pl-10 placeholder:text-muted-foreground", focusClass)} />
       </label>
       <button type="button" aria-pressed={filters.oor} onClick={() => update({ oor: filters.oor ? null : "1" })} className={toggle(filters.oor)}>Out of range only</button>
-      {children}
       <div className="ml-auto"><ExportButton h={h} /></div>
     </div>
     {h.chips.length > 0 && <ul aria-label="Active filters" className="flex flex-wrap items-center gap-2">

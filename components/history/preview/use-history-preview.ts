@@ -4,7 +4,7 @@ import { usePathname, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { DEFAULTS, EXPORT_CHUNK, PAGE_SIZE, buildCsv, dateBounds, filterRows, parseFilters, sortRows, type Column } from "./logic";
-import { DATASETS, MOCK_ROWS, SOURCE_LABELS, type Dataset } from "./mock-rows";
+import { MOCK_ROWS, SOURCE_LABELS, type Dataset } from "./mock-rows";
 
 // The URL is the source of truth. Writes go through the History API, which Next syncs into useSearchParams.
 export function useHistoryPreview(columnsFor: (dataset: Dataset | "all") => Column[]) {
@@ -12,7 +12,6 @@ export function useHistoryPreview(columnsFor: (dataset: Dataset | "all") => Colu
   const params = useSearchParams();
   const filters = parseFilters(params);
   const openId = params.get("row");
-  const view = params.get("view") === "table" ? "table" : "timeline";
   const queryKey = [...params.entries()].filter(([key]) => key !== "row" && key !== "page").map(([key, value]) => `${key}=${value}`).join("&");
 
   const [loadedKey, setLoadedKey] = useState<string | null>(null);
@@ -41,7 +40,6 @@ export function useHistoryPreview(columnsFor: (dataset: Dataset | "all") => Colu
   const matching = useMemo(() => filterRows(MOCK_ROWS, { ...filters, dataset: "all" }),
     // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on the URL, not the parsed object identity
     [queryKey]);
-  const counts = useMemo(() => Object.fromEntries(DATASETS.map((dataset) => [dataset, matching.filter((row) => row.dataset === dataset).length])) as Record<Dataset, number>, [matching]);
   const rows = useMemo(() => sortRows(filters.dataset === "all" ? matching : matching.filter((row) => row.dataset === filters.dataset), columns, filters),
     // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on the URL, not the parsed object identity
     [queryKey]);
@@ -87,8 +85,8 @@ export function useHistoryPreview(columnsFor: (dataset: Dataset | "all") => Colu
     : `${rows.length.toLocaleString()} ${rows.length === 1 ? "entry" : "entries"} ${rangeText}.${outOfRange ? ` ${outOfRange} water ${outOfRange === 1 ? "test" : "tests"} out of range.` : ""}`;
 
   return {
-    filters, update, clearAll, chips, columns, rows, pageRows, counts, page, pages, outOfRange, headline, bounds,
-    view, openId, openRow: openId ? MOCK_ROWS.find((row) => row.id === openId) : undefined,
+    filters, update, clearAll, chips, columns, rows, pageRows, page, pages, headline, bounds,
+    openRow: openId ? MOCK_ROWS.find((row) => row.id === openId) : undefined,
     loading: loadedKey !== queryKey, searchKey,
     exporting, exportCsv, cancelExport: () => { cancelled.current = true; },
   };
