@@ -296,7 +296,7 @@ for (const role of [
     test(`${role.label} health observation lands in health_observations`, async ({ page }) => {
       await loginAs(page, role.email, role.password);
       await page.goto("/protected/daily-operations?type=health-observation");
-      await page.getByLabel("Animal").selectOption(String(ssl25AnimalId));
+      await page.getByLabel("Animal", { exact: true }).selectOption(String(ssl25AnimalId));
       await page.getByRole("button", { name: "Low" }).click();
       await page.getByLabel("Arm curling").check();
       await page.getByLabel("Flattening").check();
