@@ -1,5 +1,6 @@
 import { pacificDateKey } from "@/lib/pacific-date-time";
 import type { HealthIssueType } from "@/lib/config/reference-data";
+import { deriveSystemFeeding, toFeedingScheduleRow } from "@/lib/systems/feeding-schedule";
 
 import type { HomeDashboardSourceData } from "./data";
 
@@ -17,7 +18,10 @@ export type SystemAgendaStatus = {
   name: string;
   amDone: boolean;
   pmDone: boolean;
-  fedToday: boolean;
+  // True when a scheduled feeding is still unlogged today. Systems without a schedule are never due.
+  feedingDue: boolean;
+  // Tank groups still due, listed only when the system has overrides.
+  feedingDueScopes: string[];
   testedThisWeek: boolean;
 };
 
@@ -33,7 +37,11 @@ function outstandingItems(status: SystemAgendaStatus) {
   const items: string[] = [];
   if (!status.amDone) items.push("AM check");
   if (!status.pmDone) items.push("PM check");
-  if (!status.fedToday) items.push("Feeding");
+  if (status.feedingDue) {
+    items.push(
+      status.feedingDueScopes.length > 0 ? `Feeding (${status.feedingDueScopes.join(", ")})` : "Feeding",
+    );
+  }
   if (!status.testedThisWeek) items.push("Water quality");
   return items;
 }
@@ -52,10 +60,25 @@ export function deriveHomeDashboard(
     }
   }
 
-  const fedTodaySystems = new Set<number>();
-  for (const feedingLog of source.feedingLogs) {
-    const tank = feedingLog.tanks as { system_id: number };
-    if (isToday(feedingLog.fed_at)) fedTodaySystems.add(tank.system_id);
+  const feedingBySystem = new Map<number, Pick<SystemAgendaStatus, "feedingDue" | "feedingDueScopes">>();
+  for (const system of source.systems) {
+    const statuses = deriveSystemFeeding({
+      schedules: source.feedingSchedules
+        .filter((schedule) => schedule.system_id === system.id)
+        .map((schedule) => toFeedingScheduleRow(schedule)),
+      tanks: source.tanks.filter((tank) => tank.system_id === system.id),
+      feedings: source.feedingLogs
+        .filter((log) => (log.tanks as { system_id: number }).system_id === system.id)
+        .map((log) => ({ tankId: log.tank_id, fedAt: log.fed_at })),
+      now,
+    });
+    const due = statuses.filter((status) => status.dueToday);
+    feedingBySystem.set(system.id, {
+      feedingDue: due.length > 0,
+      feedingDueScopes: statuses.some((status) => status.scopeLabel !== null)
+        ? due.map((status) => status.scopeLabel ?? "Other tanks")
+        : [],
+    });
   }
 
   const testedThisWeekSystems = new Set(
@@ -66,7 +89,7 @@ export function deriveHomeDashboard(
     name: system.name,
     amDone: doneChecks.has(`${system.id}:AM`),
     pmDone: doneChecks.has(`${system.id}:PM`),
-    fedToday: fedTodaySystems.has(system.id),
+    ...(feedingBySystem.get(system.id) ?? { feedingDue: false, feedingDueScopes: [] }),
     testedThisWeek: testedThisWeekSystems.has(system.id),
   }));
   const statusesWithOutstanding = systemStatuses.map((status) => ({

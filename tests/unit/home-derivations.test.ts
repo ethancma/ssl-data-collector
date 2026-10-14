@@ -13,8 +13,10 @@ test("deriveHomeDashboard preserves Pacific-day totals and daily status", () => 
       { system_id: 1, check_type: "PM", checked_at: "2026-09-27T08:30:00.000Z" },
     ],
     feedingLogs: [
-      { fed_at: "2026-09-27T06:00:00.000Z", tanks: { system_id: 1 } },
+      { fed_at: "2026-09-27T06:00:00.000Z", tank_id: 1, tanks: { system_id: 1 } },
     ],
+    feedingSchedules: [],
+    tanks: [{ id: 1, system_id: 1, name: "Tank 1" }],
     waterQualityReadings: [
       { system_id: 1, tested_at: "2026-09-25T18:00:00.000Z", ph: 7.8 },
       { system_id: 1, tested_at: "2026-09-25T20:00:00.000Z", ph: 8.0 },
@@ -45,4 +47,73 @@ test("deriveHomeDashboard preserves Pacific-day totals and daily status", () => 
   assert.deepEqual(dashboard.allClearSystems, ["Graham"]);
   assert.deepEqual(dashboard.waterQualityTrend, [7.9, 8.1]);
   assert.equal(dashboard.healthObservationEntries[0].issue, "Arm curling");
+});
+
+// Tuesday 2026-10-13, 14:30 Pacific; both checks and water are done so only feeding can be open.
+const feedingSource = (
+  overrides: Partial<HomeDashboardSourceData>,
+): HomeDashboardSourceData => ({
+  systems: [{ id: 1, name: "Graham" }],
+  checks: [
+    { system_id: 1, check_type: "AM", checked_at: "2026-10-13T15:00:00.000Z" },
+    { system_id: 1, check_type: "PM", checked_at: "2026-10-13T20:00:00.000Z" },
+  ],
+  feedingLogs: [],
+  feedingSchedules: [],
+  tanks: [
+    { id: 1, system_id: 1, name: "Lower-14.6L" },
+    { id: 2, system_id: 1, name: "Upper-30L" },
+  ],
+  waterQualityReadings: [{ system_id: 1, tested_at: "2026-10-12T18:00:00.000Z", ph: 8 }],
+  chemicalAdditions: [],
+  recentHealthObservations: [],
+  healthObservationsToday: 0,
+  animals: [],
+  totalTanks: 2,
+  ...overrides,
+});
+const TUESDAY_NOW = new Date("2026-10-13T21:30:00.000Z");
+const schedule = (tank_position: string | null, weekdays: number[]) => ({
+  system_id: 1,
+  tank_position,
+  size_liters: null,
+  weekdays,
+  updated_at: "2026-09-01T00:00:00.000Z",
+});
+
+test("Home flags feeding only when the schedule says it is due and unlogged", () => {
+  const due = deriveHomeDashboard(
+    feedingSource({ feedingSchedules: [schedule(null, [2])] }),
+    TUESDAY_NOW,
+  );
+  assert.deepEqual(due.attentionSystems[0].outstanding, ["Feeding"]);
+
+  const notScheduled = deriveHomeDashboard(
+    feedingSource({ feedingSchedules: [schedule(null, [3])] }),
+    TUESDAY_NOW,
+  );
+  assert.deepEqual(notScheduled.allClearSystems, ["Graham"]);
+
+  const noSchedule = deriveHomeDashboard(feedingSource({}), TUESDAY_NOW);
+  assert.deepEqual(noSchedule.allClearSystems, ["Graham"]);
+
+  const fed = deriveHomeDashboard(
+    feedingSource({
+      feedingSchedules: [schedule(null, [2])],
+      feedingLogs: [{ fed_at: "2026-10-13T17:00:00.000Z", tank_id: 1, tanks: { system_id: 1 } }],
+    }),
+    TUESDAY_NOW,
+  );
+  assert.deepEqual(fed.allClearSystems, ["Graham"]);
+});
+
+test("Home lists the tank groups still due when overrides differ", () => {
+  const dashboard = deriveHomeDashboard(
+    feedingSource({
+      feedingSchedules: [schedule(null, [2]), schedule("lower", [2])],
+      feedingLogs: [{ fed_at: "2026-10-13T17:00:00.000Z", tank_id: 1, tanks: { system_id: 1 } }],
+    }),
+    TUESDAY_NOW,
+  );
+  assert.deepEqual(dashboard.attentionSystems[0].outstanding, ["Feeding (Other tanks)"]);
 });

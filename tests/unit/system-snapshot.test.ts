@@ -24,6 +24,7 @@ const base = (overrides: Partial<SystemSnapshotInput> = {}): SystemSnapshotInput
   healthObservations: [],
   latestWater: null,
   lastFedAt: null,
+  feeding: null,
   targets: [],
   ...overrides,
 });
@@ -106,4 +107,23 @@ test("concerns are ordered attention first", () => {
     healthObservations: [{ observedAt: "2026-10-11T17:00:00Z", severity: "medium" }],
   }));
   assert.deepEqual(snapshot.concerns.map((concern) => concern.kind), ["water_off", "health", "yesterday_missed"]);
+});
+
+test("an overdue feeding is a watch item and a next due date is labelled", () => {
+  const overdue = deriveSystemSnapshot(base({
+    feeding: { dueToday: true, nextDueDate: "2026-10-13", overdueSince: "2026-10-12", overdueScopeLabels: ["Upper"] },
+  }));
+  assert.equal(overdue.feedingOverdue, true);
+  assert.equal(overdue.nextFeedingText, "Feeding due today");
+  assert.deepEqual(overdue.concerns.map((concern) => [concern.kind, concern.status]), [["feeding_overdue", "watch"]]);
+  assert.equal(overdue.headline, "Feeding was missed yesterday (Upper)");
+
+  const upcoming = deriveSystemSnapshot(base({
+    feeding: { dueToday: false, nextDueDate: "2026-10-16", overdueSince: null, overdueScopeLabels: [] },
+  }));
+  assert.equal(upcoming.status, "ok");
+  assert.equal(upcoming.nextFeedingText, "Next feeding Friday");
+
+  const none = deriveSystemSnapshot(base());
+  assert.deepEqual([none.nextFeedingDue, none.nextFeedingText, none.feedingOverdue], [null, null, false]);
 });

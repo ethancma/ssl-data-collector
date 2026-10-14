@@ -8,7 +8,15 @@ import { createClient } from "@/lib/supabase/server";
 export type HomeDashboardSourceData = {
   systems: Array<{ id: number; name: string }>;
   checks: Array<{ system_id: number; check_type: string; checked_at: string }>;
-  feedingLogs: Array<{ fed_at: string; tanks: unknown }>;
+  feedingLogs: Array<{ fed_at: string; tank_id: number; tanks: unknown }>;
+  feedingSchedules: Array<{
+    system_id: number;
+    tank_position: string | null;
+    size_liters: number | string | null;
+    weekdays: number[];
+    updated_at: string;
+  }>;
+  tanks: Array<{ id: number; system_id: number; name: string }>;
   waterQualityReadings: Array<{
     system_id: number;
     tested_at: string;
@@ -50,8 +58,9 @@ export async function loadHomeDashboardData(): Promise<HomeDashboardLoadResult> 
     { count: healthObservationsToday, error: healthCountError },
     { data: animals, error: animalsError },
     { count: totalTanks, error: tanksError },
-  ] = await Promise.all([
-    supabase
+    { data: feedingSchedules, error: feedingSchedulesError },
+    { data: tanks, error: tankRowsError },
+  ] = await Promise.all([    supabase
       .from("systems")
       .select("id, name")
       .order("name", { ascending: true })
@@ -62,7 +71,7 @@ export async function loadHomeDashboardData(): Promise<HomeDashboardLoadResult> 
       .gte("checked_at", since36h),
     supabase
       .from("feeding_logs")
-      .select("fed_at, tanks!inner(system_id)")
+      .select("fed_at, tank_id, tanks!inner(system_id)")
       .gte("fed_at", since36h),
     supabase
       .from("water_quality_readings")
@@ -84,6 +93,8 @@ export async function loadHomeDashboardData(): Promise<HomeDashboardLoadResult> 
       .lt("observed_at", tomorrowStart),
     supabase.from("animals").select("quantity").eq("status", "active"),
     supabase.from("tanks").select("id", { count: "exact", head: true }),
+    supabase.from("feeding_schedules").select("system_id, tank_position, size_liters, weekdays, updated_at"),
+    supabase.from("tanks").select("id, system_id, name"),
   ]);
 
   const loadError =
@@ -95,7 +106,9 @@ export async function loadHomeDashboardData(): Promise<HomeDashboardLoadResult> 
     recentHealthError ??
     healthCountError ??
     animalsError ??
-    tanksError;
+    tanksError ??
+    feedingSchedulesError ??
+    tankRowsError;
 
   if (loadError) return { ok: false, error: loadError.message };
 
@@ -105,6 +118,8 @@ export async function loadHomeDashboardData(): Promise<HomeDashboardLoadResult> 
       systems: systems ?? [],
       checks: checks ?? [],
       feedingLogs: feedingLogs ?? [],
+      feedingSchedules: feedingSchedules ?? [],
+      tanks: tanks ?? [],
       waterQualityReadings: waterQualityReadings ?? [],
       chemicalAdditions: chemicalAdditions ?? [],
       recentHealthObservations: recentHealthObservations ?? [],

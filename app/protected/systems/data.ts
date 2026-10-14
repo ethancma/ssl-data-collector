@@ -8,6 +8,7 @@ import { createClient } from "@/lib/supabase/server";
 import type { WaterQualityTargetRange } from "@/lib/daily-operations/water-quality-targets";
 import { ACTIVITY_WINDOW_DAYS, buildActivityEvents } from "@/lib/systems/activity";
 import { deriveSystemKpis } from "@/lib/systems/kpis";
+import { deriveSystemFeeding, summarizeFeeding, toFeedingScheduleRow } from "@/lib/systems/feeding-schedule";
 import { deriveSystemSnapshot } from "@/lib/systems/snapshot";
 import {
   addPacificCalendarDays,
@@ -113,8 +114,9 @@ export async function fetchAllSystemsDetailData(): Promise<{
     { data: targetsRaw, error: targetsError },
     { data: feedingRaw, error: feedingError },
     { data: treatmentsRaw, error: treatmentsError },
-  ] = await Promise.all([
-    selectAll((from, to) =>
+    { data: scheduleRaw, error: scheduleError },
+    { data: tankRaw, error: tankError },
+  ] = await Promise.all([    selectAll((from, to) =>
       supabase
         .from("daily_checks")
         .select("id, system_id, check_type, water_running, temperature, checked_at")
@@ -154,7 +156,7 @@ export async function fetchAllSystemsDetailData(): Promise<{
     selectAll((from, to) =>
       supabase
         .from("feeding_logs")
-        .select("fed_at, tanks!inner(system_id)")
+        .select("fed_at, tank_id, tanks!inner(system_id)")
         .in("tanks.system_id", systemIds)
         .gte("fed_at", since30d)
         .order("fed_at", { ascending: false })
@@ -172,6 +174,8 @@ export async function fetchAllSystemsDetailData(): Promise<{
         .order("id", { ascending: false })
         .range(from, to),
     ),
+    supabase.from("feeding_schedules").select("system_id, tank_position, size_liters, weekdays, updated_at"),
+    supabase.from("tanks").select("id, system_id, name").in("system_id", systemIds),
   ]);
 
   const loadError =
@@ -182,6 +186,8 @@ export async function fetchAllSystemsDetailData(): Promise<{
     maintenanceError ??
     targetsError ??
     feedingError ??
+    scheduleError ??
+    tankError ??
     (treatmentsError?.code === "42501" ? null : treatmentsError);
   if (loadError) {
     return { dataBySlug: {}, error: loadError.message };
@@ -306,6 +312,16 @@ export async function fetchAllSystemsDetailData(): Promise<{
       latestWaterValues[key] = [...sameWeek].reverse().find((r) => r[key] != null)?.[key] ?? null;
     }
     const lastFedAt = feedingRows[0]?.fed_at ?? null;
+    const feeding = summarizeFeeding(
+      deriveSystemFeeding({
+        schedules: (scheduleRaw ?? [])
+          .filter((r) => r.system_id === systemId)
+          .map((r) => toFeedingScheduleRow({ ...r, weekdays: r.weekdays as number[] })),
+        tanks: (tankRaw ?? []).filter((t) => t.system_id === systemId),
+        feedings: feedingRows.map((r) => ({ tankId: r.tank_id, fedAt: r.fed_at })),
+        now: nowDate,
+      }),
+    );
 
     const snapshot = deriveSystemSnapshot({
       systemId,
@@ -324,6 +340,7 @@ export async function fetchAllSystemsDetailData(): Promise<{
         ? { testedAt: waterQuality[waterQuality.length - 1].testedAt, values: latestWaterValues }
         : null,
       lastFedAt,
+      feeding,
       targets,
     });
 

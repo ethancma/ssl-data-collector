@@ -96,6 +96,10 @@ These are the highest-priority open items because they affect data ownership or 
       and lesion. `Low|Medium|High` currently exists as a provisional implementation.
 - [ ] **BLOCKED:** encode feeding due-today logic after staff confirms cadence by system,
       species, and life stage.
+- [x] Add Admin/Technician-managed weekday feeding schedules (per system, with overrides by tank position and size from the
+      tank name). Shown as next feeding due and an Overdue label on Systems, and as a
+      due-today item on Home. No cadences are seeded; staff enter the confirmed values in
+      Settings > Feeding schedules.
 - [x] Add optional Admin/Technician-managed lab-wide water-quality ranges with per-system
       overrides. Ship with no seeded values; out-of-range entries require the existing
       Notes field, and range changes do not rewrite historical readings.
@@ -112,8 +116,9 @@ These are the highest-priority open items because they affect data ownership or 
 
 ## Dashboards, History, And Imports
 
-- [ ] Make Home completion logic cadence-aware. Water quality currently uses a 14-day
-      recency window, and feeding completion means any feeding for the system that day.
+- [x] Make Home completion logic cadence-aware. Feeding is due only on a system's scheduled
+      weekdays (systems without a schedule show no feeding item). Water quality still uses a
+      14-day recency window.
 - [ ] Add station QR codes/deep links for system-filtered Daily Operations.
 - [ ] Add health-observation markers to the priority per-system chemistry timeline.
 - [ ] Add chemical-addition overlays, correlation exploration, and plain CSV export.

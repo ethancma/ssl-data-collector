@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import type { SystemDetailData } from "@/components/systems/types";
 import { cn } from "@/lib/utils";
 
-import { CheckChip, StatusLabel, fedText, onPlainClick, readingValue, temperatureText, waterTestedText } from "./snapshot-ui";
+import { CheckChip, FeedingChips, StatusLabel, fedText, onPlainClick, readingValue, temperatureText, waterTestedText } from "./snapshot-ui";
 
 function summary(systems: SystemDetailData[]) {
   const count = (status: string) => systems.filter((system) => system.snapshot.status === status).length;
@@ -46,7 +46,7 @@ export function SystemLineup({ systems, onOpen, onCompare }: {
                 {snapshot.concerns.length > 1 && <span className="text-muted-foreground"> and {snapshot.concerns.length - 1} more</span>}
               </p>
             </div>
-            <div className="flex flex-wrap gap-2"><CheckChip type="AM" state={snapshot.am} /><CheckChip type="PM" state={snapshot.pm} /></div>
+            <div className="flex flex-wrap gap-2"><CheckChip type="AM" state={snapshot.am} /><CheckChip type="PM" state={snapshot.pm} /><FeedingChips snapshot={snapshot} /></div>
             <dl className="mt-auto grid grid-cols-3 gap-2 text-sm">
               <div><dt className="text-muted-foreground">Temp</dt><dd className="font-medium tabular-nums">{temperatureText(snapshot)}</dd></div>
               <div><dt className="text-muted-foreground">pH</dt><dd className="font-medium">{ph ? readingValue(ph) : "\u2014"}</dd></div>

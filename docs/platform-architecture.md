@@ -146,6 +146,19 @@ erDiagram
 - `water_quality_target_ranges` — id, optional system_id, fixed parameter key, optional
   inclusive min/max bounds. A system row overrides the lab-wide row; Admins and Technicians
   manage ranges, and no numeric ranges are seeded.
+- `feeding_schedules` — id, system_id, optional `tank_position` (lower|upper|left|right),
+  optional `size_liters`, `weekdays smallint[]` (ISO 1 = Monday to 7 = Sunday; non-empty,
+  no duplicates). A row with neither position nor size is the system schedule; the other
+  rows override it for tanks whose names match. Tank names carry the group, e.g.
+  `Lower-14.6L`, `Upper-30L`, `Left-90L`, or just `200L`; `parseTankName` reads the
+  position prefix and the size from the name only (`tanks.size_liters` is not used). The
+  most specific row wins: position + size, then position, then size, then the system row.
+  Admins and Technicians manage schedules in Settings; Volunteers and Viewers read only.
+  No cadences are seeded; a system without a row shows no feeding due.
+  `lib/systems/feeding-schedule.ts` derives due today, next due, and overdue in Pacific
+  time. A scheduled day that ends with no feeding shows **Overdue** (and "worth a look")
+  through the end of the next Pacific day, then rolls off; days up to the schedule's
+  `updated_at` never count as missed.
 - Quick-pick catalogs (`food_catalog`, `chemical_addition_catalog`,
   `star_treatment_catalog`) — Admin/Technician-managed lab-wide lists, shown alphabetically.
   Each has `is_active`: retired entries stay on historical events but can't be newly
