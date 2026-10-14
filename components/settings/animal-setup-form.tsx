@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { parseTankName } from "@/lib/systems/feeding-schedule";
+import { capitalizeLabel, parseTankName } from "@/lib/systems/feeding-schedule";
 import {
   animalSchema,
   customLabelError,
@@ -27,13 +27,6 @@ import {
 
 export type SystemOption = { id: number; name: string };
 export type SpeciesOption = { id: number; commonName: string; category: string };
-
-const SPECIES_GROUPS = [
-  { category: "star", label: "Stars" },
-  { category: "urchin", label: "Urchins" },
-  { category: "abalone", label: "Abalone" },
-  { category: "other", label: "Other" },
-];
 
 export const RETIRED_LABELS: Record<RetiredStatus, string> = {
   deceased: "Deceased",
@@ -123,6 +116,7 @@ export function AnimalForm({
     setErrors((current) => ({ ...current, [key]: undefined }));
   };
 
+  const speciesCategories = [...new Set(species.map((option) => option.category))].sort();
   const systemTanks = tanks.filter((tank) => String(tank.systemId) === values.systemId);
   const sizes = [
     ...new Set(
@@ -178,10 +172,10 @@ export function AnimalForm({
             onChange={(event) => set("speciesId", event.target.value)}
           >
             <option value="">Select a species</option>
-            {SPECIES_GROUPS.map((group) => {
-              const options = species.filter((option) => option.category === group.category);
-              return options.length === 0 ? null : (
-                <optgroup key={group.category} label={group.label}>
+            {speciesCategories.map((category) => {
+              const options = species.filter((option) => option.category === category);
+              return (
+                <optgroup key={category} label={capitalizeLabel(category.replace(/_/g, " "))}>
                   {options.map((option) => (
                     <option key={option.id} value={option.id}>
                       {option.commonName}
