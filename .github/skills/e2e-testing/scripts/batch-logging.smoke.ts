@@ -88,8 +88,8 @@ async function openPage(page: Page, email: string, password: string, type: strin
 test.beforeAll(() => {
   const row = dbQuery(`select
     (select id from core.systems where name = 'Graham' order by id limit 1) system_id,
-    (select id from core.tanks where system_id = (select id from core.systems where name = 'Graham' order by id limit 1) and lower(name) = 'middle' order by id limit 1) middle_id,
-    (select id from core.tanks where system_id = (select id from core.systems where name = 'Graham' order by id limit 1) and lower(name) = 'small' order by id limit 1) small_id,
+    (select id from core.tanks where system_id = (select id from core.systems where name = 'Graham' order by id limit 1) and size_liters = 9 order by id limit 1) middle_id,
+    (select id from core.tanks where system_id = (select id from core.systems where name = 'Graham' order by id limit 1) and size_liters = 3 order by id limit 1) small_id,
     (select id from core.systems where name = 'Indoor Quarantine' order by id limit 1) other_system_id,
     (select id from core.species where category = 'star' order by id limit 1) star_species_id,
     (select id from core.species where category <> 'star' order by id limit 1) other_species_id,

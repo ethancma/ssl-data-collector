@@ -26,7 +26,8 @@
       sign-up disabled): architecture proposed in
       [auth-invitations.md](auth-invitations.md); implementation pending decisions.
 - [x] Eight systems and the current species list are seeded, including the confirmed
-      **Snack Shack** spelling. Graham tank categories and SSL25 are also seeded.
+      **Snack Shack** spelling. Tanks and animals are entered through Settings > Animal setup,
+      not seeded; `supabase/seed.sql` adds local-only e2e fixtures.
 - [x] Daily Operations hub with URL-backed selection and persisted forms for AM/PM checks,
       batch feeding (system, tank, or single-animal scope), same-day PM consumption, water quality, System chemical
       additions, health observations/photos, maintenance, and batch Star treatments.

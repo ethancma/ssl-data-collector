@@ -6,6 +6,7 @@ import {
   animalSaveError,
   animalSchema,
   customLabelError,
+  isSamePlacement,
   placementFromTank,
   retireSchema,
   toTankPlacement,
@@ -92,6 +93,20 @@ test("the tank name is the shelf position and size, or the size alone", () => {
   });
   assert.equal(toTankPlacement({ ...base, position: "other", customLabel: "Middle" }).name, "Middle-9.6L");
   assert.equal(toTankPlacement({ ...base, position: "other", customLabel: " " }).name, "9.6L");
+  assert.equal(toTankPlacement({ ...base, position: "other", customLabel: "mIDDLE" }).name, "Middle-9.6L");
+  assert.equal(toTankPlacement({ ...base, position: "other", customLabel: " TOP shelf " }).name, "Top shelf-9.6L");
+});
+
+test("an untouched placement is recognized so saving does not move the animal", () => {
+  const legacyTank = { systemId: 3, name: "Middle", shelfPosition: "lower" as const, sizeLiters: 9 };
+  const prefill = placementFromTank(legacyTank);
+  assert.equal(isSamePlacement({ ...prefill }, prefill), true);
+  assert.equal(isSamePlacement({ ...prefill, sizeLiters: "9.0" }, prefill), true);
+  assert.equal(isSamePlacement({ ...prefill, sizeLiters: "10" }, prefill), false);
+  assert.equal(isSamePlacement({ ...prefill, position: "upper" }, prefill), false);
+  assert.equal(isSamePlacement({ ...prefill, systemId: "4" }, prefill), false);
+  const custom = placementFromTank({ ...legacyTank, name: "Middle-9L", shelfPosition: null });
+  assert.equal(isSamePlacement({ ...custom, customLabel: "MIDDLE" }, custom), true);
 });
 
 test("placementFromTank prefills the fields from a tank", () => {

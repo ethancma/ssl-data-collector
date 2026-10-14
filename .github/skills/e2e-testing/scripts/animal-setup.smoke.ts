@@ -110,10 +110,12 @@ test.describe("animal setup", () => {
     const form = page.getByRole("form", { name: "Add animal" });
     await form.getByLabel("Name").fill(STAR);
     await form.getByLabel("Species").selectOption({ label: "Bat star" });
-    await form.getByLabel("Tank size (L)").fill("9.6");
-    await expect(form.getByText("Tank name: 9.6L (existing tank)")).toBeVisible();
+    await form.getByLabel("Tank size (L)").fill("5");
+    await expect(form.getByText("Tank name: 5L (new tank)")).toBeVisible();
     await form.getByRole("button", { name: "Add animal" }).click();
     await expect(form.getByRole("alert")).toContainText(`An animal named ${STAR} already exists`);
+    // The rejected save must not leave the new tank behind.
+    expect(tankRows().map((tank) => tank.name)).toEqual(["9.6L", "Lower-9.6L"]);
   });
 
   test("moving an animal to a custom position reuses or creates the tank", async ({ page }) => {
@@ -130,7 +132,7 @@ test.describe("animal setup", () => {
     await form.getByRole("button", { name: "Save" }).click();
     await expect(form.getByText("Choose Upper from the list instead")).toBeVisible();
 
-    await form.getByLabel("Other position (optional)").fill("Middle");
+    await form.getByLabel("Other position (optional)").fill("mIDDLE");
     await expect(form.getByText("Tank name: Middle-9.6L (new tank)")).toBeVisible();
     await form.getByRole("button", { name: "Save" }).click();
     await expect(page.getByRole("status")).toContainText(`${STAR} moved to Middle-9.6L.`);
@@ -168,6 +170,28 @@ test.describe("animal setup", () => {
     await reactivateForm.getByRole("button", { name: "Reactivate" }).click();
     await expect(page.getByRole("status")).toContainText(`${STAR} reactivated in Lower-9.6L.`);
     expect(animalRow(STAR)).toMatchObject({ status: "active", retired_on: null, tank: "Lower-9.6L" });
+  });
+
+  test("saving without changing the placement keeps an animal in a tank with an older name", async ({ page }) => {
+    const legacy = `E2E Legacy ${RUN_TAG}`;
+    dbQuery(`insert into core.tanks (system_id, name, tank_type, size_liters) values (${systemId}, 'Small', 'shelf', 3)`);
+    dbQuery(
+      `insert into core.animals (tank_id, species_id, name, tracking_type, quantity, status)
+       select t.id, (select id from core.species where common_name = 'Bat star'), ${sqlLiteral(legacy)}, 'individual', 1, 'active'
+       from core.tanks t where t.system_id = ${systemId} and t.name = 'Small'`,
+    );
+
+    await login(page);
+    await page.goto("/protected/settings/animal-setup");
+    await page.getByLabel("System", { exact: true }).selectOption({ label: SYSTEM_NAME });
+    await page.getByRole("button", { name: `Edit or move ${legacy}` }).click();
+    const form = page.getByRole("form", { name: `Edit ${legacy}` });
+    await form.getByLabel("Life stage (optional)").fill("Juvenile");
+    await form.getByRole("button", { name: "Save" }).click();
+    await expect(page.getByRole("status")).toContainText(`${legacy} saved.`);
+
+    expect(animalRow(legacy)).toMatchObject({ tank: "Small" });
+    expect(tankRows().map((tank) => tank.name)).not.toContain("Small-3L");
   });
 
   test("a volunteer gets a 404 and cannot change animals or tanks", async ({ page }) => {

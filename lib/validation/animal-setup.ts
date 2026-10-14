@@ -2,6 +2,7 @@ import { z } from "zod";
 
 import { getPacificDateString } from "@/lib/pacific-date-time";
 import {
+  capitalizeLabel,
   formatTankName,
   parseTankName,
   TANK_POSITIONS,
@@ -22,9 +23,6 @@ export type RetiredStatus = (typeof RETIRED_STATUSES)[number];
 const SIZE_MESSAGE = "Enter the size in liters, e.g. 9.6";
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
-const positionLabel = (position: TankPosition) =>
-  POSITION_OPTIONS.find((option) => option.value === position)?.label ?? position;
-
 const pastDate = z
   .string()
   .regex(DATE_PATTERN, "Select a date")
@@ -37,7 +35,7 @@ export function customLabelError(label: string) {
   if (trimmed.length > 30) return "Keep the position under 30 characters";
   if (trimmed.includes("-")) return "Leave out hyphens; the size is added for you";
   const parsed = parseTankName(trimmed);
-  if (parsed.position) return `Choose ${positionLabel(parsed.position)} from the list instead`;
+  if (parsed.position) return `Choose ${capitalizeLabel(parsed.position)} from the list instead`;
   if (parsed.sizeLiters !== null) return "Leave out the size; enter it in Tank size";
   return null;
 }
@@ -115,12 +113,12 @@ export function toTankPlacement({ position, customLabel, sizeLiters }: Placement
   const size = Number(sizeLiters);
   if (position === "" || position === "other") {
     return {
-      name: formatTankName(position === "other" ? customLabel : null, size),
+      name: formatTankName(position === "other" ? capitalizeLabel(customLabel) : null, size),
       shelfPosition: null,
       sizeLiters: size,
     };
   }
-  return { name: formatTankName(positionLabel(position), size), shelfPosition: position, sizeLiters: size };
+  return { name: formatTankName(capitalizeLabel(position), size), shelfPosition: position, sizeLiters: size };
 }
 
 // Prefills the placement fields from an animal's current tank, including older free-form names.
@@ -137,6 +135,16 @@ export function placementFromTank(tank: {
   if (position) return { ...base, position, customLabel: "" };
   const label = tank.name.replace(/-?\s*\d+(?:\.\d+)?\s*L\s*$/i, "").trim();
   return { ...base, position: label ? "other" : "", customLabel: label };
+}
+
+// True when the form still describes the tank the animal is already in, so saving must not move it.
+export function isSamePlacement(a: PlacementInput, b: PlacementInput) {
+  return (
+    a.systemId === b.systemId &&
+    a.position === b.position &&
+    capitalizeLabel(a.customLabel) === capitalizeLabel(b.customLabel) &&
+    Number(a.sizeLiters) === Number(b.sizeLiters)
+  );
 }
 
 export function animalSaveError(error: { code?: string; message: string }, name: string) {

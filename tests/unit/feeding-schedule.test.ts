@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   deriveFeedingScheduleStatus,
   deriveSystemFeeding,
+  capitalizeLabel,
   formatTankGroup,
   formatTankName,
   formatWeekdays,
@@ -104,6 +105,12 @@ test("formatTankName builds names parseTankName reads back", () => {
   assert.deepEqual(parseTankName(formatTankName("Lower", 9.6)), { position: "lower", sizeLiters: 9.6 });
   assert.deepEqual(parseTankName(formatTankName("Middle", 9.6)), { position: null, sizeLiters: 9.6 });
   assert.deepEqual(parseTankName(formatTankName(null, 0.125)), { position: null, sizeLiters: 0.125 });
+});
+
+test("capitalizeLabel keeps the first letter upper case and the rest lower case", () => {
+  assert.equal(capitalizeLabel("middle"), "Middle");
+  assert.equal(capitalizeLabel(" MIDDLE "), "Middle");
+  assert.equal(capitalizeLabel(""), "");
 });
 
 test("formatTankGroup labels a group", () => {

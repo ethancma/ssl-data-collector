@@ -135,7 +135,7 @@ export function AnimalForm({
     placementFields.sizeLiters.safeParse(values.sizeLiters).success &&
     !(values.position === "other" && customLabelError(values.customLabel));
   const tankName = placementReady ? toTankPlacement(values).name : null;
-  const tankExists = systemTanks.some((tank) => tank.name === tankName);
+  const tankExists = systemTanks.some((tank) => tank.name.toLowerCase() === tankName?.toLowerCase());
 
   const submit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();

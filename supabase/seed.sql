@@ -93,4 +93,20 @@ begin
 end;
 $$;
 
+-- Local-only e2e fixtures: two volume-named Graham tanks and the SSL25 sunflower star. Never pushed;
+-- real tanks and animals are entered through Settings > Animal setup.
+insert into core.tanks (system_id, name, tank_type, size_liters)
+select id, t.name, 'shelf', t.size_liters
+from core.systems, (values ('3L', 3), ('9L', 9)) as t (name, size_liters)
+where systems.slug = 'graham'
+on conflict do nothing;
+
+insert into core.animals (tank_id, species_id, name, tracking_type, quantity, status)
+select tanks.id, species.id, 'SSL25', 'individual', 1, 'active'
+from core.tanks
+join core.systems on systems.id = tanks.system_id
+cross join core.species
+where systems.slug = 'graham' and tanks.name = '9L' and species.common_name = 'Sunflower star'
+on conflict do nothing;
+
 commit;

@@ -26,6 +26,7 @@ import { createClient } from "@/lib/supabase/client";
 import {
   ANIMAL_COLUMNS,
   animalSaveError,
+  isSamePlacement,
   placementFromTank,
   TANK_COLUMNS,
   toAnimalRecord,
@@ -95,16 +96,26 @@ export function AnimalSetupManager({
     setSuccess(null);
   };
 
-  // Finds the tank with this name in the system, or creates it.
+  const withPending = async <T,>(work: () => Promise<T>): Promise<T> => {
+    setPending(true);
+    try {
+      return await work();
+    } finally {
+      setPending(false);
+    }
+  };
+
+  // Finds the tank with this name in the system (ignoring case), or creates it.
   const resolveTank = async (
     supabase: ReturnType<typeof createClient>,
     targetSystemId: number,
     placement: TankPlacement,
-  ): Promise<{ tank: TankRecord } | { error: string }> => {
+  ): Promise<{ tank: TankRecord; created: boolean } | { error: string }> => {
     const existing = tanks.find(
-      (tank) => tank.systemId === targetSystemId && tank.name === placement.name,
+      (tank) =>
+        tank.systemId === targetSystemId && tank.name.toLowerCase() === placement.name.toLowerCase(),
     );
-    if (existing) return { tank: existing };
+    if (existing) return { tank: existing, created: false };
 
     const inserted = await supabase
       .from("tanks")
@@ -132,88 +143,101 @@ export function AnimalSetupManager({
     }
     const tank = toTankRecord(result.data);
     setTanks((current) => [...current.filter((candidate) => candidate.id !== tank.id), tank]);
-    return { tank };
+    return { tank, created: inserted.error === null };
   };
 
-  const saveAnimal = async (
-    values: AnimalFormValues,
-    existing: AnimalRecord | null,
-  ): Promise<string | null> => {
-    setPending(true);
-    const supabase = createClient();
-    const targetSystemId = Number(values.systemId);
-    const resolved = await resolveTank(supabase, targetSystemId, toTankPlacement(values));
-    if ("error" in resolved) {
-      setPending(false);
-      return resolved.error;
-    }
-    const reactivating = existing !== null && existing.status !== "active";
-    const payload = {
-      name: values.name,
-      species_id: Number(values.speciesId),
-      tracking_type: values.trackingType,
-      quantity: Number(values.quantity),
-      tank_id: resolved.tank.id,
-      life_stage: values.lifeStage || null,
-      date_added: values.dateAdded,
-      notes: values.notes.trim() || null,
-      ...(reactivating ? { status: "active", retired_on: null } : {}),
-    };
-    const result = existing
-      ? await supabase
-          .from("animals")
-          .update(payload)
-          .eq("id", existing.id)
-          .select(ANIMAL_COLUMNS)
-          .single()
-      : await supabase.from("animals").insert(payload).select(ANIMAL_COLUMNS).single();
-    setPending(false);
-
-    if (result.error || !result.data) {
-      return result.error
-        ? animalSaveError(result.error, values.name)
-        : "The animal could not be saved.";
-    }
-    const saved = toAnimalRecord(result.data);
-    setAnimals((current) => [...current.filter((animal) => animal.id !== saved.id), saved]);
-    setSystemId(targetSystemId);
-    setEditing(null);
-    const tankName = resolved.tank.name;
-    setSuccess(
-      !existing
-        ? `${saved.name} added to ${tankName}.`
-        : reactivating
-          ? `${saved.name} reactivated in ${tankName}.`
-          : existing.tankId !== saved.tankId
-            ? `${saved.name} moved to ${tankName}.`
-            : `${saved.name} saved.`,
-    );
-    return null;
-  };
-
-  const retireAnimal = async (
-    animal: AnimalRecord,
-    values: RetireFormValues,
-  ): Promise<string | null> => {
-    setPending(true);
-    const supabase = createClient();
-    const result = await supabase
+  // Removes a tank this save created when the animal then failed to save, unless an animal has since landed in it.
+  const discardNewTank = async (supabase: ReturnType<typeof createClient>, tankId: number) => {
+    const { count } = await supabase
       .from("animals")
-      .update({ status: values.status, retired_on: values.retiredOn, notes: values.notes.trim() || null })
-      .eq("id", animal.id)
-      .select(ANIMAL_COLUMNS)
-      .single();
-    setPending(false);
-
-    if (result.error || !result.data) {
-      return result.error?.message ?? "The animal could not be retired.";
-    }
-    const saved = toAnimalRecord(result.data);
-    setAnimals((current) => [...current.filter((candidate) => candidate.id !== saved.id), saved]);
-    setEditing(null);
-    setSuccess(`${saved.name} retired (${RETIRED_LABELS[values.status].toLowerCase()}).`);
-    return null;
+      .select("id", { count: "exact", head: true })
+      .eq("tank_id", tankId);
+    if (count !== 0) return;
+    const { error } = await supabase.from("tanks").delete().eq("id", tankId);
+    if (!error) setTanks((current) => current.filter((tank) => tank.id !== tankId));
   };
+
+  const saveAnimal = (values: AnimalFormValues, existing: AnimalRecord | null) =>
+    withPending(async (): Promise<string | null> => {
+      const supabase = createClient();
+      const targetSystemId = Number(values.systemId);
+
+      // Check the name first so a duplicate never leaves a freshly created tank behind.
+      const duplicate = await supabase.from("animals").select("id").eq("name", values.name).limit(1);
+      if (duplicate.data?.some((row) => row.id !== existing?.id)) {
+        return animalSaveError({ code: "23505", message: "" }, values.name);
+      }
+
+      // An untouched placement keeps the animal in its current tank, whatever that tank is named.
+      const currentTank = existing ? tanks.find((tank) => tank.id === existing.tankId) : undefined;
+      const resolved =
+        currentTank && isSamePlacement(values, placementFromTank(currentTank))
+          ? { tank: currentTank, created: false }
+          : await resolveTank(supabase, targetSystemId, toTankPlacement(values));
+      if ("error" in resolved) return resolved.error;
+
+      const reactivating = existing !== null && existing.status !== "active";
+      const payload = {
+        name: values.name,
+        species_id: Number(values.speciesId),
+        tracking_type: values.trackingType,
+        quantity: Number(values.quantity),
+        tank_id: resolved.tank.id,
+        life_stage: values.lifeStage || null,
+        date_added: values.dateAdded,
+        notes: values.notes.trim() || null,
+        ...(reactivating ? { status: "active", retired_on: null } : {}),
+      };
+      const result = existing
+        ? await supabase
+            .from("animals")
+            .update(payload)
+            .eq("id", existing.id)
+            .select(ANIMAL_COLUMNS)
+            .single()
+        : await supabase.from("animals").insert(payload).select(ANIMAL_COLUMNS).single();
+
+      if (result.error || !result.data) {
+        if (resolved.created) await discardNewTank(supabase, resolved.tank.id);
+        return result.error
+          ? animalSaveError(result.error, values.name)
+          : "The animal could not be saved.";
+      }
+      const saved = toAnimalRecord(result.data);
+      setAnimals((current) => [...current.filter((animal) => animal.id !== saved.id), saved]);
+      setSystemId(targetSystemId);
+      setEditing(null);
+      const tankName = resolved.tank.name;
+      setSuccess(
+        !existing
+          ? `${saved.name} added to ${tankName}.`
+          : reactivating
+            ? `${saved.name} reactivated in ${tankName}.`
+            : existing.tankId !== saved.tankId
+              ? `${saved.name} moved to ${tankName}.`
+              : `${saved.name} saved.`,
+      );
+      return null;
+    });
+
+  const retireAnimal = (animal: AnimalRecord, values: RetireFormValues) =>
+    withPending(async (): Promise<string | null> => {
+      const result = await createClient()
+        .from("animals")
+        .update({ status: values.status, retired_on: values.retiredOn, notes: values.notes.trim() || null })
+        .eq("id", animal.id)
+        .select(ANIMAL_COLUMNS)
+        .single();
+
+      if (result.error || !result.data) {
+        return result.error?.message ?? "The animal could not be retired.";
+      }
+      const saved = toAnimalRecord(result.data);
+      setAnimals((current) => [...current.filter((candidate) => candidate.id !== saved.id), saved]);
+      setEditing(null);
+      setSuccess(`${saved.name} retired (${RETIRED_LABELS[values.status].toLowerCase()}).`);
+      return null;
+    });
 
   const formProps = {
     systems,

@@ -59,9 +59,15 @@ export function formatTankName(label: string | null, sizeLiters: number) {
   return trimmed ? `${trimmed}-${sizeLiters}L` : `${sizeLiters}L`;
 }
 
+// "middle", "MIDDLE" → "Middle": first letter upper case, the rest lower case.
+export function capitalizeLabel(label: string) {
+  const trimmed = label.trim();
+  return trimmed.charAt(0).toUpperCase() + trimmed.slice(1).toLowerCase();
+}
+
 export function formatTankGroup({ position, sizeLiters }: TankGroup) {
   const parts = [
-    position ? position[0].toUpperCase() + position.slice(1) : null,
+    position ? capitalizeLabel(position) : null,
     sizeLiters === null ? null : `${sizeLiters}L`,
   ];
   return parts.filter(Boolean).join(" ");
