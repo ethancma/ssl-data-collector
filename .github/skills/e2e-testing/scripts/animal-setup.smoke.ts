@@ -11,6 +11,7 @@ import {
   daysAgoDateString,
   dbQuery,
   login,
+  gotoHydrated,
   loginAs,
   RUN_TAG,
   signInRoleClient,
@@ -65,7 +66,7 @@ test.describe("animal setup", () => {
 
   test("a technician adds animals and the tank is created from position and size", async ({ page }) => {
     await login(page);
-    await page.goto("/protected/settings/animal-setup");
+    await gotoHydrated(page, "/protected/settings/animal-setup");
     await expect(page.getByRole("heading", { name: "Animal setup", level: 1 })).toBeVisible();
     await page.getByLabel("System", { exact: true }).selectOption({ label: SYSTEM_NAME });
     await expect(page.getByText(`No tanks in ${SYSTEM_NAME} yet`)).toBeVisible();
@@ -104,7 +105,7 @@ test.describe("animal setup", () => {
 
   test("names are unique across the lab", async ({ page }) => {
     await login(page);
-    await page.goto("/protected/settings/animal-setup");
+    await gotoHydrated(page, "/protected/settings/animal-setup");
     await page.getByLabel("System", { exact: true }).selectOption({ label: SYSTEM_NAME });
     await page.getByRole("button", { name: "Add animal" }).click();
     const form = page.getByRole("form", { name: "Add animal" });
@@ -120,7 +121,7 @@ test.describe("animal setup", () => {
 
   test("moving an animal to a custom position reuses or creates the tank", async ({ page }) => {
     await login(page);
-    await page.goto("/protected/settings/animal-setup");
+    await gotoHydrated(page, "/protected/settings/animal-setup");
     await page.getByLabel("System", { exact: true }).selectOption({ label: SYSTEM_NAME });
     await page.getByRole("button", { name: `Edit or move ${STAR}` }).click();
 
@@ -148,7 +149,7 @@ test.describe("animal setup", () => {
 
   test("retiring records the reason and date, and reactivating clears them", async ({ page }) => {
     await login(page);
-    await page.goto("/protected/settings/animal-setup");
+    await gotoHydrated(page, "/protected/settings/animal-setup");
     await page.getByLabel("System", { exact: true }).selectOption({ label: SYSTEM_NAME });
     await page.getByRole("button", { name: `Retire ${STAR}` }).click();
 
@@ -176,13 +177,13 @@ test.describe("animal setup", () => {
     const legacy = `E2E Legacy ${RUN_TAG}`;
     dbQuery(`insert into core.tanks (system_id, name, tank_type, size_liters) values (${systemId}, 'Small', 'shelf', 3)`);
     dbQuery(
-      `insert into core.animals (tank_id, species_id, name, tracking_type, quantity, status)
-       select t.id, (select id from core.species where common_name = 'Bat star'), ${sqlLiteral(legacy)}, 'individual', 1, 'active'
+      `insert into core.animals (tank_id, species_id, name, tracking_type, quantity, status, date_added)
+       select t.id, (select id from core.species where common_name = 'Bat star'), ${sqlLiteral(legacy)}, 'individual', 1, 'active', (now() at time zone 'America/Los_Angeles')::date
        from core.tanks t where t.system_id = ${systemId} and t.name = 'Small'`,
     );
 
     await login(page);
-    await page.goto("/protected/settings/animal-setup");
+    await gotoHydrated(page, "/protected/settings/animal-setup");
     await page.getByLabel("System", { exact: true }).selectOption({ label: SYSTEM_NAME });
     await page.getByRole("button", { name: `Edit or move ${legacy}` }).click();
     const form = page.getByRole("form", { name: `Edit ${legacy}` });
