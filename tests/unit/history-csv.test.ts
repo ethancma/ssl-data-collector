@@ -12,7 +12,7 @@ const row = (overrides: Partial<HistoryRow> = {}): HistoryRow => ({
   system_id: 3,
   system_name: "Graham",
   tank_id: 2,
-  tank_name: "Middle",
+  tank_name: "Lower-9L",
   animal_id: 1,
   animal_name: "SSL25",
   recorded_by: 2,

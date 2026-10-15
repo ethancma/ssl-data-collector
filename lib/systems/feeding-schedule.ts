@@ -3,7 +3,7 @@ import { addPacificCalendarDays, pacificDateKey } from "@/lib/pacific-date-time"
 export const WEEKDAY_LABELS = ["M", "Tu", "W", "Th", "F", "Sa", "Su"] as const;
 export const WEEKDAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"] as const;
 
-const TANK_POSITIONS = ["lower", "upper", "left", "right"] as const;
+export const TANK_POSITIONS = ["lower", "upper", "left", "right"] as const;
 export type TankPosition = (typeof TANK_POSITIONS)[number];
 
 export type TankGroup = { position: TankPosition | null; sizeLiters: number | null };
@@ -53,9 +53,21 @@ export function parseTankName(name: string): TankGroup {
   return { position: position as TankPosition | null, sizeLiters: size === undefined ? null : Number(size) };
 }
 
+// Inverse of parseTankName: "Lower-9.6L", a custom label such as "Middle-9.6L", or "9.6L".
+export function formatTankName(label: string | null, sizeLiters: number) {
+  const trimmed = label?.trim();
+  return trimmed ? `${trimmed}-${sizeLiters}L` : `${sizeLiters}L`;
+}
+
+// "middle", "MIDDLE" → "Middle": first letter upper case, the rest lower case.
+export function capitalizeLabel(label: string) {
+  const trimmed = label.trim();
+  return trimmed.charAt(0).toUpperCase() + trimmed.slice(1).toLowerCase();
+}
+
 export function formatTankGroup({ position, sizeLiters }: TankGroup) {
   const parts = [
-    position ? position[0].toUpperCase() + position.slice(1) : null,
+    position ? capitalizeLabel(position) : null,
     sizeLiters === null ? null : `${sizeLiters}L`,
   ];
   return parts.filter(Boolean).join(" ");

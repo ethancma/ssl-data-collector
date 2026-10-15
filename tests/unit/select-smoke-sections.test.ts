@@ -226,9 +226,19 @@ test("selects the feeding-schedules section for schedule surfaces", () => {
   assert.deepEqual(selectedIds(["lib/systems/feeding-schedule.ts"]), [
     "systems-trends",
     "feeding-schedules",
+    "animal-setup",
   ]);
   assert.deepEqual(selectedIds(["app/protected/home/derivations.ts"]), [
     "daily-operations",
     "feeding-schedules",
+  ]);
+});
+
+test("selects the animal-setup section for the animal setup page", () => {
+  assert.deepEqual(selectedIds(["app/protected/settings/animal-setup/page.tsx"]), ["animal-setup"]);
+  assert.deepEqual(selectedIds(["lib/validation/animal-setup.ts"]), ["animal-setup"]);
+  assert.deepEqual(selectedIds(["components/settings/animal-setup-manager.tsx"]), [
+    "daily-operations",
+    "animal-setup",
   ]);
 });

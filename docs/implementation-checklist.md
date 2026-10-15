@@ -26,7 +26,8 @@
       sign-up disabled): architecture proposed in
       [auth-invitations.md](auth-invitations.md); implementation pending decisions.
 - [x] Eight systems and the current species list are seeded, including the confirmed
-      **Snack Shack** spelling. Graham tank categories and SSL25 are also seeded.
+      **Snack Shack** spelling. Tanks and animals are entered through Settings > Animal setup,
+      not seeded; `supabase/seed.sql` adds local-only e2e fixtures.
 - [x] Daily Operations hub with URL-backed selection and persisted forms for AM/PM checks,
       batch feeding (system, tank, or single-animal scope), same-day PM consumption, water quality, System chemical
       additions, health observations/photos, maintenance, and batch Star treatments.
@@ -82,7 +83,10 @@ These are the highest-priority open items because they affect data ownership or 
       remains part of the product contract.
 - [ ] Seed the complete tank inventory, Larval pair groups, and real animal roster; verify
       provisional scientific names before rollout.
-- [ ] Build Admin CRUD/retirement UI for systems, tanks, species, and animals.
+- [x] Add Admin/Technician Settings > Animal setup: add, edit, move, retire (status + `retired_on`
+      date + note) and reactivate animals. Tanks are found or created from shelf position and
+      size (`Lower-9.6L`, a custom label such as `Middle-9.6L`, or `9.6L`).
+- [ ] Build Admin CRUD/retirement UI for systems, tank details (type, rename, delete), and species.
 - [ ] Configure Google OAuth in Supabase and add the application sign-in path.
 - [ ] Confirm the Vercel project/deployment and wire preview/runtime log access for agents.
 - [x] Remove the unused `analytics` schema; dashboards and History read `core` directly.

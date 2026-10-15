@@ -186,9 +186,8 @@ async function openStarTreatmentForm(
   // A select change fired before hydration is dropped, so retry until Tank enables.
   await expect(async () => {
     await page.getByLabel("System", { exact: true }).selectOption(String(star.systemId));
-    await expect(page.getByLabel("Tank", { exact: true })).toBeEnabled({ timeout: 1_000 });
+    await page.getByLabel("Tank", { exact: true }).selectOption(String(star.tankId), { timeout: 1_000 });
   }).toPass({ timeout: 15_000 });
-  await page.getByLabel("Tank", { exact: true }).selectOption(String(star.tankId));
   await page.getByLabel("Treated star").selectOption(String(star.id));
 }
 

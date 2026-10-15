@@ -4,7 +4,9 @@ import test from "node:test";
 import {
   deriveFeedingScheduleStatus,
   deriveSystemFeeding,
+  capitalizeLabel,
   formatTankGroup,
+  formatTankName,
   formatWeekdays,
   isoWeekday,
   listOverrideScopes,
@@ -91,8 +93,24 @@ test("parseTankName reads the position prefix and size from the name", () => {
   assert.deepEqual(parseTankName("right 90L"), { position: "right", sizeLiters: 90 });
   assert.deepEqual(parseTankName("Left-90L"), { position: "left", sizeLiters: 90 });
   assert.deepEqual(parseTankName("200L"), { position: null, sizeLiters: 200 });
-  assert.deepEqual(parseTankName("Large"), { position: null, sizeLiters: null });
+  assert.deepEqual(parseTankName("Overflow"), { position: null, sizeLiters: null });
   assert.deepEqual(parseTankName("Lowerlevel 5"), { position: null, sizeLiters: null });
+});
+
+test("formatTankName builds names parseTankName reads back", () => {
+  assert.equal(formatTankName("Lower", 9.6), "Lower-9.6L");
+  assert.equal(formatTankName(" Middle ", 9.6), "Middle-9.6L");
+  assert.equal(formatTankName(null, 200), "200L");
+  assert.equal(formatTankName("  ", 3), "3L");
+  assert.deepEqual(parseTankName(formatTankName("Lower", 9.6)), { position: "lower", sizeLiters: 9.6 });
+  assert.deepEqual(parseTankName(formatTankName("Middle", 9.6)), { position: null, sizeLiters: 9.6 });
+  assert.deepEqual(parseTankName(formatTankName(null, 0.125)), { position: null, sizeLiters: 0.125 });
+});
+
+test("capitalizeLabel keeps the first letter upper case and the rest lower case", () => {
+  assert.equal(capitalizeLabel("middle"), "Middle");
+  assert.equal(capitalizeLabel(" MIDDLE "), "Middle");
+  assert.equal(capitalizeLabel(""), "");
 });
 
 test("formatTankGroup labels a group", () => {
@@ -117,7 +135,7 @@ test("the most specific schedule wins: position and size, position, size, then s
 
 test("listOverrideScopes offers positions, sizes within a multi-size position, and unprefixed sizes", () => {
   const scopes = listOverrideScopes(
-    ["Lower-14.6L", "Lower-3L", "Upper-30L", "Large"],
+    ["Lower-14.6L", "Lower-3L", "Upper-30L", "Overflow"],
     [],
   );
   assert.deepEqual(scopes.map(formatTankGroup), ["Lower", "Lower 3L", "Lower 14.6L", "Upper"]);
@@ -126,7 +144,7 @@ test("listOverrideScopes offers positions, sizes within a multi-size position, a
 });
 
 test("listOverrideScopes keeps saved overrides whose tanks were renamed", () => {
-  const scopes = listOverrideScopes(["Large"], [{ position: null, sizeLiters: null }, { position: "upper", sizeLiters: null }]);
+  const scopes = listOverrideScopes(["Overflow"], [{ position: null, sizeLiters: null }, { position: "upper", sizeLiters: null }]);
   assert.deepEqual(scopes.map(formatTankGroup), ["Upper"]);
 });
 

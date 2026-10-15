@@ -88,8 +88,8 @@ async function openPage(page: Page, email: string, password: string, type: strin
 test.beforeAll(() => {
   const row = dbQuery(`select
     (select id from core.systems where name = 'Graham' order by id limit 1) system_id,
-    (select id from core.tanks where system_id = (select id from core.systems where name = 'Graham' order by id limit 1) and lower(name) = 'middle' order by id limit 1) middle_id,
-    (select id from core.tanks where system_id = (select id from core.systems where name = 'Graham' order by id limit 1) and lower(name) = 'small' order by id limit 1) small_id,
+    (select id from core.tanks where system_id = (select id from core.systems where name = 'Graham' order by id limit 1) and size_liters = 9 order by id limit 1) middle_id,
+    (select id from core.tanks where system_id = (select id from core.systems where name = 'Graham' order by id limit 1) and size_liters = 3 order by id limit 1) small_id,
     (select id from core.systems where name = 'Indoor Quarantine' order by id limit 1) other_system_id,
     (select id from core.species where category = 'star' order by id limit 1) star_species_id,
     (select id from core.species where category <> 'star' order by id limit 1) other_species_id,
@@ -109,14 +109,14 @@ test.beforeAll(() => {
   refs.otherTankId = Number(controlTank.id);
   expect(refs.otherTankId).toBeGreaterThan(0);
   const rows = dbQuery(`insert into core.animals
-    (tank_id, species_id, name, tracking_type, quantity, status, date_added, notes) values
-    (${refs.middleTankId}, ${refs.starSpeciesId}, ${lit(fixtureNames.middleStar)}, 'individual', 1, 'active', current_date, ${lit(TAG)}),
-    (${refs.smallTankId}, ${refs.starSpeciesId}, ${lit(fixtureNames.smallStar)}, 'individual', 1, 'active', current_date, ${lit(TAG)}),
-    (${refs.smallTankId}, ${refs.starSpeciesId}, ${lit(fixtureNames.excludedStar)}, 'individual', 1, 'active', current_date, ${lit(TAG)}),
-    (${refs.middleTankId}, ${refs.starSpeciesId}, ${lit(fixtureNames.inactiveStar)}, 'individual', 1, 'deceased', current_date, ${lit(TAG)}),
-    (${refs.middleTankId}, ${refs.starSpeciesId}, ${lit(fixtureNames.cohort)}, 'cohort', 2, 'active', current_date, ${lit(TAG)}),
-    (${refs.middleTankId}, ${refs.nonStarSpeciesId}, ${lit(fixtureNames.nonStar)}, 'individual', 1, 'active', current_date, ${lit(TAG)}),
-    (${refs.otherTankId}, ${refs.starSpeciesId}, ${lit(fixtureNames.otherSystem)}, 'individual', 1, 'active', current_date, ${lit(TAG)})
+    (tank_id, species_id, name, tracking_type, quantity, status, date_added, retired_on, notes) values
+    (${refs.middleTankId}, ${refs.starSpeciesId}, ${lit(fixtureNames.middleStar)}, 'individual', 1, 'active', current_date, null, ${lit(TAG)}),
+    (${refs.smallTankId}, ${refs.starSpeciesId}, ${lit(fixtureNames.smallStar)}, 'individual', 1, 'active', current_date, null, ${lit(TAG)}),
+    (${refs.smallTankId}, ${refs.starSpeciesId}, ${lit(fixtureNames.excludedStar)}, 'individual', 1, 'active', current_date, null, ${lit(TAG)}),
+    (${refs.middleTankId}, ${refs.starSpeciesId}, ${lit(fixtureNames.inactiveStar)}, 'individual', 1, 'deceased', current_date, current_date, ${lit(TAG)}),
+    (${refs.middleTankId}, ${refs.starSpeciesId}, ${lit(fixtureNames.cohort)}, 'cohort', 2, 'active', current_date, null, ${lit(TAG)}),
+    (${refs.middleTankId}, ${refs.nonStarSpeciesId}, ${lit(fixtureNames.nonStar)}, 'individual', 1, 'active', current_date, null, ${lit(TAG)}),
+    (${refs.otherTankId}, ${refs.starSpeciesId}, ${lit(fixtureNames.otherSystem)}, 'individual', 1, 'active', current_date, null, ${lit(TAG)})
     returning id, name, tank_id, status, tracking_type`);
   animals = Object.fromEntries(rows.map((item) => [String(item.name).replace(`${TAG}_`, "").replace(/_([a-z])/g, (_, letter: string) => letter.toUpperCase()), {
     id: Number(item.id), name: String(item.name), tank_id: Number(item.tank_id),
@@ -212,7 +212,7 @@ test.describe("Batch feeding UI", () => {
     expect(JSON.stringify(ledger[0].result)).toContain(String(rows[0].id));
   });
 
-  test("Middle-tank and single-animal scopes are represented by the UI", async ({ page }) => {
+  test("Tank and single-animal scopes are represented by the UI", async ({ page }) => {
     await openPage(page, ADMIN_EMAIL, ADMIN_PASSWORD, "feeding");
     await page.getByLabel("System", { exact: true }).selectOption(String(refs.systemId));
     await page.getByLabel("Tank", { exact: true }).selectOption(String(refs.middleTankId));

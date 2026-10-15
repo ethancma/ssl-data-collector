@@ -16,6 +16,7 @@ import {
   Moon,
   PanelLeftClose,
   PanelLeftOpen,
+  PawPrint,
   Settings,
   ShieldCheck,
   SlidersHorizontal,
@@ -350,6 +351,11 @@ export function ProtectedSidebar({
       label: "Lab setup",
       items: showLabSettings
         ? [
+            {
+              href: "/protected/settings/animal-setup",
+              label: "Animal setup",
+              icon: PawPrint,
+            },
             {
               href: "/protected/settings/water-quality-targets",
               label: "Water quality targets",

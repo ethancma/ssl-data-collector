@@ -34,6 +34,7 @@ import {
   expectDefaultDateAndTime,
   logSingleFeeding,
   selectBatchScope,
+  gotoHydrated,
 } from "./helpers";
 
 function sqlLiteral(value: string) {
@@ -391,8 +392,8 @@ test.describe("e2e smoke", () => {
     page,
   }) => {
     await login(page);
-    await page.goto("/protected/daily-operations?type=health-observation");
-    await page.getByLabel("Animal").selectOption(String(ssl25AnimalId));
+    await gotoHydrated(page, "/protected/daily-operations?type=health-observation");
+    await page.getByLabel("Animal", { exact: true }).selectOption(String(ssl25AnimalId));
     await page.getByRole("button", { name: "Medium" }).click();
     await page.getByLabel("Lesion").check();
     await page.getByLabel("Notes").fill(`${RUN_TAG} health obs blocked`);
@@ -414,8 +415,8 @@ test.describe("e2e smoke", () => {
     page,
   }) => {
     await login(page);
-    await page.goto("/protected/daily-operations?type=health-observation");
-    await page.getByLabel("Animal").selectOption(String(ssl25AnimalId));
+    await gotoHydrated(page, "/protected/daily-operations?type=health-observation");
+    await page.getByLabel("Animal", { exact: true }).selectOption(String(ssl25AnimalId));
     await page.getByRole("button", { name: "Medium" }).click();
     await page.getByLabel("Lesion").check();
     await page.getByLabel("Arm curling").check();
@@ -624,10 +625,10 @@ test.describe("e2e smoke", () => {
     page,
   }) => {
     await login(page);
-    await page.goto("/protected/daily-operations?type=health-observation");
+    await gotoHydrated(page, "/protected/daily-operations?type=health-observation");
     await expectDefaultDateAndTime(page);
     await page.getByLabel("Time").fill(PICKED_TIME);
-    await page.getByLabel("Animal").selectOption(String(ssl25AnimalId));
+    await page.getByLabel("Animal", { exact: true }).selectOption(String(ssl25AnimalId));
     await page.getByRole("button", { name: "Low" }).click();
     await page.getByLabel("Notes").fill(`${RUN_TAG} health obs picked time`);
     await page.getByRole("button", { name: "Save observation" }).click();

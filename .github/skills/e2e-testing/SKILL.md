@@ -42,11 +42,12 @@ The selector applies this policy:
 | Batch feeding and batch Star treatment logging | `batch-logging.smoke.ts` |
 | Systems page and water-quality trend charts | `systems-trends.smoke.ts` |
 | History page (`app/protected/history`, `components/history`, `lib/history`) | `history.smoke.ts` |
+| Animal setup (`app/protected/settings/animal-setup`, its components and validation) | `animal-setup.smoke.ts` |
 | Shared application or runtime files, unknown application or runtime files, shared e2e helpers | Full suite |
 | Supabase migrations, RLS/grants, database config, or seed data | Full suite (Tier 3+) |
 | Documentation or other non-runtime files only | No browser section |
 
-The full suite includes all eight section scripts, so migration and broad changes cannot
+The full suite includes every section script, so migration and broad changes cannot
 silently omit operational RBAC coverage. The selector only chooses sections; it does not
 weaken each section's UI and direct-Supabase assertions.
 
@@ -127,6 +128,9 @@ growing an existing one indefinitely:
 - [history.smoke.ts](./scripts/history.smoke.ts) — History page filters, sort, paging,
   out-of-range filter, CSV export row count, viewer/volunteer visibility, and the
   `core.v_history_*` view grants.
+- [animal-setup.smoke.ts](./scripts/animal-setup.smoke.ts) — Animal setup add/move/retire/
+  reactivate, tank find-or-create from shelf position + size, lab-wide name uniqueness, the
+  volunteer 404, and the `retired_on` / `shelf_position` constraints.
 
 Run a single section directly by file path instead of the whole suite, e.g.
 `npx playwright test .github/skills/e2e-testing/scripts/daily-logging-forms.smoke.ts`.

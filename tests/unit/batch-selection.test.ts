@@ -14,8 +14,8 @@ import {
 } from "@/lib/daily-operations/batch-selection";
 
 const tanks: BatchScopeTank[] = [
-  { id: 10, name: "Middle", systemId: 1 },
-  { id: 11, name: "Small", systemId: 1 },
+  { id: 10, name: "Lower-9L", systemId: 1 },
+  { id: 11, name: "Lower-3L", systemId: 1 },
   { id: 20, name: "Other system tank", systemId: 2 },
 ];
 const animals: BatchScopeAnimal[] = [
