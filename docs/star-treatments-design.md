@@ -430,10 +430,9 @@ the result against the source CSVs.
   other-row update, and denied delete across ordinary operational logs.
 - **Role fixtures:** local seed now includes Admin, Technician, Volunteer, and Viewer. Keep
   the test-account documentation and role matrix aligned with those fixtures.
-- **Reference data in migrations:** systems/species, Graham tanks, and SSL25 are also
-  inserted by migrations. They are not historical operational logs, so do not mix their
-  relocation into this feature, but review them separately against the schema-only
-  migration convention.
+- **Reference data in migrations:** systems/species are inserted by migrations. Tanks and
+  animals (Graham tanks, SSL25) are entered through Settings > Animal setup; `supabase/seed.sql`
+  adds them as local-only e2e fixtures.
 - **Delete consequences:** treatment FKs with delete restriction mean systems/tanks/animals
   with treatment history cannot be hard-deleted through existing cascades. Prefer retiring
   roster/reference records over deleting them, and make admin UI errors explicit.
