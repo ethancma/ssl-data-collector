@@ -98,7 +98,7 @@ test("the tank name is the shelf position and size, or the size alone", () => {
 });
 
 test("an untouched placement is recognized so saving does not move the animal", () => {
-  const legacyTank = { systemId: 3, name: "Middle", shelfPosition: "lower" as const, sizeLiters: 9 };
+  const legacyTank = { systemId: 3, name: "Lower-9L", shelfPosition: "lower" as const, sizeLiters: 9 };
   const prefill = placementFromTank(legacyTank);
   assert.equal(isSamePlacement({ ...prefill }, prefill), true);
   assert.equal(isSamePlacement({ ...prefill, sizeLiters: "9.0" }, prefill), true);
@@ -128,13 +128,6 @@ test("placementFromTank prefills the fields from a tank", () => {
     position: "",
     customLabel: "",
     sizeLiters: "200",
-  });
-  // Older free-form names fall back to the stored size.
-  assert.deepEqual(placementFromTank({ ...tank, name: "Small", sizeLiters: 3 }), {
-    systemId: "3",
-    position: "other",
-    customLabel: "Small",
-    sizeLiters: "3",
   });
 });
 

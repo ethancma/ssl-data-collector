@@ -93,7 +93,7 @@ test("parseTankName reads the position prefix and size from the name", () => {
   assert.deepEqual(parseTankName("right 90L"), { position: "right", sizeLiters: 90 });
   assert.deepEqual(parseTankName("Left-90L"), { position: "left", sizeLiters: 90 });
   assert.deepEqual(parseTankName("200L"), { position: null, sizeLiters: 200 });
-  assert.deepEqual(parseTankName("Large"), { position: null, sizeLiters: null });
+  assert.deepEqual(parseTankName("Overflow"), { position: null, sizeLiters: null });
   assert.deepEqual(parseTankName("Lowerlevel 5"), { position: null, sizeLiters: null });
 });
 
@@ -135,7 +135,7 @@ test("the most specific schedule wins: position and size, position, size, then s
 
 test("listOverrideScopes offers positions, sizes within a multi-size position, and unprefixed sizes", () => {
   const scopes = listOverrideScopes(
-    ["Lower-14.6L", "Lower-3L", "Upper-30L", "Large"],
+    ["Lower-14.6L", "Lower-3L", "Upper-30L", "Overflow"],
     [],
   );
   assert.deepEqual(scopes.map(formatTankGroup), ["Lower", "Lower 3L", "Lower 14.6L", "Upper"]);
@@ -144,7 +144,7 @@ test("listOverrideScopes offers positions, sizes within a multi-size position, a
 });
 
 test("listOverrideScopes keeps saved overrides whose tanks were renamed", () => {
-  const scopes = listOverrideScopes(["Large"], [{ position: null, sizeLiters: null }, { position: "upper", sizeLiters: null }]);
+  const scopes = listOverrideScopes(["Overflow"], [{ position: null, sizeLiters: null }, { position: "upper", sizeLiters: null }]);
   assert.deepEqual(scopes.map(formatTankGroup), ["Upper"]);
 });
 

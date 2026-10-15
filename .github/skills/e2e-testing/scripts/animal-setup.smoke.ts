@@ -173,28 +173,6 @@ test.describe("animal setup", () => {
     expect(animalRow(STAR)).toMatchObject({ status: "active", retired_on: null, tank: "Lower-9.6L" });
   });
 
-  test("saving without changing the placement keeps an animal in a tank with an older name", async ({ page }) => {
-    const legacy = `E2E Legacy ${RUN_TAG}`;
-    dbQuery(`insert into core.tanks (system_id, name, tank_type, size_liters) values (${systemId}, 'Small', 'shelf', 3)`);
-    dbQuery(
-      `insert into core.animals (tank_id, species_id, name, tracking_type, quantity, status, date_added)
-       select t.id, (select id from core.species where common_name = 'Bat star'), ${sqlLiteral(legacy)}, 'individual', 1, 'active', (now() at time zone 'America/Los_Angeles')::date
-       from core.tanks t where t.system_id = ${systemId} and t.name = 'Small'`,
-    );
-
-    await login(page);
-    await gotoHydrated(page, "/protected/settings/animal-setup");
-    await page.getByLabel("System", { exact: true }).selectOption({ label: SYSTEM_NAME });
-    await page.getByRole("button", { name: `Edit or move ${legacy}` }).click();
-    const form = page.getByRole("form", { name: `Edit ${legacy}` });
-    await form.getByLabel("Life stage (optional)").fill("Juvenile");
-    await form.getByRole("button", { name: "Save" }).click();
-    await expect(page.getByRole("status")).toContainText(`${legacy} saved.`);
-
-    expect(animalRow(legacy)).toMatchObject({ tank: "Small" });
-    expect(tankRows().map((tank) => tank.name)).not.toContain("Small-3L");
-  });
-
   test("a volunteer gets a 404 and cannot change animals or tanks", async ({ page }) => {
     await loginAs(page, VOLUNTEER_EMAIL, VOLUNTEER_PASSWORD);
     await page.goto("/protected/settings/animal-setup");

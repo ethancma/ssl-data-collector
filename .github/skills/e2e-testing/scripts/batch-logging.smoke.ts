@@ -212,7 +212,7 @@ test.describe("Batch feeding UI", () => {
     expect(JSON.stringify(ledger[0].result)).toContain(String(rows[0].id));
   });
 
-  test("Middle-tank and single-animal scopes are represented by the UI", async ({ page }) => {
+  test("Tank and single-animal scopes are represented by the UI", async ({ page }) => {
     await openPage(page, ADMIN_EMAIL, ADMIN_PASSWORD, "feeding");
     await page.getByLabel("System", { exact: true }).selectOption(String(refs.systemId));
     await page.getByLabel("Tank", { exact: true }).selectOption(String(refs.middleTankId));
