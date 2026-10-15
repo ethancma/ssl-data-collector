@@ -156,7 +156,7 @@ for (const role of [
 
     test(`${role.label} AM check lands in daily_checks`, async ({ page }) => {
       await loginAs(page, role.email, role.password);
-      await page.goto(
+      await gotoHydrated(page, 
         `/protected/daily-operations?type=daily-check&system=${grahamSystemId}&check=AM`,
       );
       await page.getByLabel("Notes").fill(`${TAG} AM check`);
@@ -176,7 +176,7 @@ for (const role of [
 
     test(`${role.label} feeding log lands in feeding_logs`, async ({ page }) => {
       await loginAs(page, role.email, role.password);
-      await page.goto("/protected/daily-operations?type=feeding");
+      await gotoHydrated(page, "/protected/daily-operations?type=feeding");
       await logSingleFeeding(page, {
         systemId: ssl25SystemId,
         tankId: ssl25TankId,
@@ -208,7 +208,7 @@ for (const role of [
 
     test(`${role.label} PM check updates the tagged feeding row`, async ({ page }) => {
       await loginAs(page, role.email, role.password);
-      await page.goto(
+      await gotoHydrated(page, 
         `/protected/daily-operations?type=daily-check&system=${grahamSystemId}&check=PM`,
       );
       await expect(page.getByText("Consumption follow-up")).toBeVisible();
@@ -240,7 +240,7 @@ for (const role of [
       page,
     }) => {
       await loginAs(page, role.email, role.password);
-      await page.goto(
+      await gotoHydrated(page, 
         `/protected/daily-operations?type=water-quality&system=${grahamSystemId}`,
       );
       await page.getByRole("button", { name: "Apex probe" }).click();
@@ -272,7 +272,7 @@ for (const role of [
 
     test(`${role.label} chemical addition lands in chemical_additions`, async ({ page }) => {
       await loginAs(page, role.email, role.password);
-      await page.goto(
+      await gotoHydrated(page, 
         `/protected/daily-operations?type=chemical-addition&system=${grahamSystemId}`,
       );
       await page.getByRole("radio", { name: "Other", exact: true }).click();
@@ -295,7 +295,7 @@ for (const role of [
 
     test(`${role.label} health observation lands in health_observations`, async ({ page }) => {
       await loginAs(page, role.email, role.password);
-      await page.goto("/protected/daily-operations?type=health-observation");
+      await gotoHydrated(page, "/protected/daily-operations?type=health-observation");
       await page.getByLabel("Animal", { exact: true }).selectOption(String(ssl25AnimalId));
       await page.getByRole("button", { name: "Low" }).click();
       await page.getByLabel("Arm curling").check();
