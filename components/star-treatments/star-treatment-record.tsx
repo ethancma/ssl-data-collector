@@ -1,5 +1,6 @@
 "use client";
 
+import { HydratedForm } from "@/components/forms/hydrated-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -245,7 +246,7 @@ export function StarTreatmentRecord({
           </dl>
 
           {canEdit && (
-            <form
+            <HydratedForm
               onSubmit={handleSubmit(onUpdate)}
               className="flex max-w-lg flex-col gap-6"
               noValidate
@@ -414,7 +415,7 @@ export function StarTreatmentRecord({
             <Button type="submit" className="w-fit" disabled={isSubmitting}>
               {isSubmitting ? "Saving…" : "Save correction"}
             </Button>
-            </form>
+            </HydratedForm>
           )}
 
           {canDelete && (

@@ -1,5 +1,6 @@
 "use client";
 
+import { HydratedForm } from "@/components/forms/hydrated-form";
 import { Save, Trash2 } from "lucide-react";
 import { useState } from "react";
 
@@ -310,7 +311,7 @@ function TargetRangeEditor({
   };
 
   return (
-    <form
+    <HydratedForm
       aria-label={`${parameter.label} target for ${scopeName}`}
       className="grid gap-4 p-4 lg:grid-cols-[minmax(9rem,0.8fr)_minmax(0,1.5fr)_minmax(12rem,1fr)_auto] lg:items-start"
       onSubmit={saveTarget}
@@ -393,6 +394,6 @@ function TargetRangeEditor({
           </Button>
         )}
       </div>
-    </form>
+    </HydratedForm>
   );
 }

@@ -1,5 +1,6 @@
 "use client";
 
+import { HydratedForm } from "@/components/forms/hydrated-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import Link from "next/link";
 import { useEffect, useState } from "react";
@@ -241,7 +242,7 @@ export function StarTreatmentForm({
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-6" noValidate>
+        <HydratedForm onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-6" noValidate>
           <DateTimeFields
             idPrefix="star-treatment"
             date={register("date")}
@@ -416,7 +417,7 @@ export function StarTreatmentForm({
               <Link href="/protected/star-treatments">View treatments</Link>
             </Button>
           </div>
-        </form>
+        </HydratedForm>
       </CardContent>
     </Card>
   );

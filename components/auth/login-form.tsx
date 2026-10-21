@@ -1,5 +1,6 @@
 "use client";
 
+import { HydratedForm } from "@/components/forms/hydrated-form";
 import { cn } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -72,7 +73,7 @@ export function LoginForm({
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <form onSubmit={handleLogin}>
+          <HydratedForm onSubmit={handleLogin}>
             <div className="flex flex-col gap-6">
               <div className="grid gap-2">
                 <Label htmlFor="email">Email</Label>
@@ -114,7 +115,7 @@ export function LoginForm({
             <p className="mt-4 text-center text-sm text-muted-foreground">
               Access is by administrator invitation only.
             </p>
-          </form>
+          </HydratedForm>
         </CardContent>
       </Card>
     </div>

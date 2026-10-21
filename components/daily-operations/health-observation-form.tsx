@@ -1,5 +1,6 @@
 "use client";
 
+import { HydratedForm } from "@/components/forms/hydrated-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -163,7 +164,7 @@ export function HealthObservationForm({
         <CardDescription>Log an issue observed on an animal.</CardDescription>
       </CardHeader>
       <CardContent>
-        <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-6">
+        <HydratedForm onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-6">
           <input id="health-observation-tank" type="hidden" {...register("tankId")} />
 
           <DateTimeFields
@@ -284,7 +285,7 @@ export function HealthObservationForm({
           <Button type="submit" disabled={isSubmitting}>
             {isSubmitting ? "Saving…" : "Save observation"}
           </Button>
-        </form>
+        </HydratedForm>
       </CardContent>
     </Card>
   );

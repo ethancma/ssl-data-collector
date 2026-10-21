@@ -168,6 +168,50 @@ test.describe("e2e smoke", () => {
     expect(errorResponses).toEqual([]);
   });
 
+  test("daily check stays disabled until hydration and preserves entered values", async ({ page }) => {
+    await login(page);
+    const scriptPattern = "**/_next/static/**/*.js";
+    let releaseScripts!: () => void;
+    const scriptGate = new Promise<void>((resolve) => { releaseScripts = resolve; });
+    let heldScripts = 0;
+    await page.route(scriptPattern, async (route) => {
+      heldScripts += 1;
+      await scriptGate;
+      await route.continue();
+    });
+
+    try {
+      await page.goto(
+        `/protected/daily-operations?type=daily-check&system=${grahamSystemId}&check=AM`,
+        { waitUntil: "commit" },
+      );
+      await expect(page.getByLabel("Notes")).toBeDisabled();
+      await expect(page.getByLabel("Temperature (°C)")).toBeDisabled();
+      await expect(page.getByRole("button", { name: "Save check" })).toBeDisabled();
+      expect(heldScripts).toBeGreaterThan(0);
+      releaseScripts();
+      await expect(page.getByLabel("Notes")).toBeEnabled();
+      await page.getByLabel("Notes").fill(`${RUN_TAG} hydration check`);
+      await page.getByLabel("Temperature (°C)").fill("12.5");
+      const saveRequest = page.waitForRequest((request) =>
+        request.method() === "POST" && new URL(request.url()).pathname === "/rest/v1/daily_checks",
+      );
+      await page.getByRole("button", { name: "Save check" }).click();
+      expect((await saveRequest).postDataJSON()).toMatchObject({
+        notes: `${RUN_TAG} hydration check`,
+        temperature: 12.5,
+      });
+      await expect(page).toHaveURL(/\/protected\/home/);
+      const rows = dbQuery(`select notes, temperature from core.daily_checks
+        where notes = ${sqlLiteral(`${RUN_TAG} hydration check`)}`);
+      expect(rows).toHaveLength(1);
+      expect(Number(rows[0].temperature)).toBe(12.5);
+    } finally {
+      releaseScripts();
+      await page.unroute(scriptPattern);
+    }
+  });
+
   test("AM check for Graham lands in daily_checks", async ({ page }) => {
     await login(page);
     await page.goto(
@@ -175,7 +219,14 @@ test.describe("e2e smoke", () => {
     );
     await page.getByLabel("Notes").fill(`${RUN_TAG} AM check`);
     await page.getByLabel("Temperature (°C)").fill("12.5");
+    const saveRequest = page.waitForRequest((request) =>
+      request.method() === "POST" && new URL(request.url()).pathname === "/rest/v1/daily_checks",
+    );
     await page.getByRole("button", { name: "Save check" }).click();
+    expect((await saveRequest).postDataJSON()).toMatchObject({
+      notes: `${RUN_TAG} AM check`,
+      temperature: 12.5,
+    });
     await expect(page).toHaveURL(/\/protected\/home/);
 
     const rows = dbQuery(`
@@ -422,7 +473,7 @@ test.describe("e2e smoke", () => {
     await page.getByLabel("Arm curling").check();
     await page
       .locator("#health-observation-photo")
-      .setInputFiles(path.join(__dirname, "fixtures/test-photo.png"));
+      .setInputFiles(path.join(path.dirname(test.info().file), "fixtures/test-photo.png"));
     await page.getByLabel("Notes").fill(`${RUN_TAG} health obs with photo`);
     await page.getByRole("button", { name: "Save observation" }).click();
     await expect(page).toHaveURL(/\/protected\/home/);

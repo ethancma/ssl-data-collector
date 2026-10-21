@@ -1,5 +1,6 @@
 "use client";
 
+import { HydratedForm } from "@/components/forms/hydrated-form";
 import { Save, Trash2 } from "lucide-react";
 import { useState } from "react";
 
@@ -302,7 +303,7 @@ function ScheduleEditor({
   };
 
   return (
-    <form
+    <HydratedForm
       aria-labelledby={headingId}
       className="grid gap-4 p-4 lg:grid-cols-[minmax(10rem,0.8fr)_minmax(0,2.4fr)_auto] lg:items-start"
       onSubmit={submit}
@@ -355,6 +356,6 @@ function ScheduleEditor({
           </Button>
         )}
       </div>
-    </form>
+    </HydratedForm>
   );
 }

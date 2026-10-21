@@ -1,5 +1,6 @@
 "use client";
 
+import { HydratedForm } from "@/components/forms/hydrated-form";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -63,7 +64,7 @@ export function InvitationAcceptanceForm({ token }: { token: string }) {
 
   return (
     <div className="space-y-5">
-      <form onSubmit={submit} className="space-y-4">
+      <HydratedForm onSubmit={submit} className="flex flex-col gap-4">
         <div className="grid gap-2">
           <Label htmlFor="invite-password">Password</Label>
           <Input id="invite-password" type="password" autoComplete="new-password" required value={password} onChange={(event) => setPassword(event.target.value)} />
@@ -75,7 +76,7 @@ export function InvitationAcceptanceForm({ token }: { token: string }) {
         </div>
         {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
         <Button type="submit" className="w-full" disabled={isSubmitting}>{isSubmitting ? "Creating account..." : "Create account"}</Button>
-      </form>
+      </HydratedForm>
       <div className="relative text-center text-xs text-muted-foreground before:absolute before:inset-x-0 before:top-1/2 before:border-t"><span className="relative bg-card px-2">or</span></div>
       <Button type="button" variant="outline" className="w-full" disabled={isSubmitting} onClick={continueWithGoogle}>Continue with Google</Button>
     </div>

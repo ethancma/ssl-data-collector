@@ -1,5 +1,6 @@
 "use client";
 
+import { HydratedForm } from "@/components/forms/hydrated-form";
 import { Copy, RefreshCw, ShieldX } from "lucide-react";
 import { useEffect, useState } from "react";
 
@@ -133,7 +134,7 @@ export function AdminInvitationPanel() {
         <CardDescription>Create a link to share directly with the invited person.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-5">
-        <form className="flex flex-wrap items-end gap-3" onSubmit={(event) => void createInvite(event)}>
+        <HydratedForm className="flex flex-wrap items-end gap-3" onSubmit={(event) => void createInvite(event)}>
           <div className="grid min-w-56 flex-1 gap-2">
             <Label htmlFor="invite-email">Email</Label>
             <Input id="invite-email" type="email" required value={email} onChange={(event) => setEmail(event.target.value)} />
@@ -145,7 +146,7 @@ export function AdminInvitationPanel() {
             </select>
           </div>
           <Button type="submit" disabled={isSubmitting}>{isSubmitting ? "Creating..." : "Create invite"}</Button>
-        </form>
+        </HydratedForm>
         {link && (
           <div className="flex flex-col gap-2 rounded-md border bg-muted/30 p-3">
             <Label htmlFor="invite-link">Invite link</Label>

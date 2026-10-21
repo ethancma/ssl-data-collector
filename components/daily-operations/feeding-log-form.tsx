@@ -1,5 +1,6 @@
 "use client";
 
+import { HydratedForm } from "@/components/forms/hydrated-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -216,7 +217,7 @@ export function FeedingLogForm({
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-6" noValidate>
+        <HydratedForm onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-6" noValidate>
           <DateTimeFields
             idPrefix="feeding"
             date={register("date")}
@@ -309,7 +310,7 @@ export function FeedingLogForm({
               ? "Saving…"
               : `Save ${includedCount} ${includedCount === 1 ? "feeding" : "feedings"}`}
           </Button>
-        </form>
+        </HydratedForm>
       </CardContent>
     </Card>
   );

@@ -1,5 +1,6 @@
 "use client";
 
+import { HydratedForm } from "@/components/forms/hydrated-form";
 import { Archive, ArchiveRestore, Pencil, Save, Trash2, X } from "lucide-react";
 import { useState } from "react";
 
@@ -249,7 +250,7 @@ export function QuickPickCatalogItem({
 
   const isSaving = pendingAction === saveKey;
   return (
-    <form className="grid gap-3 p-4" onSubmit={save} noValidate aria-busy={isSaving}>
+    <HydratedForm className="grid gap-3 p-4" onSubmit={save} noValidate aria-busy={isSaving}>
       <div className={cn("grid gap-3", fieldGridClassName(config))}>
         <div className="grid gap-2">
           <Label htmlFor={`${idPrefix}-name`}>Name</Label>
@@ -305,6 +306,6 @@ export function QuickPickCatalogItem({
           <X aria-hidden="true" /> Cancel
         </Button>
       </div>
-    </form>
+    </HydratedForm>
   );
 }
