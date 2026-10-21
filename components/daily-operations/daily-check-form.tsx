@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/card";
 import { DateTimeFields } from "@/components/forms/date-time-fields";
 import { FieldError } from "@/components/forms/field-error";
+import { HydratedForm } from "@/components/forms/hydrated-form";
 import { Textarea } from "@/components/ui/textarea";
 import {
   getPacificDateString,
@@ -151,7 +152,7 @@ export function DailyCheckForm({
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-6">
+        <HydratedForm onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-6">
           <DateTimeFields
             idPrefix="daily-check"
             date={register("date")}
@@ -276,7 +277,7 @@ export function DailyCheckForm({
           <Button type="submit" disabled={isSubmitting}>
             {isSubmitting ? "Saving…" : "Save check"}
           </Button>
-        </form>
+        </HydratedForm>
       </CardContent>
     </Card>
   );

@@ -1,5 +1,6 @@
 "use client";
 
+import { HydratedForm } from "@/components/forms/hydrated-form";
 import { ArrowDown, ArrowUp, ChevronDown, ChevronLeft, ChevronRight, ChevronsUpDown, Download, Search, X } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 
@@ -157,7 +158,7 @@ export function FilterBar({ h }: { h: HistoryState }) {
         options={[{ value: "all", label: "Anyone" }, ...h.recorders.map((recorder) => ({ value: String(recorder.id), label: recorder.name }))]} />
       <FilterSelect label="Data source" value={params.source ?? "all"} onChange={(value) => update({ source: value })}
         options={[{ value: "all", label: "Any source" }, ...DATA_SOURCES.map((value) => ({ value, label: SOURCE_LABELS[value] }))]} />
-      <form role="search" className="relative inline-flex items-center" onSubmit={(event) => {
+      <HydratedForm role="search" className="relative inline-flex items-center" onSubmit={(event) => {
         event.preventDefault();
         update({ q: String(new FormData(event.currentTarget).get("q") ?? "").trim() });
       }}>
@@ -165,7 +166,7 @@ export function FilterBar({ h }: { h: HistoryState }) {
         <Search aria-hidden="true" className="pointer-events-none absolute left-3.5 h-4 w-4 text-muted-foreground" />
         <input key={params.q} id="history-search" name="q" type="search" defaultValue={params.q} placeholder="Search, then Enter" maxLength={100}
           className={cn(pillClass, "w-52 pl-10 placeholder:text-muted-foreground", focusClass)} />
-      </form>
+      </HydratedForm>
       <button type="button" aria-pressed={params.outOfRange} onClick={() => update({ oor: params.outOfRange ? null : "1" })} className={toggle(params.outOfRange)}>Out of range only</button>
       <div className="ml-auto"><ExportButton h={h} /></div>
     </div>

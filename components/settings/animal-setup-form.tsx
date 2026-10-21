@@ -1,5 +1,6 @@
 "use client";
 
+import { HydratedForm } from "@/components/forms/hydrated-form";
 import { Archive, Save, X } from "lucide-react";
 import { useId, useState } from "react";
 import type { ZodError } from "zod";
@@ -142,7 +143,7 @@ export function AnimalForm({
   };
 
   return (
-    <form
+    <HydratedForm
       aria-label={heading}
       className="grid gap-4 rounded-md border bg-muted/30 p-4"
       onSubmit={submit}
@@ -347,7 +348,7 @@ export function AnimalForm({
         disabled={disabled}
         onCancel={onCancel}
       />
-    </form>
+    </HydratedForm>
   );
 }
 
@@ -385,7 +386,7 @@ export function RetireForm({
   };
 
   return (
-    <form
+    <HydratedForm
       aria-label={`Retire ${animalName}`}
       className="grid gap-4 rounded-md border bg-muted/30 p-4"
       onSubmit={submit}
@@ -449,6 +450,6 @@ export function RetireForm({
         disabled={disabled}
         onCancel={onCancel}
       />
-    </form>
+    </HydratedForm>
   );
 }

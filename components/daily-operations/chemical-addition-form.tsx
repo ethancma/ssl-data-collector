@@ -1,5 +1,6 @@
 "use client";
 
+import { HydratedForm } from "@/components/forms/hydrated-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -158,7 +159,7 @@ export function ChemicalAdditionForm({
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-6">
+        <HydratedForm onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-6">
           <DateTimeFields
             idPrefix="chemical-addition"
             date={register("date")}
@@ -293,7 +294,7 @@ export function ChemicalAdditionForm({
           <Button type="submit" disabled={isSubmitting}>
             {isSubmitting ? "Saving…" : "Save system addition"}
           </Button>
-        </form>
+        </HydratedForm>
       </CardContent>
     </Card>
   );

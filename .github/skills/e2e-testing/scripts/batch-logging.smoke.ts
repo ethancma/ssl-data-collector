@@ -223,6 +223,23 @@ test.describe("Batch feeding UI", () => {
 
   test("Clear all disables save, reload resets checks, and system changes clear tank/animal", async ({ page }) => {
     await openPage(page, ADMIN_EMAIL, ADMIN_PASSWORD, "feeding");
+    const scriptPattern = "**/_next/static/**/*.js";
+    let releaseScripts!: () => void;
+    const scriptGate = new Promise<void>((resolve) => { releaseScripts = resolve; });
+    await page.route(scriptPattern, async (route) => {
+      await scriptGate;
+      await route.continue();
+    });
+    try {
+      await page.goto(`/protected/daily-operations?type=feeding&system=${refs.systemId}`, { waitUntil: "commit" });
+      await expect(page.getByRole("button", { name: "Clear all" })).toBeDisabled();
+      await expect(page.getByRole("button", { name: /Save \d+ feedings/ })).toBeDisabled();
+      releaseScripts();
+      await expect(page.getByRole("button", { name: "Clear all" })).toBeEnabled();
+    } finally {
+      releaseScripts();
+      await page.unroute(scriptPattern);
+    }
     await page.getByLabel("System", { exact: true }).selectOption(String(refs.systemId));
     await page.getByRole("button", { name: "Clear all" }).click();
     await expect(page.getByRole("button", { name: /Save \d+ feedings/ })).toBeDisabled();

@@ -121,7 +121,7 @@ export const db = SECRET_KEY
   : null;
 
 export async function login(page: Page) {
-  await page.goto("/auth/login");
+  await gotoHydrated(page, "/auth/login");
   await page.getByLabel("Email").fill(TECH_EMAIL);
   await page.getByLabel("Password").fill(TECH_PASSWORD);
   await page.getByRole("button", { name: /login/i }).click();
@@ -131,7 +131,7 @@ export async function login(page: Page) {
 }
 
 export async function loginAs(page: Page, email: string, password: string) {
-  await page.goto("/auth/login");
+  await gotoHydrated(page, "/auth/login");
   await page.getByLabel("Email").fill(email);
   await page.getByLabel("Password").fill(password);
   await page.getByRole("button", { name: /login/i }).click();

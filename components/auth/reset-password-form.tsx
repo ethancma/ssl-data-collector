@@ -1,5 +1,6 @@
 "use client";
 
+import { HydratedForm } from "@/components/forms/hydrated-form";
 import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -41,7 +42,7 @@ export function ResetPasswordForm({ tokenHash }: { tokenHash: string }) {
   }
 
   return (
-    <form onSubmit={submit} className="flex flex-col gap-4">
+    <HydratedForm onSubmit={submit} className="flex flex-col gap-4">
       <div className="grid gap-2">
         <Label htmlFor="new-password">New password</Label>
         <Input id="new-password" type="password" autoComplete="new-password" required minLength={12} maxLength={128} value={password} onChange={(event) => setPassword(event.target.value)} />
@@ -55,6 +56,6 @@ export function ResetPasswordForm({ tokenHash }: { tokenHash: string }) {
       <Button type="submit" disabled={isSubmitting || !tokenHash}>
         {isSubmitting ? "Updating..." : "Set password and continue"}
       </Button>
-    </form>
+    </HydratedForm>
   );
 }

@@ -1,5 +1,6 @@
 "use client";
 
+import { HydratedForm } from "@/components/forms/hydrated-form";
 import { Plus } from "lucide-react";
 import { useState } from "react";
 
@@ -169,7 +170,7 @@ function QuickPickCatalogSection({
           </div>
         )}
 
-        <form className="grid gap-3 border-t pt-5" onSubmit={addItem} noValidate>
+        <HydratedForm className="grid gap-3 border-t pt-5" onSubmit={addItem} noValidate>
           <h3 className="text-sm font-semibold">Add {config.title} quick pick</h3>
           <div className={cn("grid gap-3", fieldGridClassName(config))}>
             <div className="grid gap-2">
@@ -209,7 +210,7 @@ function QuickPickCatalogSection({
             <Plus aria-hidden="true" />
             {pending === createKey ? "Adding…" : `Add ${config.itemNoun}`}
           </Button>
-        </form>
+        </HydratedForm>
       </CardContent>
     </Card>
   );
