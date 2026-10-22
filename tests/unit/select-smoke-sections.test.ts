@@ -158,12 +158,22 @@ test("keeps ISeaU mock-data pages off the browser suite", () => {
 });
 
 test("escalates shared runtime files to the full suite", () => {
-  const selection = selectSmokeSections(["components/ui/button.tsx"]);
-  assert.equal(selection.escalatedToFullSuite, true);
-  assert.deepEqual(
-    selection.sections.map(({ id }) => id),
-    SMOKE_SECTIONS.map(({ id }) => id),
-  );
+  for (const file of [
+    "components/ui/button.tsx",
+    "vite.config.mts",
+    "vite.config.ts",
+    "wrangler.jsonc",
+    "wrangler.json",
+    "wrangler.toml",
+  ]) {
+    const selection = selectSmokeSections([file]);
+    assert.equal(selection.escalatedToFullSuite, true, file);
+    assert.deepEqual(
+      selection.sections.map(({ id }) => id),
+      SMOKE_SECTIONS.map(({ id }) => id),
+      file,
+    );
+  }
 });
 
 test("escalates migrations so role and RLS coverage cannot be omitted", () => {

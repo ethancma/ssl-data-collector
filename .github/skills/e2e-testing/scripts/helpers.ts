@@ -26,10 +26,10 @@ import {
   Worker,
 } from "node:worker_threads";
 import { expect, type Page, type Request } from "@playwright/test";
-import { loadEnvConfig } from "@next/env";
+import nextEnv from "@next/env";
 import { createClient } from "@supabase/supabase-js";
 
-loadEnvConfig(process.cwd());
+nextEnv.loadEnvConfig(process.cwd());
 
 const SUPABASE_URL =
   process.env.SUPABASE_URL ?? "https://bqylxmsifagnztxhixyl.supabase.co";

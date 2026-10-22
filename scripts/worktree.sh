@@ -59,7 +59,7 @@ setup() {
   port=$(sed -n 's/^PORT=//p' .env.local 2>/dev/null || true)
   port=${port:-$(free_port)}
   env=$(local_env)
-  printf 'PORT=%s\nE2E_RESET_DB=1\n%s\n' "$port" "$env" >.env.local
+  printf 'PORT=%s\nNEXT_PUBLIC_SITE_URL=http://localhost:%s\nE2E_RESET_DB=1\n%s\n' "$port" "$port" "$env" >.env.local
   echo "Ready. Dev server: npm run dev -- -p $port   E2E: npx playwright test <section>"
 }
 

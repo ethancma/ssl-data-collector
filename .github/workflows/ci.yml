@@ -4,15 +4,28 @@ on:
   pull_request:
   push:
     branches: [main]
+  workflow_call:
+    inputs:
+      release_target:
+        type: string
+        default: ci
+
+permissions:
+  contents: read
 
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-${{ github.workflow }}-${{ github.ref }}-${{ inputs.release_target || 'ci' }}
   cancel-in-progress: true
 
 jobs:
   verify:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    env:
+      NEXT_PUBLIC_SUPABASE_URL: http://127.0.0.1:54321
+      NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: build-placeholder
+      NEXT_PUBLIC_SITE_URL: http://localhost:3000
+      SUPABASE_SECRET_KEY: ci-build-only-secret-sentinel-not-a-credential
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -23,14 +36,19 @@ jobs:
       - run: npm run verify
       - run: npm run check:dead-code
       - run: npm run build
-        env:
-          NEXT_PUBLIC_SUPABASE_URL: http://127.0.0.1:54321
-          NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: build-placeholder
-          NEXT_PUBLIC_SITE_URL: https://ssl-data-collector.ssl-lab.workers.dev
+      - run: npm run build:vinext
+      - name: Check build output for secret leakage
+        run: |
+          test ! -f dist/server/.dev.vars
+          npm run check:client-secrets -- .next/static dist/client
+      - run: npm run check:cloudflare
 
   e2e:
-    if: github.event_name == 'pull_request'
     needs: verify
+    strategy:
+      fail-fast: false
+      matrix:
+        runtime: [next, worker]
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -42,11 +60,17 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - name: Select e2e sections for the PR's changed files
+      - name: Select e2e sections
         id: plan
+        env:
+          BASE_REF: ${{ github.base_ref }}
         run: |
-          git diff --name-only "origin/${{ github.base_ref }}...HEAD" > changed.txt
-          npm run -s test:e2e:plan -- --files $(cat changed.txt) | tee plan.txt
+          if [ -n "$BASE_REF" ]; then
+            git diff --name-only "origin/$BASE_REF...HEAD" > changed.txt
+            npm run -s test:e2e:plan -- --files $(cat changed.txt) | tee plan.txt
+          else
+            npm run -s test:e2e:plan -- --full | tee plan.txt
+          fi
           grep -q "Selected smoke sections: none" plan.txt && echo "skip=true" >> "$GITHUB_OUTPUT" || true
       - name: Start local Supabase (migrations + seed)
         if: steps.plan.outputs.skip != 'true'
@@ -55,20 +79,43 @@ jobs:
           npm run -s wt -- env >> "$GITHUB_ENV"
       - name: Start the app
         if: steps.plan.outputs.skip != 'true'
+        env:
+          APP_RUNTIME: ${{ matrix.runtime }}
         run: |
+          set -euo pipefail
           npx playwright install --with-deps chromium
+          echo "NEXT_PUBLIC_SITE_URL=http://localhost:3000" >> "$GITHUB_ENV"
           export NEXT_PUBLIC_SITE_URL=http://localhost:3000
-          npm run -s build > build.log 2>&1 || { cat build.log; exit 1; }
-          npx next start -p 3000 > next.log 2>&1 &
-          for _ in $(seq 1 60); do curl -sf http://localhost:3000/auth/login > /dev/null && break; sleep 2; done
+          if [ "$APP_RUNTIME" = next ]; then
+            npm run -s build > build.log 2>&1 || { cat build.log; exit 1; }
+            npm run -s start -- -p 3000 > app.log 2>&1 &
+          else
+            SUPABASE_SECRET_KEY=ci-build-only-secret-sentinel-not-a-credential \
+              npm run -s build:vinext > build.log 2>&1 || { cat build.log; exit 1; }
+            SUPABASE_SECRET_KEY=ci-build-only-secret-sentinel-not-a-credential \
+              npm run -s check:client-secrets -- dist/client
+            npm run -s preview:cloudflare -- --port 3000 > app.log 2>&1 &
+          fi
+          for _ in $(seq 1 60); do
+            if curl -sf http://localhost:3000/auth/login > /dev/null; then exit 0; fi
+            sleep 2
+          done
+          cat app.log
+          exit 1
       - name: Run selected e2e sections
         if: steps.plan.outputs.skip != 'true'
-        run: npm run -s test:e2e:plan -- --files $(cat changed.txt) --run
+        run: |
+          if [ -f changed.txt ]; then
+            npm run -s test:e2e:plan -- --files $(cat changed.txt) --run
+          else
+            npm run -s test:e2e:plan -- --full --run
+          fi
       - if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: e2e-results
+          name: e2e-results-${{ matrix.runtime }}
           path: |
             test-results/
-            next.log
+            app.log
+            build.log
           retention-days: 7
