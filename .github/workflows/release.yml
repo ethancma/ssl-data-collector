@@ -1,0 +1,89 @@
+name: Release Worker
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: Protected GitHub environment to release
+        required: true
+        default: staging
+        type: choice
+        options: [staging, production]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ inputs.target }}
+  cancel-in-progress: false
+
+jobs:
+  checks:
+    if: github.ref == 'refs/heads/main'
+    uses: ./.github/workflows/ci.yml
+    with:
+      release_target: ${{ inputs.target }}
+
+  deploy:
+    needs: checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: ${{ inputs.target }}
+    env:
+      WORKER_NAME: ${{ inputs.target == 'production' && 'ssl-data-collector' || 'ssl-data-collector-staging' }}
+      NEXT_PUBLIC_SITE_URL: ${{ inputs.target == 'production' && 'https://ssl-data-collector.ssl-lab.workers.dev' || 'https://ssl-data-collector-staging.ssl-lab.workers.dev' }}
+      NEXT_PUBLIC_SUPABASE_URL: ${{ vars.NEXT_PUBLIC_SUPABASE_URL }}
+      NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${{ vars.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY }}
+      PRODUCTION_SUPABASE_URL: ${{ vars.PRODUCTION_SUPABASE_URL }}
+      RELEASE_TARGET: ${{ inputs.target }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Require the tested current main commit and isolated configuration
+        run: |
+          git fetch origin main
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
+          node --input-type=module <<'JS'
+          const env = process.env;
+          for (const name of ["NEXT_PUBLIC_SUPABASE_URL", "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY", "PRODUCTION_SUPABASE_URL", "CLOUDFLARE_ACCOUNT_ID"]) {
+            if (!env[name]) throw new Error(`Missing release variable: ${name}`);
+          }
+          const url = new URL(env.NEXT_PUBLIC_SUPABASE_URL);
+          if (url.protocol !== "https:" || url.pathname !== "/" || url.search || url.hash || url.username || url.password) {
+            throw new Error("Release Supabase URL must be an HTTPS origin.");
+          }
+          const productionOrigin = new URL(env.PRODUCTION_SUPABASE_URL).origin;
+          if ((env.RELEASE_TARGET === "production") !== (url.origin === productionOrigin)) {
+            throw new Error("Supabase project does not match the selected release environment.");
+          }
+          JS
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Build without production server secrets and scan browser assets
+        env:
+          SUPABASE_SECRET_KEY: ci-build-only-secret-sentinel-not-a-credential
+        run: |
+          npm run build:vinext
+          test ! -f dist/server/.dev.vars
+          npm run check:client-secrets -- dist/client
+          npm run check:cloudflare
+      - name: Require a pre-provisioned Worker runtime secret
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          test -n "$CLOUDFLARE_API_TOKEN"
+          npx wrangler secret list --name "$WORKER_NAME" > worker-secrets.json
+          node --input-type=module <<'JS'
+          import { readFileSync } from "node:fs";
+          const secrets = JSON.parse(readFileSync("worker-secrets.json", "utf8"));
+          if (!secrets.some(({ name }) => name === "SUPABASE_SECRET_KEY")) {
+            throw new Error("Provision SUPABASE_SECRET_KEY on this Worker before releasing.");
+          }
+          JS
+      - name: Deploy the compiled Worker
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: npx wrangler deploy --config dist/server/wrangler.json --name "$WORKER_NAME" --keep-vars

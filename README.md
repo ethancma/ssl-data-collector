@@ -21,7 +21,11 @@ The authoritative list of delivered work, integrity fixes, remaining features, a
 decisions is [docs/implementation-checklist.md](docs/implementation-checklist.md).
 
 ## Stack
-Next.js + TypeScript + Supabase (Postgres, Auth, Storage, RLS), deployed to Vercel.
+Next.js + TypeScript + Supabase (Postgres, Auth, Storage, RLS). Standard Next.js
+remains supported; a pinned vinext/Vite build targets Cloudflare Workers.
+See [the Workers deployment runbook](docs/workers-deployment.md) for local
+verification, isolated staging, manual releases, and rollback. Production launch
+still requires hosted validation and human approval.
 
 ## File map
 

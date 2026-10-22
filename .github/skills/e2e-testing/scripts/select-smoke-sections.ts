@@ -189,7 +189,7 @@ const rules: SelectionRule[] = [
     matches: (file) =>
       /^components\/ui\//.test(file) ||
       /^lib\/(config|supabase)\//.test(file) ||
-      /^(components\.json|package(-lock)?\.json|next\.config\.ts|postcss\.config\.mjs|proxy\.ts|tailwind\.config\.ts)$/.test(
+      /^(components\.json|package(-lock)?\.json|next\.config\.ts|postcss\.config\.mjs|proxy\.ts|tailwind\.config\.ts|vite\.config\.[cm]?[jt]s|wrangler\.(jsonc?|toml))$/.test(
         file,
       ) ||
       /^app\/(globals\.css|layout\.tsx|page\.tsx)$/.test(file),
@@ -318,7 +318,7 @@ function printSelection(selection: SmokeSelection, full: boolean, run: boolean):
     }
   }
   console.log(
-    `Command: npx playwright test ${selection.sections.map(({ file }) => file).join(" ")}`,
+    `Command: npm run test:e2e:full -- ${selection.sections.map(({ file }) => file).join(" ")}`,
   );
 }
 
@@ -340,8 +340,8 @@ function main(): void {
     if (!options.run || selection.sections.length === 0) return;
 
     const result = spawnSync(
-      "npx",
-      ["playwright", "test", ...selection.sections.map(({ file }) => file)],
+      "npm",
+      ["run", "test:e2e:full", "--", ...selection.sections.map(({ file }) => file)],
       { stdio: "inherit" },
     );
     process.exitCode = result.status ?? 1;

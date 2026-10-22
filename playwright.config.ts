@@ -1,7 +1,7 @@
-import { loadEnvConfig } from "@next/env";
+import nextEnv from "@next/env";
 import { defineConfig } from "@playwright/test";
 
-loadEnvConfig(process.cwd());
+nextEnv.loadEnvConfig(process.cwd());
 
 // Reuses an already-running dev server (:3000, or the worktree's PORT) — never starts/stops it (see AGENTS.md).
 export default defineConfig({

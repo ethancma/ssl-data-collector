@@ -1,10 +1,16 @@
 {
   "name": "ssl-data-collection",
   "private": true,
+  "type": "module",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
+    "dev:vinext": "vite dev",
+    "build:vinext": "vite build",
+    "preview:cloudflare": "wrangler dev --config dist/server/wrangler.json --local",
+    "check:cloudflare": "wrangler deploy --config dist/server/wrangler.json --dry-run",
+    "check:client-secrets": "node scripts/check-client-secrets.mjs",
     "lint": "eslint .",
     "typecheck": "next typegen && tsc --noEmit",
     "verify": "npm run -s typecheck && npm run -s lint && npm run -s test:unit",
@@ -12,7 +18,7 @@
     "check:dead-code": "knip --reporter compact",
     "test:unit": "tsx --test tests/unit/*.test.ts",
     "test:e2e:plan": "tsx .github/skills/e2e-testing/scripts/select-smoke-sections.ts",
-    "test:e2e:full": "playwright test",
+    "test:e2e:full": "node --import tsx node_modules/@playwright/test/cli.js test",
     "test:e2e:cleanup": "tsx .github/skills/e2e-testing/scripts/global-teardown.ts"
   },
   "dependencies": {
@@ -27,19 +33,24 @@
     "lucide-react": "^0.511.0",
     "next": "latest",
     "next-themes": "^0.4.6",
-    "react": "^19.0.0",
-    "react-dom": "^19.0.0",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "react-server-dom-webpack": "19.3.1",
     "react-hook-form": "^7.87.0",
     "tailwind-merge": "^3.3.0",
+    "vinext": "1.3.0",
     "zod": "^4.5.4"
   },
   "devDependencies": {
+    "@cloudflare/vite-plugin": "1.64.0",
     "@eslint/eslintrc": "^3",
     "@next/env": "16.3.4",
     "@playwright/test": "^1.63.0",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@vitejs/plugin-react": "6.1.2",
+    "@vitejs/plugin-rsc": "0.5.38",
     "autoprefixer": "^10.4.20",
     "eslint": "^9",
     "eslint-config-next": "15.3.1",
@@ -51,7 +62,9 @@
     "tailwindcss": "^3.4.1",
     "tailwindcss-animate": "^1.0.7",
     "tsx": "4.23.15",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vite": "8.3.5",
+    "wrangler": "4.151.3"
   },
   "knip": {
     "entry": [

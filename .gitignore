@@ -43,6 +43,9 @@ yarn-error.log*
 .dev.vars*
 .wrangler/
 .open-next/
+/dist/
+/.cloudflare/
+/.vinext/
 
 # typescript
 *.tsbuildinfo
