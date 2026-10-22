@@ -7,6 +7,7 @@ import {
   hashInvitationToken,
 } from "@/lib/invitations";
 import { PROFILE_ROLES, type ProfileRole } from "@/lib/config/reference-data";
+import { getSiteOrigin, isSameSiteOrigin } from "@/lib/site-origin";
 import { createClient } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
@@ -88,7 +89,7 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
-  if (request.headers.get("origin") !== request.nextUrl.origin) {
+  if (!isSameSiteOrigin(request.headers.get("origin"))) {
     return errorResponse("Invalid request origin.", 403);
   }
 
@@ -169,7 +170,7 @@ export async function POST(request: NextRequest) {
     if (!input) return errorResponse("Enter a valid email and role.");
     if (input.role === "admin" && !body.confirmAdmin) return errorResponse("Confirm Admin access.");
     try {
-      const result = await createInvitation(request.nextUrl.origin, admin.user.id, input.email, input.role);
+      const result = await createInvitation(getSiteOrigin(), admin.user.id, input.email, input.role);
       if (result.error) return rpcErrorResponse(result.error);
       return NextResponse.json({ invitation: { id: result.invitationId, email: input.email, role: input.role }, link: result.link }, { headers: { "Cache-Control": "no-store" } });
     } catch {
@@ -188,7 +189,7 @@ export async function POST(request: NextRequest) {
       const { data: oldInvite, error: lookupError } = await privileged
         .from("invitations").select("email, role").eq("id", body.id).maybeSingle();
       if (lookupError || !oldInvite) return errorResponse("Invitation could not be regenerated.", 404);
-      const result = await createInvitation(request.nextUrl.origin, admin.user.id, oldInvite.email, oldInvite.role as ProfileRole);
+      const result = await createInvitation(getSiteOrigin(), admin.user.id, oldInvite.email, oldInvite.role as ProfileRole);
       if (result.error) return rpcErrorResponse(result.error);
       return NextResponse.json({ invitation: { id: result.invitationId, email: oldInvite.email, role: oldInvite.role }, link: result.link }, { headers: { "Cache-Control": "no-store" } });
     } catch {
@@ -200,7 +201,7 @@ export async function POST(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
-  if (request.headers.get("origin") !== request.nextUrl.origin) return errorResponse("Invalid request origin.", 403);
+  if (!isSameSiteOrigin(request.headers.get("origin"))) return errorResponse("Invalid request origin.", 403);
   const admin = await getAdmin();
   if ("response" in admin) return admin.response;
   const id = Number(request.nextUrl.searchParams.get("id"));

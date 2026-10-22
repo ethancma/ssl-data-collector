@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createServiceRoleClient } from "@/lib/invitations";
 import { createClient } from "@/lib/supabase/server";
+import { isSameSiteOrigin } from "@/lib/site-origin";
 import { canResumeUser, findAuthUserByEmail, getInvitationByToken, isOpenInvitation, isValidInvitationToken } from "@/app/invite/invitation-server";
 
 export const runtime = "nodejs";
@@ -10,7 +11,7 @@ function errorResponse(message: string, status = 400) {
 }
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ token: string }> }) {
-  if (request.headers.get("origin") !== request.nextUrl.origin) return errorResponse("Invalid request origin.", 403);
+  if (!isSameSiteOrigin(request.headers.get("origin"))) return errorResponse("Invalid request origin.", 403);
   const { token } = await params;
   let body: { password?: unknown };
   try { body = await request.json(); } catch { return errorResponse("Invalid request."); }
