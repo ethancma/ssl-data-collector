@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 
 import { createServiceRoleClient } from "@/lib/invitations";
 import { createClient } from "@/lib/supabase/server";
+import { getSiteOrigin, isSameSiteOrigin } from "@/lib/site-origin";
 
 export const runtime = "nodejs";
 
@@ -32,7 +33,7 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  if (request.headers.get("origin") !== request.nextUrl.origin) {
+  if (!isSameSiteOrigin(request.headers.get("origin"))) {
     return errorResponse("Invalid request origin.", 403);
   }
 
@@ -58,7 +59,7 @@ export async function POST(
     const hashedToken = data?.properties?.hashed_token;
     if (error || !hashedToken) return errorResponse("Reset link could not be generated. Retry later.", 503);
 
-    const link = `${request.nextUrl.origin}/auth/reset?token_hash=${encodeURIComponent(hashedToken)}&type=recovery`;
+    const link = `${getSiteOrigin()}/auth/reset?token_hash=${encodeURIComponent(hashedToken)}&type=recovery`;
     return NextResponse.json({ link }, { headers: { "Cache-Control": "no-store" } });
   } catch {
     return errorResponse("Reset service is unavailable. Retry later.", 503);

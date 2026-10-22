@@ -4,7 +4,10 @@ import {
   PROFILE_ROLES,
   type ProfileRole,
 } from "@/lib/config/reference-data";
+import { getSiteOrigin } from "@/lib/site-origin";
 import { hasEnvVars } from "../utils";
+
+const NO_STORE = "private, no-store, max-age=0";
 
 type AuthoritativeProfile = {
   role: string | null;
@@ -45,6 +48,11 @@ export function getRoleClaimAction(
 
 function redirectWithCookies(url: URL, response: NextResponse) {
   const redirectResponse = NextResponse.redirect(url);
+  const cacheControl = response.headers.get("Cache-Control");
+  if (cacheControl) {
+    redirectResponse.headers.set("Cache-Control", cacheControl);
+  }
+  redirectResponse.headers.set("Referrer-Policy", "no-referrer");
   response.cookies.getAll().forEach((cookie) =>
     redirectResponse.cookies.set(cookie),
   );
@@ -55,9 +63,8 @@ export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({
     request,
   });
+  supabaseResponse.headers.set("Cache-Control", NO_STORE);
 
-  // If the env vars are not set, skip proxy check. You can remove this
-  // once you setup the project.
   if (!hasEnvVars) {
     return supabaseResponse;
   }
@@ -77,9 +84,14 @@ export async function updateSession(request: NextRequest) {
           cookiesToSet.forEach(({ name, value }) =>
             request.cookies.set(name, value),
           );
+          const previousResponse = supabaseResponse;
           supabaseResponse = NextResponse.next({
             request,
           });
+          supabaseResponse.headers.set("Cache-Control", NO_STORE);
+          previousResponse.cookies.getAll().forEach((cookie) =>
+            supabaseResponse.cookies.set(cookie),
+          );
           cookiesToSet.forEach(({ name, value, options }) =>
             supabaseResponse.cookies.set(name, value, options),
           );
@@ -102,7 +114,10 @@ export async function updateSession(request: NextRequest) {
       return supabaseResponse;
     }
 
-    const url = request.nextUrl.clone();
+    const url = new URL(
+      `${request.nextUrl.pathname}${request.nextUrl.search}`,
+      getSiteOrigin(),
+    );
     url.pathname = "/auth/login";
     return redirectWithCookies(url, supabaseResponse);
   }
@@ -130,7 +145,11 @@ export async function updateSession(request: NextRequest) {
           true,
         ) === "continue"
       ) {
-        return redirectWithCookies(request.nextUrl.clone(), supabaseResponse);
+        const url = new URL(
+          `${request.nextUrl.pathname}${request.nextUrl.search}`,
+          getSiteOrigin(),
+        );
+        return redirectWithCookies(url, supabaseResponse);
       }
     }
 
@@ -140,7 +159,10 @@ export async function updateSession(request: NextRequest) {
       return supabaseResponse;
     }
 
-    const url = request.nextUrl.clone();
+    const url = new URL(
+      `${request.nextUrl.pathname}${request.nextUrl.search}`,
+      getSiteOrigin(),
+    );
     url.pathname = "/auth/login";
     return redirectWithCookies(url, supabaseResponse);
   }

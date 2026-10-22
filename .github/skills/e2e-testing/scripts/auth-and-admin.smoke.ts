@@ -6,6 +6,7 @@ import { test, expect, type Page } from "@playwright/test";
 import {
   ADMIN_EMAIL,
   ADMIN_PASSWORD,
+  BASE_URL,
   cleanupStep,
   db,
   dbQuery,
@@ -91,6 +92,54 @@ test.describe("proxy role claim refresh policy", () => {
     expect(isPublicPath("/invitations")).toBe(false);
     expect(isPublicPath("/authenticated-preview")).toBe(false);
     expect(isPublicPath("/protected")).toBe(false);
+  });
+
+  test("rejects untrusted or missing origins before processing password resets", async ({
+    request,
+  }) => {
+    const endpoint = `${BASE_URL}/auth/reset/submit`;
+    for (const origin of ["https://attacker.example", undefined]) {
+      const response = await request.post(endpoint, {
+        ...(origin ? { headers: { origin } } : {}),
+        data: {},
+      });
+      expect(response.status()).toBe(403);
+      await expect(response.json()).resolves.toEqual({
+        error: "Invalid request origin.",
+      });
+    }
+
+    const trustedResponse = await request.post(endpoint, {
+      headers: { origin: new URL(BASE_URL).origin },
+      data: {},
+    });
+    expect(trustedResponse.status()).toBe(410);
+  });
+
+  test("redirects unauthenticated protected requests without caching", async ({
+    request,
+  }) => {
+    const response = await request.get(`${BASE_URL}/protected/home`, {
+      maxRedirects: 0,
+    });
+    expect(response.status()).toBe(307);
+    expect(response.headers()["cache-control"]).toMatch(/private.*no-store/);
+    expect(response.headers()["referrer-policy"]).toBe("no-referrer");
+    expect(new URL(response.headers().location!, BASE_URL).origin).toBe(
+      new URL(BASE_URL).origin,
+    );
+
+    const untrustedHostResponse = await request.get(
+      `${BASE_URL}/protected/home`,
+      {
+        headers: { host: "attacker.example" },
+        maxRedirects: 0,
+      },
+    );
+    expect(untrustedHostResponse.status()).toBe(307);
+    expect(
+      new URL(untrustedHostResponse.headers().location!, BASE_URL).origin,
+    ).toBe(new URL(BASE_URL).origin);
   });
 });
 

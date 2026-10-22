@@ -35,15 +35,6 @@ export function isOpenInvitation(invitation: Invitation | null): invitation is I
   );
 }
 
-export function safeNext(value: unknown) {
-  return typeof value === "string"
-    && value.startsWith("/")
-    && !value.startsWith("//")
-    && !value.includes("\\")
-    ? value
-    : "/protected/home";
-}
-
 export function publicInvitationError() {
   return "This invitation is invalid, expired, revoked, or already accepted.";
 }

@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 
 import { createClient } from "@/lib/supabase/server";
+import { getSiteOrigin, isSameSiteOrigin } from "@/lib/site-origin";
 
 export const runtime = "nodejs";
 
@@ -12,7 +13,7 @@ function failure(message: string, status = 400) {
 }
 
 export async function POST(request: NextRequest) {
-  if (request.headers.get("origin") !== request.nextUrl.origin) {
+  if (!isSameSiteOrigin(request.headers.get("origin"))) {
     return failure("Invalid request origin.", 403);
   }
 
@@ -42,8 +43,8 @@ export async function POST(request: NextRequest) {
   const { error: updateError } = await supabase.auth.updateUser({ password });
   if (updateError) return failure("Password could not be updated. Check the requirements and retry.");
 
-  return NextResponse.redirect(new URL("/protected/home", request.nextUrl.origin), {
+  return NextResponse.redirect(new URL("/protected/home", getSiteOrigin()), {
     status: 303,
-    headers: { "Cache-Control": "no-store", "Referrer-Policy": "no-referrer" },
+    headers: { "Cache-Control": "private, no-store, max-age=0", "Referrer-Policy": "no-referrer" },
   });
 }

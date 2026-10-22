@@ -1,13 +1,14 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createServiceRoleClient } from "@/lib/invitations";
 import { createClient } from "@/lib/supabase/server";
-import { canResumeUser, findAuthUserByEmail, getInvitationByToken, isOpenInvitation, isValidInvitationToken, safeNext } from "@/app/invite/invitation-server";
+import { getSiteOrigin, isSameSiteOrigin, safeRedirectPath } from "@/lib/site-origin";
+import { canResumeUser, findAuthUserByEmail, getInvitationByToken, isOpenInvitation, isValidInvitationToken } from "@/app/invite/invitation-server";
 
 export const runtime = "nodejs";
 const INVITE_COOKIE = "ssl_invite_acceptance";
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ token: string }> }) {
-  if (request.headers.get("origin") !== request.nextUrl.origin) return NextResponse.json({ error: "Invalid request origin." }, { status: 403 });
+  if (!isSameSiteOrigin(request.headers.get("origin"))) return NextResponse.json({ error: "Invalid request origin." }, { status: 403 });
   const { token } = await params;
   let body: { next?: unknown };
   try { body = await request.json(); } catch { return NextResponse.json({ error: "Invalid request." }, { status: 400 }); }
@@ -22,10 +23,10 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const user = existing ?? (await admin.createUser({ email: invitation.email, email_confirm: true })).data.user;
     if (!user) return NextResponse.json({ error: "Could not prepare the invited account. Retry later." }, { status: 503 });
     const supabase = await createClient();
-    const { data, error } = await supabase.auth.signInWithOAuth({ provider: "google", options: { redirectTo: `${request.nextUrl.origin}/auth/callback` } });
+    const { data, error } = await supabase.auth.signInWithOAuth({ provider: "google", options: { redirectTo: `${getSiteOrigin()}/auth/callback` } });
     if (error || !data.url) return NextResponse.json({ error: "Google sign-in is not available yet." }, { status: 503 });
     const response = NextResponse.json({ url: data.url }, { headers: { "Cache-Control": "no-store" } });
-    response.cookies.set(INVITE_COOKIE, JSON.stringify({ id: invitation.id, next: safeNext(body.next) }), {
+    response.cookies.set(INVITE_COOKIE, JSON.stringify({ id: invitation.id, next: safeRedirectPath(body.next) }), {
       httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "lax", maxAge: 600, path: "/",
     });
     return response;
