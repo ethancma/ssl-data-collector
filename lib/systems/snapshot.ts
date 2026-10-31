@@ -1,4 +1,4 @@
-import { WATER_QUALITY_PARAMS, type WaterQualityParameter } from "@/lib/config/reference-data";
+import { WATER_QUALITY_PARAMS, severityStatus, type WaterQualityParameter } from "@/lib/config/reference-data";
 import {
   formatWaterQualityTarget,
   isWaterQualityValueOutOfRange,
@@ -15,7 +15,7 @@ const HEALTH_WINDOW_DAYS = 14;
 
 export type SnapshotStatus = "ok" | "watch" | "attention";
 export type CheckState = "done" | "due" | "missed";
-type Severity = "low" | "medium" | "high";
+type Severity = number;
 
 type Concern = {
   kind: "check_missed" | "water_off" | "health" | "out_of_range" | "yesterday_missed" | "feeding_overdue";
@@ -146,13 +146,13 @@ export function deriveSystemSnapshot(input: SystemSnapshotInput): SystemSnapshot
 
   const cutoffKey = addPacificCalendarDays(todayKey, -HEALTH_WINDOW_DAYS);
   const serious = input.healthObservations
-    .filter((entry) => entry.severity !== "low" && pacificDateKey(entry.observedAt) >= cutoffKey)
-    .sort((a, b) => (a.severity === b.severity ? b.observedAt.localeCompare(a.observedAt) : a.severity === "high" ? -1 : 1))[0];
+    .filter((entry) => severityStatus(entry.severity) !== "ok" && pacificDateKey(entry.observedAt) >= cutoffKey)
+    .sort((a, b) => b.severity - a.severity || b.observedAt.localeCompare(a.observedAt))[0];
   if (serious) {
     concerns.push({
       kind: "health",
-      status: serious.severity === "high" ? "attention" : "watch",
-      text: `${serious.severity === "high" ? "High" : "Medium"}-severity health observation ${relativeDays(serious.observedAt, now)}`,
+      status: severityStatus(serious.severity) === "attention" ? "attention" : "watch",
+      text: `Severity ${serious.severity} health observation ${relativeDays(serious.observedAt, now)}`,
     });
   }
 

@@ -5,6 +5,7 @@ import { X } from "lucide-react";
 import { useEffect, useRef, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
 import { formatPacificDateTime } from "@/lib/pacific-date-time";
+import { severityTone } from "./severity-tone";
 import {
   RANGES, SYSTEMS, currentLocation, daysSince, isCurrent, lastHealth, lastTemperature, trend,
   type Severity, type Star,
@@ -21,28 +22,22 @@ export function relativeDay(time: number) {
   return days <= 0 ? "today" : days === 1 ? "yesterday" : `${days} days ago`;
 }
 
-// Severity keeps fixed hues in both themes so a coral dot always means "high".
-export const SEVERITY = {
-  low: { label: "Low", bg: "bg-teal-500", text: "text-teal-500" },
-  medium: { label: "Medium", bg: "bg-amber-400", text: "text-amber-400" },
-  high: { label: "High", bg: "bg-red-500", text: "text-red-500" },
-} satisfies Record<Severity, { label: string; bg: string; text: string }>;
 
 function SeverityDot({ severity, className }: { severity: Severity; className?: string }) {
-  return <span aria-hidden="true" className={cn("inline-block h-2.5 w-2.5 shrink-0 rounded-full", SEVERITY[severity].bg, className)} />;
+  return <span aria-hidden="true" className={cn("inline-block h-2.5 w-2.5 shrink-0 rounded-full", severityTone(severity).bg, className)} />;
 }
 export function SeverityLabel({ severity }: { severity: Severity }) {
-  return <span className="inline-flex items-center gap-2"><SeverityDot severity={severity} />{SEVERITY[severity].label} severity</span>;
+  return <span className="inline-flex items-center gap-2"><SeverityDot severity={severity} />Severity {severity}</span>;
 }
 
 export function starSentence(star: Star) {
   const latest = lastHealth(star);
   if (!isCurrent(star)) return `No health observations for ${daysSince(latest.at)} days.`;
-  const level = SEVERITY[latest.severity].label.toLowerCase();
+  const level = latest.severity;
   switch (trend(star)) {
-    case "improving": return `${star.name} is improving, down to ${level} severity.`;
-    case "worsening": return `${star.name} is getting worse, now at ${level} severity.`;
-    case "steady": return `${star.name} is holding steady at ${level} severity.`;
+    case "improving": return `${star.name} is improving, down to severity ${level}.`;
+    case "worsening": return `${star.name} is getting worse, now at severity ${level}.`;
+    case "steady": return `${star.name} is holding steady at severity ${level}.`;
     default: return `${star.name} was first observed ${relativeDay(latest.at)}.`;
   }
 }

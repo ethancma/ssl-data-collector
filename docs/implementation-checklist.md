@@ -1,195 +1,65 @@
-# Implementation Status And Backlog
+# Unresolved Requirements And Implementation Constraints
 
-> Current as of 2026-09-26. This is the single source of truth for delivery status and
-> remaining work. Product context lives in
-> [platform-architecture.md](platform-architecture.md), lab requirements and staff
-> decisions live in [lab-operations-plan.md](lab-operations-plan.md), and verification
-> depth is defined in [testing-strategy.md](testing-strategy.md).
->
-> Checked items are demonstrable from the repository. They are not claims about hosted
-> deployment state unless explicitly stated. Items marked **BLOCKED** need a staff or
-> product decision before their behavior can be finalized.
-
-## Delivered
-
-- [x] Supabase CLI access is linked to project `bqylxmsifagnztxhixyl`; local credentials
-      are configured in the ignored `.env.local`, and the migration workflow is documented.
-- [x] Core reference schema: profiles, systems, tanks, species, and animals.
-- [x] Operational schema: daily checks, water quality, chemical additions, health
-      observations and attachments, feeding, ad-hoc maintenance logs, and Star treatments.
-- [x] Controlled vocabularies use text plus database `CHECK` constraints; operational
-      records distinguish event time, entry time, and `live|import|paper_backfill` provenance.
-- [x] Private attachment storage bucket and initial health-photo workflow.
-- [x] Email/password auth, pending-account gate, Admin approval/denial, role assignment,
-      and Admin user-management UI.
-- [ ] Invite-only onboarding (Admin invite links, password or Google sign-in, public
-      sign-up disabled): architecture proposed in
-      [auth-invitations.md](auth-invitations.md); implementation pending decisions.
-- [x] Eight systems and the current species list are seeded, including the confirmed
-      **Snack Shack** spelling. Tanks and animals are entered through Settings > Animal setup,
-      not seeded; `supabase/seed.sql` adds local-only e2e fixtures.
-- [x] Daily Operations hub with URL-backed selection and persisted forms for AM/PM checks,
-      batch feeding (system, tank, or single-animal scope), same-day PM consumption, water quality, System chemical
-      additions, health observations/photos, maintenance, and batch Star treatments.
-- [x] Home dashboard with daily AM/PM, feeding, water-quality, recent-health, and activity
-      summaries.
-- [x] Systems dashboard with system selection, chemistry charts, comparisons, status, and
-      an operational highlights feed.
-- [x] Authenticated system/species consumers query database-owned reference data; systems
-      sort alphabetically by database-owned name with an ID tie-breaker. The static public
-      landing-page list remains an intentional non-operational exception.
-- [x] Shared `America/Los_Angeles` date/time conversion and display across operational
-      forms, corrections, dashboards, and charts, including spring-gap rejection and
-      earlier-occurrence fall-back handling.
-- [x] Star treatment table, RPC-only create/update/delete lifecycle, role-gated form,
-      treatment-time location snapshot, filtered correction surface, and focused smoke tests.
-- [x] Reviewed Graham import bundle prepared with 270 water-quality rows and 242 CBalance
-      rows; historical Probiotics rows are excluded pending named-star attribution.
-- [x] Settings UI for display-name and password changes.
-
-## Data Integrity And Access Control
-
-These are the highest-priority open items because they affect data ownership or history.
-
-- [x] Establish one authoritative generic role contract and align migrations, UI, tests,
-      and docs. Admin/Technician have full mutation, Volunteer has read/create plus update
-      of their own entries without delete, and Viewer is read-only. Star treatments
-      intentionally hide all access from Viewer.
-- [x] Protect `recorded_by`, `data_source`, and `entered_at` on ordinary logs. Live writes
-      derive provenance from the active profile and server time; provenance remains
-      immutable while authorized event-time corrections are retained in the audit trail.
-- [x] Add an append-only, trigger-written operational audit for updates and deletes with
-      Admin/Technician read access and immutable actor/before/after history.
-- [x] Scope Storage policies explicitly to the private `attachments` bucket and restrict
-      Volunteer object updates to objects they own.
-- [x] Replace destructive reference-data cascades into operational logs with restrictive
-      foreign keys so deleting systems, tanks, or animals cannot erase operational history.
-- [x] Enforce the System chemical addition boundary in the database: reject Probiotics,
-      require positive amounts and nonblank names/units, and repair the currently skipped
-      Star treatment boundary behavior locally.
-- [ ] Make required health photos atomic with observation creation; an upload failure can
-      currently leave an observation without its required attachment.
-- [ ] Complete hosted smoke-test reconciliation. The Volunteer contract and migration
-      reference are corrected locally; old URLs/control labels still require the full
-      post-migration hosted e2e pass.
-- [x] Refresh native-role JWT claims on the user's next application request after a role or
-      status change; persistent mismatches fail closed and inactive/invalid profiles fall
-      back to the non-privileged `authenticated` claim.
-
-## Foundations And Reference Data
-
-- [ ] Add the planned `animal_movements`, `microalgae_logs`, and `maintenance_tasks` tables.
-- [ ] Add the daily-check-to-health-follow-up relationship if the flagged follow-up workflow
-      remains part of the product contract.
-- [ ] Seed the complete tank inventory, Larval pair groups, and real animal roster; verify
-      provisional scientific names before rollout.
-- [x] Add Admin/Technician Settings > Animal setup: add, edit, move, retire (status + `retired_on`
-      date + note) and reactivate animals. Tanks are found or created from shelf position and
-      size (`Lower-9.6L`, a custom label such as `Middle-9.6L`, or `9.6L`).
-- [ ] Build Admin CRUD/retirement UI for systems, tank details (type, rename, delete), and species.
-- [ ] Configure Google OAuth in Supabase and add the application sign-in path.
-- [ ] Confirm the Vercel project/deployment and wire preview/runtime log access for agents.
-- [x] Remove the unused `analytics` schema; dashboards and History read `core` directly.
-
-## Daily Operations
-
-- [ ] Add the Daily check **Flag issue** flow, linked draft health observation, and a
-      discoverable incomplete-follow-up surface.
-- [ ] **BLOCKED:** confirm whether a health observation with no selected issues is valid.
-- [ ] **BLOCKED:** define severity criteria and photo thresholds beyond arm drop, spine drop,
-      and lesion. `Low|Medium|High` currently exists as a provisional implementation.
-- [ ] **BLOCKED:** encode feeding due-today logic after staff confirms cadence by system,
-      species, and life stage.
-- [x] Add Admin/Technician-managed weekday feeding schedules (per system, with overrides by tank position and size from the
-      tank name). Shown as next feeding due and an Overdue label on Systems, and as a
-      due-today item on Home. No cadences are seeded; staff enter the confirmed values in
-      Settings > Feeding schedules.
-- [x] Add optional Admin/Technician-managed lab-wide water-quality ranges with per-system
-      overrides. Ship with no seeded values; out-of-range entries require the existing
-      Notes field, and range changes do not rewrite historical readings.
-- [x] Add Admin-managed database quick picks for Chemical additions and Star treatments,
-      preserving free-text entry and immutable event snapshots. Reef Dip may be recorded
-      without amount or concentration.
-- [x] Confirm salinity as the official ninth weekly water-quality parameter. Its fixed unit
-      is `ppt`.
-- [ ] Build the Micro-Algae production log.
-- [ ] Extend last-used-system defaults, field-linked errors, and live announcements from
-      Star treatments to the older forms. Form controls use a uniform 36px (`h-9`) height
-      across all Daily Operations forms.
-- [ ] Add the explicit **Log a star treatment instead** path from System chemical addition.
-
-## Dashboards, History, And Imports
-
-- [x] Make Home completion logic cadence-aware. Feeding is due only on a system's scheduled
-      weekdays (systems without a schedule show no feeding item). Water quality still uses a
-      14-day recency window.
-- [ ] Add station QR codes/deep links for system-filtered Daily Operations.
-- [ ] Add health-observation markers to the priority per-system chemistry timeline.
-- [ ] Add chemical-addition overlays, correlation exploration, and plain CSV export.
-- [ ] Replace the placeholder History route with cross-log browsing and expose it in
-      navigation when ready.
-- [ ] **BLOCKED:** inventory historical source coverage by system, date range, and medium.
-- [ ] Build Admin CSV column-mapping and paper-backfill grid tooling with durable import
-      batch/source-row identity.
-- [ ] Resolve each excluded historical Probiotics row to a named star, or preserve it as an
-      unresolved source record without importing it as a treatment.
-
-## Maintenance
-
-- [x] Ad-hoc maintenance event entry.
-- [ ] Add per-system recurrence/task configuration and due/overdue dashboard badges.
-- [ ] Add scheduled Resend reminders to Admins/lead techs only.
-
-## Engineering Maintainability
-
-- [x] Add a deterministic changed-file e2e selector with explicit session-file input,
-      dry-run reasoning, focused credential-free unit tests, conservative full-suite
-      escalation, and a documented full-suite escape hatch.
-
-## Star Treatment Closure
-
-- [x] Core schema, eligibility rules, provenance, treatment-time tank snapshot, and indexes.
-- [x] Admin/Technician update any treatment; Volunteer updates only treatments they
-      recorded; Admin/Technician hard delete; Viewer and unauthenticated access are blocked.
-- [x] URL-backed form and filtered correction/history surface.
-- [x] Complete the System chemical addition database guard locally.
-- [ ] Rerun the full Star treatment smoke suite without schema-gated skips after the P0/P1
-      migrations are available to the test application environment.
-- [ ] Confirm hosted migration state and complete the separate human-run Tier 4 Graham
-      cleanup/import after a fresh backup and source-row spot checks.
-- [ ] Deferred: general History, Home/Systems activity, export/timeline integration,
-      health-observation links, and duplicate-treatment warnings.
+This file retains requirements that affect implementation, not delivery status or a
+sequenced backlog. The filename is retained for existing code and agent references.
+Do not invent values marked **BLOCKED**. Lab context and staff questions live in
+[lab-operations-plan.md](lab-operations-plan.md); hosting and release procedures live in
+[workers-deployment.md](workers-deployment.md).
 
 ## Staff Decisions
 
-The full context for these questions is in
-[lab-operations-plan.md](lab-operations-plan.md#8-open-questions--further-considerations).
+- **BLOCKED: feeding cadence.** Staff must supply schedules by system/species/life stage.
+  Settings supports weekday schedules with tank overrides; no cadences are seeded.
+- Health severity is a whole-number score from 1 (healthy) to 5 (dead), matching the
+  historical heat-map scores. Dashboards treat 2 as watch and 3-5 as attention. Photos
+  are always optional.
+- **BLOCKED: empty health observations.** Confirm whether selecting no issues is valid.
+- **BLOCKED: nickname reuse.** Confirm whether names may be reused after death or transfer.
+  Current names are unique lab-wide.
+- **BLOCKED: Apex coverage.** Only Graham and Wholey pH probes are confirmed.
+- **BLOCKED: historical sources.** Inventory systems, date ranges, and Sheets/paper coverage;
+  identify the paper-backfill owner and deadline before building import workflows.
+- Water-quality ranges are optional lab-wide values with per-system overrides, configured
+  by Admins/Technicians with no seeded numeric defaults. Salinity is part of the weekly
+  panel and uses `ppt`.
+- Volunteer permissions are lab-wide read/create, update only their own entries without
+  time/provenance-source restrictions, and no delete. Star treatments exclude Viewer access.
 
-- [ ] Feeding cadence by system/species/life stage.
-- [x] Water-quality target-range model: optional lab-wide values with per-system overrides,
-      configured later by Admins or Technicians with no seeded defaults.
-- [ ] Health severity criteria and additional photo-required thresholds.
-- [ ] Whether empty health observations are valid.
-- [x] Salinity is part of the official weekly panel and uses `ppt`.
-- [ ] Animal nickname reuse after death or transfer.
-- [x] Volunteer permissions: lab-wide read/create, update any entry attributed to their
-      profile with no time or provenance-source limit, and no delete.
-- [ ] Remaining Apex probe coverage.
-- [ ] Historical data coverage and paper-backfill ownership/deadline.
+## Health Photos And Follow-Ups
 
-## Rollout And Operations
+Photo uploads are not atomic with observation creation: upload failure can leave
+an observation without its attachment. A reliable implementation must support retry and
+reconciliation without duplicate observations. Image-processing requirements are retained
+in [workers-deployment.md](workers-deployment.md#photo-processing-and-recovery-requirements).
 
-- [ ] Rehearse the invite-link migration on scratch/staging, covering password and
-      Google acceptance, expired/revoked/reused links, re-invite, and all four roles.
-      Do not apply an untested migration directly to production.
-- [ ] Configure the server-only Supabase secret key on the app host, the Google OAuth
-      provider, and the redirect allowlist; keep public sign-up disabled in hosted Auth.
-      The local config alone does not change hosted Auth.
-- [ ] Run the full Tier 3 e2e suite on the staged/preview invite flow and inspect
-      Auth users, profiles, invitations, and RLS directly before opening a PR.
-- [ ] Tablet/mobile QA at real lab stations.
-- [ ] Pilot with one or two systems for a week.
-- [ ] Hands-on training and station QR-code placement.
-- [ ] Verify automated backups before any Tier 4 data operation.
-- [ ] Wire GitHub and Vercel agent access; wire Resend when maintenance scheduling starts.
-- [ ] Optional: add Sentry monitoring.
+The daily-check **Flag issue** requirement calls for a linked health follow-up that may
+remain incomplete and visibly flagged on the check; it does not require a separate
+dashboard notification. The relationship is not implemented.
+
+## Domain Extensions
+
+These are requirements, not claims that the corresponding tables or workflows exist:
+
+- Animal movements must preserve location history rather than rewrite historical events.
+- Larval cone-bottom pairs are the cohort logging unit.
+- Micro-Algae production needs timestamped density, harvest volume, and condition notes.
+- Recurring maintenance is configured per system, with due/overdue state; reminder digests
+  go only to Admins/lead techs, not all volunteers and technicians.
+- Station deep links should open system-filtered Daily Operations.
+- Chemistry timelines need health-event markers for correlation; export format is plain CSV.
+
+## Historical Imports And Star Treatments
+
+Keep import event time separate from entry time and tag rows as `import` or
+`paper_backfill`. Reusable import tools need durable batch/source-row identity to prevent
+duplicates; `data_source` alone is insufficient. Paper backfill should support grid entry
+and optional source-sheet photos.
+
+Historical Probiotics records without a named treated star cannot become Star treatments
+or System chemical additions. Preserve unresolved source records until staff supplies
+attribution. Use the reviewed bundle's own instructions for Graham imports, not an old
+schema-rebuild plan. Real-data operations remain human-run Tier 4 work with a fresh backup.
+
+Optional treatment-to-health links require explicit cardinality, permission, and workflow
+decisions. Duplicate-treatment warnings require a staff-approved time window; do not add
+an arbitrary threshold or dosage warning range.

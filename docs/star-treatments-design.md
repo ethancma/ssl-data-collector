@@ -1,442 +1,125 @@
-# Star Treatments Design
+# Star Treatments Feature Contract
 
-- **Status:** Implemented with closure items; this is the current feature contract
-- **Change class:** Tier 3 feature plus a separate Tier 4 Graham reconciliation
-- **Current scope:** Schema, RPC lifecycle, entry form, and correction surface are in the
-  repository. Remaining work is tracked centrally in
-  [implementation-checklist.md](implementation-checklist.md#star-treatment-closure).
+Use this reference when changing entry, corrections, permissions, or reporting.
+The implementation lives in `components/star-treatments/`,
+`app/protected/star-treatments/`, `lib/validation/star-treatment.ts`, and the
+Star treatment migrations. It is not a migration or rollout plan.
 
-## 1. Summary
+## Scope
 
-Separate two operational events that currently risk being mixed together:
+| Event | Subject | Examples | Table |
+| --- | --- | --- | --- |
+| System chemical addition | System water | C-Balance, magnesium, buffers | `core.chemical_additions` |
+| Star treatment | One named individual star | Probiotics, Reef Dip, topical treatment | `core.star_treatments` |
 
-| Event | Scope | Examples | Destination |
-|---|---|---|---|
-| System chemical addition | The water/system as a whole | C-Balance, magnesium dosing, DI trace, buffers | `core.chemical_additions` |
-| Star treatment | One specific named star | Probiotics, reef dips, topical treatment | New `core.star_treatments` table |
+Probiotics must not be accepted as System chemical additions, including through direct
+API writes. Keep dosing counts/charts separate from treatments. Do not add protocols,
+dosage calculators, or unconfirmed warning ranges.
 
-The Daily Operations area will present these as separate forms. The existing chemical
-addition form will be clarified as a system-water dosing form, and a new Star treatment
-form will collect the treated subject and treatment details.
+Each row represents one treatment for one star. Batch entry saves one row per checked
+eligible star, not one row for the tank. Cohorts and non-star animals are excluded.
 
-The implemented release does not automatically move existing chemical-addition records.
-Historical probiotic records need a separate, staff-reviewed reconciliation because the
-source rows may not identify the treated star.
+## Data and invariants
 
-Implemented in the repository: `core.star_treatments`, eligibility and provenance RPCs,
-role-gated Daily Operations entry, URL-backed filters, and the treatment correction/delete
-surface. The System chemical addition database guard and unskipped end-to-end boundary
-verification are still open.
+| Field | Contract |
+| --- | --- |
+| `id` | Serial primary key |
+| `animal_id` | Required FK to the treated star |
+| `tank_id` | Required treatment-time location snapshot, not the animal's current location at query time |
+| `catalog_id` | Optional catalog link; event labels/units remain snapshots |
+| `treatment_type` | Nonblank; canonical `probiotics`, `reef_dip`, or normalized custom text |
+| `amount`, `unit` | Nullable pair; supplied amount is positive and requires a nonblank unit |
+| `concentration`, `concentration_unit` | Nullable pair with the same rule |
+| `administered_at` | Actual event time as `timestamptz` |
+| `notes` | Optional context |
+| `recorded_by`, `data_source`, `entered_at` | Server-owned, immutable attribution/provenance |
 
-## 2. Goals
+At least one numeric pair is required except for Reef Dip, which may omit both.
+Absent values have null units. Do not invent amounts when only concentration is known.
+Repeated administrations, even at the same timestamp, can be valid; no uniqueness rule
+should prohibit them.
 
-- Make the system-level versus animal-level boundary unambiguous at entry time.
-- Attribute every new star treatment to one specific individual star.
-- Record one treatment for one star per row.
-- Keep treatment events separate from system chemistry in dashboards and exports.
-- Preserve project conventions for provenance, event time, RLS, and mobile-first forms.
+Custom labels are trimmed, whitespace-normalized, limited to 100 characters, and compared
+case-insensitively with canonical types. Canonical matches save the canonical value;
+reports group other labels under **Other** without discarding their display text.
+Units default to `mL` and `ppm` but remain editable. Quick-pick catalog retirement/renames
+must not rewrite old events.
 
-## 3. Non-Goals
+Creation validates an active, individually tracked star and matching current tank in the
+database transaction. Live entry does not allow a date before the current Pacific lab
+date; historical imports require reviewed animal/location attribution.
 
-- Reclassifying or deleting existing chemical-addition data as part of the first release.
-- Building treatment schedules, clinical recommendations, or dosage calculators.
-- Encoding unconfirmed dosage ranges or treatment protocols.
-- Replacing health observations; treatment and observed response remain separate events.
-- Introducing a general veterinary-medication module for every species without a staff
-  decision to broaden the feature beyond stars.
+After creation, `animal_id`, `tank_id`, `recorded_by`, `data_source`, and `entered_at`
+cannot change. Moving an animal must not move historical treatments. Corrections may
+change event time, treatment details, and notes. Wrong-subject/location records require
+an Admin/Technician to delete and recreate; updates/deletes retain before/after history
+in the project-wide append-only operational audit.
 
-## 4. Domain Model
-
-```mermaid
-erDiagram
-    SYSTEMS ||--o{ TANKS : contains
-    TANKS ||--o{ ANIMALS : houses
-    ANIMALS ||--o{ STAR_TREATMENTS : receives
-    PROFILES ||--o{ STAR_TREATMENTS : records
-    SYSTEMS ||--o{ CHEMICAL_ADDITIONS : receives
-```
-
-One `star_treatments` row represents one treatment administered to one individually
-tracked star. Cohorts and multi-star rows are not supported. If several stars receive the
-same treatment, staff submit one row for each star.
-
-## 5. Proposed Table
-
-The table intentionally stays small. Follow the repository's existing `serial` key,
-text-plus-`CHECK` vocabulary, profile attribution, and event-time/provenance conventions.
-
-| Column | Proposed definition | Notes |
-|---|---|---|
-| `id` | `serial primary key` | Matches current core tables. |
-| `animal_id` | `int not null` FK to `core.animals(id)` with delete restricted | The treated individual star. |
-| `tank_id` | `int not null` FK to `core.tanks(id)` with delete restricted | Treatment-time location snapshot. This is required even though the form derives it from the selected animal. |
-| `treatment_type` | `text not null default 'probiotics'` | `probiotics`, `reef_dip`, or a trimmed custom value entered through Other. |
-| `amount` | nullable positive `numeric` | Amount administered to this star, when applicable. |
-| `unit` | nullable `text default 'mL'` | Paired with amount; the form defaults it to milliliters. |
-| `concentration` | nullable positive `numeric` | Treatment concentration, when applicable. |
-| `concentration_unit` | nullable `text default 'ppm'` | Paired with concentration; the form defaults it to parts per million. |
-| `notes` | nullable `text` | Product details, lot details, deviations, or other treatment context. |
-| `administered_at` | `timestamptz not null` | Actual treatment time, defaulting to now for live entry. |
-| `recorded_by` | profile FK, server default | Set from the authenticated profile, never selected in the form. |
-| `data_source` | constrained `text not null default 'live'` | Use current values: `live`, `import`, `paper_backfill`. |
-| `entered_at` | `timestamptz not null default now()` | Database insertion time. |
-
-Recommended indexes:
-
-- `(animal_id, administered_at desc)` for animal history.
-- `(tank_id, administered_at desc)` for treatment-time location history.
-- `(treatment_type, administered_at desc)` for treatment analysis.
-
-Recommended invariants:
-
-- At least one of amount or concentration must be present unless the treatment type is
-  Reef Dip, which may be saved with neither. Any supplied value must be positive. Do not
-  invent an amount when only a concentration is known.
-- Amount/unit and concentration/concentration-unit are nullable pairs: when a value is
-  absent its unit is stored as null, and when a value is present its unit is required and
-  nonblank.
-- Treatment type cannot be blank.
-- The selected animal must be an active, individually tracked star.
-- The submitted tank must match the animal's current tank when the treatment is created.
-- No uniqueness constraint should prevent repeated treatment; repeated administrations at
-  the same timestamp can be valid.
-
-Checks involving animal tracking type, species category, and current tank cannot be
-expressed as simple row checks. They require a database transaction function or trigger,
-not only client validation.
-
-Defaults alone do not make provenance immutable. The migration must prevent clients from
-overriding `recorded_by`, `data_source`, or `entered_at` on live entry, tie `recorded_by`
-to the authenticated profile, and prevent ordinary updates from rewriting attribution or
-provenance. The project-wide operational audit records Star treatment updates and deletes;
-the feature does not maintain a separate audit table.
-
-After creation, `animal_id`, `tank_id`, `recorded_by`, `data_source`, and `entered_at` are
-immutable. Authorized corrections may change `administered_at`, treatment details, and
-notes, with the previous values retained in the audit. If the wrong star or tank was
-recorded, Admin or Technician hard-deletes the incorrect row and creates a replacement.
-
-## 6. Eligibility
-
-The form should only show active eligible subjects. The proposed baseline is:
-
-- Active, individually tracked stars: eligible, one row per star and treatment.
-- Cohorts: excluded.
-- Non-star animals: excluded.
-- Micro-Algae and systems without eligible subjects: excluded from subject selection.
-
-Selection flows from System to Tank to Star. The form derives `tank_id` from the selected
-animal rather than asking users to enter it twice, but the database stores that value as a
-treatment-time snapshot. Deriving historical location only from `animals.tank_id` would
-silently rewrite past treatment locations whenever an animal moves and would corrupt
-per-system correlations. This is the one additional treatment column recommended by the
-reanalysis despite the preference for a compact table.
-
-The first release is for live treatment entry and does not allow a treatment date before
-the current laboratory date. That avoids pretending the animal's current tank proves its
-historical location. Older treatments are handled through reviewed backfill/import tooling
-after animal/location attribution is known. Same-day entries snapshot the animal's current
-tank in the create transaction.
-
-## 7. Controlled Vocabulary
-
-The form starts with `probiotics` selected and also offers `reef_dip` and **Other**.
-Choosing **Other** opens a required text box; its nonblank value is saved directly in
-`treatment_type`. Product or protocol details can also be recorded in `notes`.
-
-Custom values must be trimmed, whitespace-normalized, length-limited, and compared
-case-insensitively to the two canonical values. Reports group all noncanonical values
-under **Other** while retaining the entered label for display. This keeps the table compact
-without allowing spelling variations to become separate top-level analytics categories.
-Limit custom treatment labels to 100 characters. If custom input normalizes to
-`probiotics` or `reef_dip`, save the canonical value instead.
-
-`unit` and `concentration_unit` are free-text boxes rather than controlled lists. They
-default to `mL` and `ppm`, respectively, and users may replace those values.
-
-## 8. Permissions And Record Lifecycle
-
-The future migration should follow the project's current native database-role policies,
-not rely only on older prose documentation.
+## Permissions
 
 | Role | Read | Create | Update | Delete |
-|---|---:|---:|---:|---:|
-| Admin | Yes | Yes | Yes | Hard delete |
-| Technician | Yes | Yes | Yes | Hard delete |
+| --- | --- | --- | --- | --- |
+| Admin / Technician | Yes | Yes | Any | Hard delete |
 | Volunteer | Yes | Yes | Own entries only | No |
-| Viewer | No | No | No | No |
-| Unauthenticated | No | No | No | No |
+| Viewer / unauthenticated | No | No | No | No |
 
-Blocked users, including Viewers and unauthenticated users, must not be able to see the
-Star treatment navigation, form, or data. RLS must independently enforce the same rule.
+This is narrower than generic operational-log access: Viewer must not see treatment
+navigation, forms, or data. Inactive users are blocked. UI hiding supplements, never
+replaces, grants and RLS.
 
-Admin and Technician can hard-delete treatments; Volunteer cannot delete. All creates and
-updates operate on the current treatment row, while deletes remove it. The project-wide
-operational audit records every update and delete with actor and before/after snapshots.
-Animal deletion must not cascade into treatment-history deletion.
+Mutations use narrowly granted RPCs, not direct browser table writes. Each function checks
+live role/status, eligibility, location, and provenance, uses a fixed safe `search_path`,
+revokes default `PUBLIC` execution, and grants only intended native roles. Update/delete
+do not require a reason. Restrictive FKs protect history when reference records are
+deleted; prefer retiring roster records and display explicit errors.
 
-Treatment create, update, and delete operations must go through narrowly granted database
-functions/RPCs. Those functions validate role, active status, star eligibility, current
-tank, and immutable provenance. Direct table writes from the browser should be revoked for
-this table.
+## Daily Operations
 
-This table is an explicit exception to the repository's generic operational-log policy:
-Admin and Technician get full mutation functions, Volunteer gets create plus own-entry
-update functions, and Viewer gets no grant or RLS path. UI hiding is supplemental; `core`
-is Data API-exposed, so grants, RLS, and function permissions are the actual boundary.
-
-Every mutation function must use a fixed safe `search_path`, revoke default `PUBLIC`
-execute, and grant `EXECUTE` only to the intended native roles. Update accepts treatment
-details only, and delete accepts only the treatment ID; neither RPC requires a reason. The
-feature-specific matrix in this document is authoritative; implementation must update
-conflicting role prose and RBAC tests in the same change.
-
-## 9. Daily Operations Form
-
-Add **Star treatment** directly after **System chemical addition** and before **Health
-observation** in Daily Operations. Keep it in the Daily Operations hub instead of adding
-a permanent top-level sidebar item.
-
-Recommended canonical URL:
+Star treatment belongs after System chemical addition and before Health observation.
+Canonical deep link:
 
 `/protected/daily-operations?type=star-treatment&system=<id>&tank=<id>&animal=<id>`
 
-Daily Operations remains the active sidebar destination. Its form chooser should be
-URL-backed so direct links, refresh, and browser Back restore the selected form and valid
-filters. The existing local-only default-to-Daily-check behavior must be updated as part of
-this feature; do not create a second canonical standalone route.
+- URL parameters take precedence over the last successfully used system.
+- Log-type changes push browser history; subject/filter changes replace it.
+- System changes clear tank/star; tank changes clear star. Invalid selections clear only
+  the affected selection and descendants, with an inline explanation.
+- System/tank scope selects all eligible stars there; selecting one star narrows the
+  batch. Staff can uncheck individuals. Names and species identify choices.
+- Field order: date/time, system, tank, stars, treatment, amount/unit,
+  concentration/unit, notes.
+- Probiotics is the default; Reef Dip and Other are available. Other requires text.
+- Require valid subjects, type, date/time, positive supplied values, and paired units.
+  Focus the first invalid field and preserve inputs after failure.
+- Revalidate subjects in the database, prevent double submit, and surface actionable
+  errors. Announce changes and success; show a summary naming treated stars.
+- After success, retain valid system/tank filters, clear stars and any health-link URL
+  parameter, and reset type to Probiotics, numeric/unit fields, notes, and time.
+- Use shared 36px (`h-9`) controls, associated field errors, phone-width stacking,
+  and keyboard-accessible navigation without inappropriate ARIA tab semantics.
 
-Recommended field order:
+The correction surface supports date, star, and type filters. Immutable fields remain
+read-only. Delete confirmation identifies star, treatment, and time, warns that deletion
+cannot be undone, and is shown only to Admins/Technicians.
 
-1. Administered date and time.
-2. System.
-3. Tank.
-4. Treated star (defaults to **All stars in tank**; pick one star for a single-star entry).
-5. Treatment type, defaulting to **Probiotics** with **Reef dip** and **Other** options.
-6. Amount and unit, with `mL` selected by default.
-7. Concentration and concentration unit, with `ppm` selected by default.
-8. Notes.
+## Reporting and historical data
 
-`recorded_by`, `data_source`, and `entered_at` are derived and enforced by the
-server/database and must not be editable or client-overridable for live entry.
+Use treatment-time tank/system, never current animal location, for reports. Dashboards
+and History query `core` directly; do not recreate an analytics fact schema.
+Historical Probiotics without a named star must remain unresolved source data.
+For Graham, use the reviewed CSV bundle and its README under `supabase/seeds/`, not
+historical schema-wipe instructions. Real-data imports are separate human-run Tier 4
+operations with a fresh backup, source checks, and duplicate protection.
 
-### Selection behavior
+Optional health-observation links and duplicate warnings require the decisions in
+[implementation-checklist.md](implementation-checklist.md#historical-imports-and-star-treatments).
+Do not treat this contract as proof that every reporting integration is implemented.
 
-- URL parameters take priority, then the last successfully used system.
-- Changing log type uses browser-history `push`; changing system/tank/star filters uses
-  `replace` so every selector change does not create another Back-button stop.
-- Changing system clears tank and subject selections.
-- Changing tank clears the star selection.
-- Star choices show the animal name and species.
-- Invalid system clears system/tank/star. Invalid tank clears tank/star. Invalid star
-  clears only star. Each case shows a clear inline message.
-- Star selection narrows the batch: system selects every eligible star in it, tank selects
-  every star in that tank, and a single star selects only that one. A checklist lets staff
-  uncheck individual stars, and one treatment row is saved per checked star.
-- Choosing **Other** treatment type reveals a required text box for the custom treatment.
-- After success, clear the star before another submission to prevent accidental duplicates.
-- After success, retain valid system/tank filters, remove `animal` and any health-link
-  parameter from the URL, and reset treatment type to Probiotics, value/unit fields, notes,
-  and time.
+## Verification
 
-### Validation and feedback
-
-- Require date/time, location, star, and treatment type.
-- Require at least one value (amount or concentration) except for Reef Dip, which may be
-  saved with neither.
-- Require the corresponding unit whenever an amount or concentration is supplied.
-- Require nonblank custom treatment text when **Other** is selected.
-- Require positive numeric values when amount or concentration is supplied.
-- Focus the first invalid field and preserve entered values after any failure.
-- Revalidate active status, tank membership, species eligibility, and individual tracking
-  on the server at submission time.
-- Prevent double submit and translate database errors into actionable form messages.
-- Show a success summary naming the treated stars.
-- Offer **Log another treatment** and **View system activity** after success.
-
-### Mobile and accessibility
-
-- Use accessible URL-backed links or segmented navigation for Daily Operations choices;
-  do not apply ARIA tab semantics unless the final interaction behaves as a true tablist.
-- Use clear labels and grouping for the star and treatment-type controls.
-- Associate errors with their fields and announce filtering, failure, and success changes.
-- Use the shared 36px (`h-9`) control height used by every Daily Operations form.
-- Stack value/unit pairs on phone widths and prevent horizontal scrolling.
-- Keep the star selector usable on phones with a consistently reachable submit action.
-
-Users without read/create permission must not see the Star treatment option or any
-treatment data. The route, server action, and RLS must still reject direct access.
-
-The first release also needs a treatment-specific list/detail route for authorized users
-because update and hard-delete permissions are otherwise unreachable. The list supports
-date range, star, and treatment-type filters so older records remain discoverable. Edit
-changes treatment details without exposing immutable provenance fields. Delete confirmation
-names the star, treatment, and administration time and clearly states that deletion cannot
-be undone; only Admin and Technician see it.
-
-## 10. Chemical Addition Changes
-
-The existing table remains system-scoped. Clarify its form rather than adding an animal
-relationship:
-
-- Card and tab label: **System chemical addition**.
-- Description: **Record a chemical, mineral, trace element, or buffer added to system
-  water. Treatments administered to stars belong in Star treatment.**
-- Field label: **Chemical/product added to system water**.
-- Submit label: **Save system addition**.
-- Add a nearby **Log a star treatment instead** link.
-- Keep `system_id` as the only subject/location scope.
-- Add database checks for positive amount and nonblank chemical name/unit when the schema
-  change is implemented.
-
-A staff-approved canonical list may include C-Balance, magnesium, DI trace, buffers, and
-`other`. Probiotics always belong in Star treatment and must not be offered or accepted as
-a new System chemical addition. Enforce this in the system-addition mutation as well as
-the UI so a direct API request cannot reintroduce probiotics.
-
-## 11. History, Dashboards, And Export
-
-- First release: show treatments in the treatment-specific list/detail correction surface,
-  never as chemical additions.
-- First release: keep chemical-addition counts and charts limited to system-water dosing.
-- Deferred: Home recent activity, Systems highlights, full cross-log History, CSV export,
-  and treatment markers on animal/system timelines.
-- Future exports use treatment-time tank/system, not the star's current location.
-- No analytics fact table: dashboards and History query `core` directly.
-
-## 12. Existing Data And Reconciliation
-
-Migration `20260920130000_import_graham_water_quality_history.sql` is already recorded as
-applied on the hosted project. It inserts 270 water-quality rows and 443 chemical-addition
-rows: 242 CBalance and 201 Probiotics. It also attributes them to the dev fixture
-`test-admin@ssl.dev`. Historical operational data should not replay on every fresh schema
-reset, so it must be extracted from migrations into a CSV-backed, one-time import bundle.
-
-### Migration-history strategy
-
-- Delete migration `20260920130000` from local history and fully rebuild the disposable
-  hosted `core` and `public` schemas from the remaining migrations.
-- Mark all hosted migration versions reverted after the schema wipe, including the removed
-  `20260920130000`, before running `supabase db push`.
-- Do not add a compensating DELETE migration. The filtered Graham CSV import remains a
-  separate Tier 4, human-run operation after the schema replay.
-
-### CSV import bundle
-
-Create a bundle such as:
-
-```text
-supabase/seeds/20260920_graham/
-  README.md
-  graham_water_quality.csv
-  graham_chemical_additions.csv
-```
-
-The two import CSVs contain only already-filtered destination values and exact destination
-table headers for direct Supabase Table Editor upload. No Probiotics seed is included.
-
-Normalize date-only Graham records using `America/Los_Angeles` explicitly before storing
-`timestamptz`; do not rely on the SQL session timezone. Resolve and embed the target Graham
-system ID and active Admin profile ID after each hosted schema rebuild.
-
-### Hosted reconciliation
-
-1. Rebuild the disposable hosted schemas without the old import migration.
-2. Confirm the Graham destination tables are empty and resolve the current system/profile IDs.
-3. Import only the reviewed water-quality and CBalance CSVs. Probiotics are excluded from
-  this seed and cannot enter `star_treatments` until each can be tied to a named star.
-4. Verify row counts, timestamps, attribution, representative multiline/null rows, and
-  absence of duplicate source rows.
-
-For future imports, add durable import identity such as an import batch and source-row key
-instead of relying only on `data_source = 'import'`. This is broader than the Star treatment
-table but is necessary before import tooling becomes a recurring workflow.
-
-## 13. Remaining Sequence
-
-The completed implementation steps and all remaining actions have been merged into the
-[implementation checklist](implementation-checklist.md#star-treatment-closure). In order:
-
-1. Add the System chemical addition database guard and repair the schema-gated boundary test.
-2. Align the generic role contract and RBAC suite without changing this feature's narrower
-  Viewer restriction.
-3. Run the complete Tier 3 verification and preview review without skipped lifecycle tests.
-4. Have a human perform the separate Tier 4 Graham import after backup and source checks.
-5. Add deferred History/export/analytics integrations only after the core workflow closes.
-
-## 14. Verification Plan
-
-Closure remains Tier 3 under [testing-strategy.md](testing-strategy.md) because this is a
-new table and RLS-backed workflow.
-
-Required focused coverage:
-
-- At-least-one dose value, value/unit, whitespace, and positive-number validation.
-- System-to-tank-to-star filtering and stale-selection clearing.
-- Treatment-time tank stability after the animal moves.
-- Server-controlled attribution/provenance and rejection of direct table writes.
-- Deep-link/default precedence and double-submit prevention.
-- Chemical-addition copy and navigation clearly separating the two workflows.
-- Custom treatment entry, unit text boxes/defaults, role visibility, current-row updates,
-  and Admin/Technician hard deletion.
-- RPC-only create/update/delete behavior, immutable provenance fields, and role controls.
-- Keyboard, screen-reader labeling, phone-width, and tablet behavior.
-
-Required release verification:
-
-- Apply migration to scratch/staging before production.
-- Inspect the table, constraints, grants, and RLS directly in Supabase.
-- Run the project's full e2e-testing skill.
-- Verify Admin, Technician, Volunteer, Viewer, and unauthenticated behavior.
-- Verify saved rows and timestamps directly in Supabase, not only through the UI.
-- Confirm treatment activity does not alter chemical-addition counts.
-- Use a preview deployment and require human diff review before merge.
-
-The Graham cleanup/reimport is separately Tier 4: verify checksums and expected counts,
-take a fresh backup, have a human execute the exact reviewed transaction, and spot-check
-the result against the source CSVs.
-
-## 15. Resolved And Deferred Decisions
-
-- Treatment type defaults to `probiotics`; `reef_dip` is predefined, and **Other** opens
-  a required custom text box.
-- Unit fields are free text, defaulting to `mL` and `ppm`.
-- Probiotics are always Star treatments, never System chemical additions.
-- Admin, Technician, and Volunteer can read and create treatments. Admin and Technician
-  can update any treatment; Volunteer can update only treatments they recorded and cannot
-  delete. Viewer, unauthenticated, and other blocked users cannot view the feature or its
-  data.
-- Admin and Technician can hard-delete treatments. All updates and deletes are retained in
-  the project-wide append-only operational audit.
-- Reanalysis recommends storing treatment-time `tank_id`. Omitting it would move historical
-  treatments whenever `animals.tank_id` changes.
-- Historical Probiotics rows without a known treated star are unresolved. After exact
-  hosted cleanup they remain in the unresolved CSV, not in `chemical_additions`.
-- **Log another treatment** defaults treatment type back to `probiotics`; other values
-  reset rather than being retained.
-- No amount or concentration warning ranges will be added.
-- A treatment may optionally link to the health observation that prompted it. Implement
-  this from the health-observation side or a small link table so the compact treatment
-  table does not gain another column.
-- The optional health-observation link is deferred from the first release. Its cardinality,
-  permissions, and workflow must be designed before adding it; it is not part of required
-  first-release verification.
-- **Deferred:** choose the time window for a likely-duplicate warning. This does not block
-  the first implementation; duplicate detection can be omitted until the window is set.
-
-## 16. Additional Repository Concerns
-
-- **Role contract:** the RBAC smoke suite covers Volunteer create, own-row update, denied
-  other-row update, and denied delete across ordinary operational logs.
-- **Role fixtures:** local seed now includes Admin, Technician, Volunteer, and Viewer. Keep
-  the test-account documentation and role matrix aligned with those fixtures.
-- **Reference data in migrations:** systems/species are inserted by migrations. Tanks and
-  animals (Graham tanks, SSL25) are entered through Settings > Animal setup; `supabase/seed.sql`
-  adds them as local-only e2e fixtures.
-- **Delete consequences:** treatment FKs with delete restriction mean systems/tanks/animals
-  with treatment history cannot be hard-deleted through existing cascades. Prefer retiring
-  roster/reference records over deleting them, and make admin UI errors explicit.
-- **No analytics schema:** it was removed. Query `core` for the first treatment release.
-- **History is a placeholder:** keep full cross-log filters and export out of the first
-  implementation; build only the treatment discovery surface required for correction and
-  authorized deletion.
+Schema/RLS changes require Tier 3 verification under
+[testing-strategy.md](testing-strategy.md): validation boundaries, stale selections,
+batch rows, treatment-time location after moves, immutable provenance, direct-write
+rejection, all roles, RPC lifecycle, deep links, double-submit behavior, and phone/keyboard
+accessibility. Check saved rows/timestamps directly in Supabase and confirm treatments do
+not alter chemical-addition counts. Real-data reconciliation additionally requires Tier 4.

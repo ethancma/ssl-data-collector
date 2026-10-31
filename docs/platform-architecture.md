@@ -1,6 +1,6 @@
 # SSL Data Collection Tool — Platform Architecture
 
-> Covers the technical platform only (stack, schema, roles, roadmap, cost). For the lab
+> Covers the technical platform only (stack, schema, roles). For the lab
 > itself — the 8 systems, testing cadence, Apex probes, and the historical data
 > migration plan — see [lab-operations-plan.md](lab-operations-plan.md).
 
@@ -57,15 +57,14 @@ star health and SSWD symptom onset over time.
   quality, etc.) need to be brought in — via structured CSV import for spreadsheets and
   an efficient bulk/backfill entry UI for paper records — without being confused with
   live-entered data (see provenance fields in §4).
-- **Auth**: Google sign-in (~10-20 accounts), gated by admin approval (not strictly
-  limited to a Workspace domain, to allow outside collaborators if needed).
+- **Auth**: invite-only password/Google sign-in (~10-20 accounts), with the Admin
+  choosing the invited role. Not limited to a Workspace domain.
 - **Roles**: Admin, Technician, Volunteer, and Viewer. Volunteer is distinct so
   paid-staff vs. volunteer entries remain attributable; Volunteers have lab-wide
   read/create access, may update entries attributed to their profile without a time or
   provenance-source limit, and cannot delete. Viewer is read-only.
-- **Photo attachments** on health observations: always mandatory for arm drops, spine
-  drops, and lesions; mandatory for other issue types only above a certain severity
-  on a 3-level scale (exact thresholds TBD, see lab operations plan open questions).
+- **Photo attachments** on health observations are always optional. Severity is a
+  1-5 score (1 = healthy, 5 = dead).
 - **Connectivity**: reliable WiFi in the lab — no offline-first requirement.
 - **Analytics**: both in-app dashboards/trend charts and clean raw data export for
   external stats (R/Python/Excel), since this data ultimately supports conservation
@@ -90,14 +89,17 @@ many concurrent users — Next.js + Supabase Auth/RLS is the most robust and mat
 for that, and the maintainer is comfortable in TypeScript/React as well as Python.
 
 **Stack:**
-- **Frontend**: Next.js + TypeScript + Tailwind CSS, deployed to Vercel (free "Hobby"
-  tier to start); responsive layout for tablet use tank-side, designed mobile/tablet-first
-  since that's where entry actually happens (see §6 usability items).
+- **Frontend**: Next.js + TypeScript + Tailwind CSS, mobile/tablet-first for tank-side use.
+  Standard Next.js remains supported; the pinned vinext/Vite build targets Cloudflare
+  Workers Free at `https://ssl-data-collector.ssl-lab.workers.dev`. It is a Next.js API
+  reimplementation, not a verified adapter. See [workers-deployment.md](workers-deployment.md)
+  for isolated staging, runtime credentials, verification, release approval, and rollback.
 - **Backend/DB**: Supabase — Postgres, Google OAuth, Storage (photos), Row Level
   Security for role enforcement, auto-generated REST/GraphQL API.
 - **Charts**: Recharts for trend lines, correlation/overlay views.
-- **Reminders**: Supabase scheduled Edge Function (pg_cron) + Resend (free tier) for
-  overdue-maintenance email digests.
+- **Reminders (unimplemented requirement)**: scheduled overdue-maintenance email digests
+  to Admins/lead techs. A Supabase scheduled Edge Function + Resend is a candidate,
+  not a deployed service.
 - **Monitoring** (optional, later phase): Sentry free tier.
 - **Apex integration** (optional, later phase): Neptune Apex Fusion exposes a
   local/cloud API; polling it for continuous pH would give higher-resolution trend
@@ -105,6 +107,11 @@ for that, and the maintainer is comfortable in TypeScript/React as well as Pytho
   deferred until the manual-entry MVP is validated (see lab operations plan).
 
 ## 4. Data Model
+
+The diagram includes domain requirements as well as implemented tables. `animal_movements`,
+`microalgae_logs`, `maintenance_tasks`, and the daily-check health-follow-up link are not
+implemented. Migrations are authoritative for the actual schema; do not generate clients
+from this conceptual model.
 
 ```mermaid
 erDiagram
@@ -129,7 +136,7 @@ erDiagram
 ```
 
 **Core tables:**
-- `profiles` — id (-> auth.users), email, display_name, role (admin|technician|volunteer|viewer), status (pending|active)
+- `profiles` — id (-> auth.users), email, display_name, role (admin|technician|volunteer|viewer), status (pending|active|denied)
 - `systems` — id, name, description, has_animals (bool, false for e.g. the micro-algae
   system). Authenticated UI lists sort by name and then ID without separate ordering
   metadata (see lab operations plan for the full list of 8 systems).
@@ -175,7 +182,7 @@ erDiagram
   event-time snapshots, amount, added_at, recorded_by, reason, data_source
 - `daily_checks` — id, system_id, check_type (AM|PM), checked_at, water_running (bool), temperature, recorded_by, notes, flagged_health_observation_id (nullable, set when a check flags an issue and a follow-up health observation is opened but not yet completed), data_source
 - `microalgae_logs` — id, system_id (the Micro-Algae system), logged_at, density_reading, harvest_volume, condition_notes, recorded_by, data_source
-- `health_observations` — id, animal_id, tank_id, observed_at, issues (multi-select: arm_drop, spine_drop, lesion, arm_curling, flattening, other), severity (3-level scale, exact labels TBD), photo required at submit time for arm_drop/spine_drop/lesion always, and for other issue types above a severity threshold (TBD), notes, recorded_by, data_source
+- `health_observations` — id, animal_id, tank_id, observed_at, issues (multi-select: arm_drop, spine_drop, lesion, arm_curling, flattening, other), severity (smallint 1-5; 1 = healthy, 5 = dead), optional photo, notes, recorded_by, data_source
 - `feeding_logs` — id, tank_id, animal_id (required for tanks with named individuals; logged per animal even when multiple animals share a tank), required food_catalog_id (name and unit come from the catalog's `name`/`default_unit`), optional amount_value (positive, fractions allowed, in the catalog unit), fed_at, recorded_by, consumption_status (full|partial|none|unknown), consumption_checked_at, notes, data_source
 - `star_treatments` — id, animal_id, tank_id treatment-time snapshot, optional catalog_id,
   treatment_type and unit event-time snapshots, optional amount/unit and
@@ -219,39 +226,38 @@ server-owned and immutable. Admins and Technicians can read the audit trail. Sto
 is scoped to the private `attachments` bucket, and Volunteers may update only objects they
 own.
 
-New Google sign-ins land as `profiles.status = pending`; an Admin approves and assigns
-a role before the account gets any data access. On the user's next application request
-after a role or status change, the proxy refreshes the access token; inactive or invalid
-profiles fall back to the non-privileged `authenticated` claim.
+Public sign-up is disabled. An Admin issues an invitation with a role; acceptance
+activates the profile. Pending/inactive profiles have no operational access. See
+[auth-invitations.md](auth-invitations.md) for password/Google acceptance, recovery,
+and hosted provider setup. On the next application request after a role or status change,
+the proxy refreshes the access token; inactive or invalid profiles fall back to the
+non-privileged `authenticated` claim.
 
-## 6. Delivery Status
+## 6. Hosting And Service Boundaries
 
-The original phase roadmap has been merged into
-[implementation-checklist.md](implementation-checklist.md), which now records delivered
-work, integrity risks, remaining features, staff decisions, and rollout tasks without
-duplicating status here.
+Managed Supabase owns Postgres/RLS, Auth, and primary photo Storage. Workers hosts the
+application, not the database. Staging requires a separate Supabase project.
+Private R2 is intended for encrypted backups, not primary photo storage.
+The target is Workers Free + Supabase Free with no automatic paid upgrade; confirm
+current limits and measure hosted CPU/usage before launch. A custom domain is optional.
+Hosted configuration, photo reliability, and proven recovery are production gates in the
+[Workers runbook](workers-deployment.md), not capabilities implied by merging app code.
 
-## 7. Cost Estimate
-
-- **Start**: $0/mo — Supabase Free + Vercel Hobby (free) + Resend Free.
-- **Steady state**: ~$25/mo — Supabase Pro, once photo storage/backup needs exceed the
-  free tier (500MB DB / 1GB storage).
-
-## 8. Decisions Log
+## 7. Decisions Log
 
 - Supabase/Postgres chosen over Firebase/Firestore: relational joins needed for
   long-term correlation studies outweigh Firestore's simpler Google-native auth
   integration; Supabase supports Google OAuth too.
 - Managed Supabase chosen over self-hosted Postgres+VPS: lower maintenance burden for
-  a solo maintainer at a small nonprofit, despite marginally higher cost; automated
-  backups included.
+  a solo maintainer at a small nonprofit. Free-tier use still requires an independently
+  verified backup/restore implementation.
 - Next.js chosen over Python-native frontends (Streamlit/Dash/Reflex/NiceGUI): this app
   is primarily role-gated, multi-page daily CRUD forms, which Next.js + Supabase
   Auth/RLS handles more robustly; maintainer is comfortable in both stacks.
 - No offline-first requirement — lab has reliable WiFi.
 - Larval cone-bottoms tracked as cohorts (batch-level); other animals get individual IDs.
-- Google sign-in gated by admin approval rather than strict Workspace-domain
-  enforcement, to allow non-Workspace collaborators.
+- Admin-created password/Google invitations rather than Workspace-domain enforcement,
+  to allow outside collaborators without public registration.
 - Water quality testing corrected to weekly (not daily) per system, with salinity confirmed
   as the ninth panel parameter; a `ph_source`
   field distinguishes Apex-probe pH from manual readings, and direct Apex API
@@ -263,8 +269,8 @@ duplicating status here.
 - Volunteers get their own role (distinct from Technician) to distinguish paid-staff
   vs. volunteer entries. They can read and create operational records, update only their
   own entries, and cannot delete; Admins and Technicians retain full mutation access.
-- An AM/PM check that flags an issue auto-opens a linked health observation, but that
-  observation can be saved as a follow-up rather than completed on the spot; it stays
+- Unimplemented requirement: an AM/PM check that flags an issue opens a linked health
+  observation that can be saved as a follow-up rather than completed on the spot; it stays
   flagged on the check record (no separate dashboard-level nagging) until filled in.
 - Individual animals are identified by a unique, lab-wide nickname rather than a
   tank-scoped tag/label, matching how staff already name animals informally; every
@@ -281,15 +287,12 @@ duplicating status here.
   live-vs-imported filter/toggle for the MVP.
 - CSV export is sufficient for now; no standardized format (e.g., Darwin Core) is
   required by a partner/grant at this time.
-- Vercel chosen over Netlify for hosting: first-party Next.js support (zero-config
-  previews, image optimization) fits a solo maintainer better than the marginal ToS
-  benefit of Netlify's free tier; revisit only if Vercel's Hobby-tier non-commercial
-  ToS turns out to be a real blocker for a registered nonprofit, in which case upgrade
-  to a paid Vercel plan rather than switching hosts.
+- Cloudflare Workers is the hosting target; standard Next.js support is retained as a
+  portability boundary. A hosting change or paid upgrade requires a separate decision.
 
-## 9. Open Questions
+## 8. Open Questions
 
 Operational questions and staff decisions are maintained only in
 [lab-operations-plan.md](lab-operations-plan.md#8-open-questions--further-considerations).
-Their implementation impact and completion state are tracked in
+Their implementation constraints are retained in
 [implementation-checklist.md](implementation-checklist.md#staff-decisions).

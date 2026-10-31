@@ -62,7 +62,7 @@ A deliberate exception to the page-title row above: ISeaU hero headlines use
 `text-4xl sm:text-6xl font-semibold tracking-tight` and star names on tiles use `text-3xl`
 (`text-5xl` to `text-7xl` in detail heroes). Content sits on `bg-muted` `rounded-3xl` tiles with
 no border or shadow; selectors are `rounded-full` pills (selected = `bg-foreground text-background`).
-Severity swatches use fixed teal / amber / red in `components/iseau/shared.tsx` so they read the same
+Severity swatches use fixed teal (1) / amber (2) / red (3-5) in `components/iseau/shared.tsx` so they read the same
 in both themes. The Systems lineup, compare, and detail pages reuse these tiles, pills, and
 severity hues (status: teal on track, amber worth a look, coral needs attention). History puts a
 sentence headline under its title, its table on a `Tile`, filters as pills and `rounded-full`

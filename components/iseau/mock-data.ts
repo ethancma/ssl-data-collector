@@ -6,8 +6,8 @@ const SAMPLE_NOW = Date.parse("2026-10-05T23:59:59-07:00");
 const CURRENT_WINDOW_DAYS = 14;
 export const RANGES = [7, 14, 30, 60] as const;
 export type Range = (typeof RANGES)[number];
-export type Severity = "low" | "medium" | "high";
-export const SEVERITY_RANK: Record<Severity, number> = { low: 0, medium: 1, high: 2 };
+// Same 1-5 health score as core.health_observations.severity (1 = healthy, 5 = dead).
+export type Severity = number;
 export type Issue = "arm_drop" | "spine_drop" | "lesion" | "arm_curling" | "flattening" | "other";
 export const ISSUE_LABELS: Record<Issue, string> = {
   arm_drop: "Arm drop", spine_drop: "Spine drop", lesion: "Lesion", arm_curling: "Arm curling", flattening: "Flattening", other: "Other",
@@ -40,30 +40,30 @@ function at(daysAgo: number, hour = 9) {
   return Date.parse(`${date.toISOString().slice(0, 10)}T${String(hour).padStart(2, "0")}:00:00-07:00`);
 }
 const STAFF = ["Maya Chen", "Alex Rivera", "Sam Taylor"];
-const NOTES: Record<Severity, string[]> = {
-  high: ["Lesion margin spreading; photographed and separated from tank mates.", "Two arms curling inward; reduced grip on the glass."],
-  medium: ["Reduced extension during the morning check.", "Spines softer than yesterday; lesion margin unchanged."],
-  low: ["Margins unchanged; photographed for comparison.", "Moving normally; one small mark remains."],
+const NOTES: Record<number, string[]> = {
+  4: ["Lesion margin spreading; photographed and separated from tank mates.", "Two arms curling inward; reduced grip on the glass."],
+  3: ["Reduced extension during the morning check.", "Spines softer than yesterday; lesion margin unchanged."],
+  2: ["Margins unchanged; photographed for comparison.", "Moving normally; one small mark remains."],
 };
 
 type Def = { id: string; name: string; moves: [number, SystemName, string][]; health: [number, Severity, Issue[]][] };
 const DEFS: Def[] = [
   { id: "sol", name: "Sol", moves: [[90, "Graham", "G-04"], [7, "Nursery", "N-02"]],
-    health: [[0, "low", ["lesion"]], [5, "medium", ["lesion", "arm_curling"]], [11, "high", ["lesion", "arm_curling"]], [22, "medium", ["spine_drop"]]] },
+    health: [[0, 2, ["lesion"]], [5, 3, ["lesion", "arm_curling"]], [11, 4, ["lesion", "arm_curling"]], [22, 3, ["spine_drop"]]] },
   { id: "dune", name: "Dune", moves: [[90, "Snack Shack", "S-01"]],
-    health: [[1, "high", ["arm_drop", "flattening"]], [4, "medium", ["arm_drop"]]] },
+    health: [[1, 4, ["arm_drop", "flattening"]], [4, 3, ["arm_drop"]]] },
   { id: "juniper", name: "Juniper", moves: [[90, "Graham", "G-02"]],
-    health: [[2, "medium", ["spine_drop"]], [9, "medium", ["spine_drop", "other"]], [20, "low", ["spine_drop"]]] },
+    health: [[2, 3, ["spine_drop"]], [9, 3, ["spine_drop", "other"]], [20, 2, ["spine_drop"]]] },
   { id: "clay", name: "Clay", moves: [[90, "Graham", "G-03"]],
-    health: [[3, "medium", ["flattening"]], [6, "high", ["flattening", "lesion"]], [13, "medium", ["flattening"]]] },
+    health: [[3, 3, ["flattening"]], [6, 4, ["flattening", "lesion"]], [13, 3, ["flattening"]]] },
   { id: "poppy", name: "Poppy", moves: [[90, "Nursery", "N-01"]],
-    health: [[8, "low", ["arm_drop"]], [12, "medium", ["arm_drop"]], [26, "medium", ["arm_drop", "arm_curling"]]] },
+    health: [[8, 2, ["arm_drop"]], [12, 3, ["arm_drop"]], [26, 3, ["arm_drop", "arm_curling"]]] },
   { id: "fern", name: "Fern", moves: [[90, "Nursery", "N-03"]],
-    health: [[16, "low", ["spine_drop"]], [21, "medium", ["spine_drop"]], [29, "high", ["spine_drop", "lesion"]]] },
+    health: [[16, 2, ["spine_drop"]], [21, 3, ["spine_drop"]], [29, 4, ["spine_drop", "lesion"]]] },
   { id: "atlas", name: "Atlas", moves: [[90, "Snack Shack", "S-03"]],
-    health: [[18, "low", ["other"]], [24, "medium", ["flattening", "other"]], [40, "medium", ["flattening"]]] },
+    health: [[18, 2, ["other"]], [24, 3, ["flattening", "other"]], [40, 3, ["flattening"]]] },
   { id: "moss", name: "Moss", moves: [[90, "Graham", "G-01"]],
-    health: [[20, "low", ["arm_curling"]], [27, "medium", ["arm_curling"]], [34, "high", ["arm_curling", "lesion"]]] },
+    health: [[20, 2, ["arm_curling"]], [27, 3, ["arm_curling"]], [34, 4, ["arm_curling", "lesion"]]] },
 ];
 
 function locationAt(star: Pick<Star, "moves">, time: number) {
@@ -79,8 +79,8 @@ function buildStar(def: Def, index: number): Star {
   }));
   const treatments: Treatment[] = health.flatMap((entry, i) => {
     const days = daysAgoOf(entry.at);
-    if (entry.severity === "low" || days < 1) return [];
-    const high = entry.severity === "high";
+    if (entry.severity <= 2 || days < 1) return [];
+    const high = entry.severity >= 4;
     return [{ id: `${def.id}-t${days}`, at: at(days - 1, 10), type: high ? "Reef dip" : "Probiotics", amount: high ? 2 : 0.5, amountUnit: "mL",
       concentration: high ? 1 : 0.2, concentrationUnit: "mL/L", by: STAFF[(i + 1) % 3] }];
   });
@@ -88,9 +88,9 @@ function buildStar(def: Def, index: number): Star {
   const oldest = daysAgoOf(health[health.length - 1].at);
   const feedings: Feeding[] = [];
   for (let days = Math.min(oldest + 3, 89), n = 0; days >= newest; days -= 3, n++) {
-    const severity = health.find((candidate) => candidate.at <= at(days, 23))?.severity ?? "low";
+    const severity = health.find((candidate) => candidate.at <= at(days, 23))?.severity ?? 1;
     feedings.push({ id: `${def.id}-f${days}`, at: at(days, 9), food: n % 2 ? "Clam" : "Mussel", grams: n % 2 ? 4 : 6,
-      eaten: severity === "high" ? n % 3 === 0 : severity === "medium" ? n % 4 !== 1 : true, followUpBy: "Sam Taylor" });
+      eaten: severity >= 4 ? n % 3 === 0 : severity === 3 ? n % 4 !== 1 : true, followUpBy: "Sam Taylor" });
   }
   return { id: def.id, name: def.name, moves, health, treatments, feedings: feedings.reverse() };
 }
@@ -119,7 +119,7 @@ export function daysSince(time: number) { return Math.floor((SAMPLE_NOW - time) 
 export function trend(star: Star): "improving" | "worsening" | "steady" | "new" {
   const [latest, previous] = star.health;
   if (!previous) return "new";
-  const delta = SEVERITY_RANK[latest.severity] - SEVERITY_RANK[previous.severity];
+  const delta = latest.severity - previous.severity;
   return delta < 0 ? "improving" : delta > 0 ? "worsening" : "steady";
 }
 

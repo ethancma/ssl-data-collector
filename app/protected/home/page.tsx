@@ -4,14 +4,11 @@ import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 
 import { loadHomeDashboardData } from "./data";
-import { deriveHomeDashboard, type HealthObservationEntry } from "./derivations";
+import { SEVERITY_BADGE_VARIANT, severityStatus } from "@/lib/config/reference-data";
+
+import { deriveHomeDashboard } from "./derivations";
 import { SegmentedTabs } from "./segmented-tabs";
 
-function severityBadgeVariant(severity: HealthObservationEntry["severity"]) {
-  if (severity === "high") return "destructive" as const;
-  if (severity === "medium") return "default" as const;
-  return "secondary" as const;
-}
 
 function formatRelativeTime(isoDate: string) {
   const diffMs = Date.now() - new Date(isoDate).getTime();
@@ -162,7 +159,7 @@ async function HomeContent() {
                   <span className="text-muted-foreground">{entry.issue}</span>
                 </div>
                 <div className="flex flex-col items-end gap-1">
-                  <Badge variant={severityBadgeVariant(entry.severity)}>{entry.severity}</Badge>
+                  <Badge variant={SEVERITY_BADGE_VARIANT[severityStatus(entry.severity)]}>Severity {entry.severity}</Badge>
                   <span className="text-xs text-muted-foreground">
                     {formatRelativeTime(entry.observedAt)}
                   </span>

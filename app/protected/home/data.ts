@@ -26,7 +26,7 @@ export type HomeDashboardSourceData = {
   recentHealthObservations: Array<{
     id: number;
     observed_at: string;
-    severity: string;
+    severity: number;
     issues: unknown;
     tanks: unknown;
   }>;

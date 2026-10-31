@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import {
-  ISSUE_LABELS, PARAMETERS, RANGES, SEVERITY_RANK, STARS, currentLocation, isCurrent, lastHealth, starData,
+  ISSUE_LABELS, PARAMETERS, RANGES, STARS, currentLocation, isCurrent, lastHealth, starData,
   type Parameter, type Range, type Star, type SystemName,
 } from "./mock-data";
 
@@ -14,7 +14,7 @@ const COMPARE_COLUMNS = 3;
 
 export function starsFor(status: Status, system: SystemFilter) {
   return STARS.filter((star) => isCurrent(star) === (status === "current") && (system === "all" || currentLocation(star).system === system))
-    .sort((first, second) => SEVERITY_RANK[lastHealth(second).severity] - SEVERITY_RANK[lastHealth(first).severity] || lastHealth(second).at - lastHealth(first).at);
+    .sort((first, second) => lastHealth(second).severity - lastHealth(first).severity || lastHealth(second).at - lastHealth(first).at);
 }
 
 // Unknown or duplicate ids are dropped, then the list is padded from the current patients, sickest first.

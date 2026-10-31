@@ -4,7 +4,8 @@ import { FlaskConical, HeartPulse, Image as ImageIcon, Thermometer, Utensils, Wa
 import { useState } from "react";
 import { cn } from "@/lib/utils";
 import { ISSUE_LABELS, PARAMETERS, lastTemperature, recentWater, starData, type Parameter, type Range, type Severity, type Star } from "./mock-data";
-import { EmptyNote, SEVERITY, Segmented, SeverityLabel, Sheet, dateLabel, focusClass } from "./shared";
+import { EmptyNote, Segmented, SeverityLabel, Sheet, dateLabel, focusClass } from "./shared";
+import { severityTone } from "./severity-tone";
 
 export type SectionId = "health" | "water" | "temperature" | "treatments" | "feeding";
 export const SECTIONS: { id: SectionId; title: string; Icon: LucideIcon }[] = [
@@ -36,7 +37,7 @@ function LineChart({ series, start, end, band, unit, compact = false, marks = []
   const round = (value: number) => Number(value.toFixed(2));
   return <svg role="img" viewBox={`0 0 600 ${height}`} className="w-full" aria-label={`${label}: ${series.points.length} readings from ${dateLabel(start)} to ${dateLabel(end)}, latest ${round(series.points.at(-1)!.v)} ${unit}`.trim()}>
     {band && <rect x={left} y={y(band[1])} width={right - left} height={Math.max(y(band[0]) - y(band[1]), 0)} fill="hsl(var(--chart-2))" opacity={0.14} />}
-    {!compact && marks.map((mark) => <line key={mark.t} x1={x(mark.t)} x2={x(mark.t)} y1={top} y2={bottom} stroke="currentColor" strokeDasharray="3 4" strokeWidth={1.5} className={SEVERITY[mark.severity].text} />)}
+    {!compact && marks.map((mark) => <line key={mark.t} x1={x(mark.t)} x2={x(mark.t)} y1={top} y2={bottom} stroke="currentColor" strokeDasharray="3 4" strokeWidth={1.5} className={severityTone(mark.severity).text} />)}
     <polyline fill="none" stroke="hsl(var(--chart-3))" strokeWidth={compact ? 2 : 2.5} strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke"
       points={series.points.map((point) => `${x(point.t)},${y(point.v)}`).join(" ")} />
     {(series.points.length <= (compact ? 6 : 20) ? series.points : series.points.slice(-1)).map((point) => <circle key={point.t} cx={x(point.t)} cy={y(point.v)} r={compact ? 4 : 4.5} fill="hsl(var(--chart-3))" />)}
@@ -159,7 +160,7 @@ function sectionSummary(id: SectionId, star: Star, range: Range): { value: strin
   switch (id) {
     case "health": {
       const latest = data.health[0];
-      return latest ? { value: SEVERITY[latest.severity].label, caption: `${data.health.length} observation${data.health.length === 1 ? "" : "s"}, latest ${dateLabel(latest.at)}` }
+      return latest ? { value: severityTone(latest.severity).label, caption: `${data.health.length} observation${data.health.length === 1 ? "" : "s"}, latest ${dateLabel(latest.at)}` }
         : { value: "None", caption: "No observations in this range" };
     }
     case "water": {
@@ -187,7 +188,7 @@ function SectionPreview({ id, star, range }: Props & { id: SectionId }) {
   const data = starData(star, range);
   switch (id) {
     case "health": return <TimelineStrip start={data.start} end={data.end} label={`${data.health.length} health observations`}
-      items={data.health.map((entry) => ({ t: entry.at, tone: SEVERITY[entry.severity] }))} />;
+      items={data.health.map((entry) => ({ t: entry.at, tone: severityTone(entry.severity) }))} />;
     case "water": {
       const recent = recentWater(star, 4);
       const first = recent[0]?.at ?? 0;

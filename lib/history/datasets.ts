@@ -77,7 +77,7 @@ export type HistoryRow = {
   amount?: number | null;
   unit?: string | null;
   reason?: string | null;
-  severity?: string | null;
+  severity?: number | null;
   issues?: string[] | null;
   has_photo?: boolean | null;
   task_type?: string | null;
@@ -201,7 +201,7 @@ export const DATASET_COLUMNS: Record<HistoryDataset, HistoryColumn[]> = {
     SYSTEM,
     TANK,
     ANIMAL,
-    textColumn("severity", "Severity", (row) => capitalize(row.severity)),
+    numberColumn("severity", "Severity (1-5)", (row) => row.severity),
     textColumn("issues", "Issues", (row) => row.issues?.map((issue) => HEALTH_ISSUE_LABELS[issue as keyof typeof HEALTH_ISSUE_LABELS] ?? issue).join("; ")),
     textColumn("has_photo", "Photo", (row) => yesNo(row.has_photo)),
     RECORDED_BY,

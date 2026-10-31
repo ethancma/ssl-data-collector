@@ -1,5 +1,6 @@
 import { Badge } from "@/components/ui/badge";
 import type { HighlightItem } from "@/components/systems/types";
+import { SEVERITY_BADGE_VARIANT, severityStatus } from "@/lib/config/reference-data";
 import {
   AlertTriangle,
   FlaskConical,
@@ -15,11 +16,6 @@ const KIND_ICON: Record<HighlightItem["kind"], LucideIcon> = {
   missed_check: AlertTriangle,
 };
 
-function severityBadgeVariant(severity?: "low" | "medium" | "high") {
-  if (severity === "high") return "destructive" as const;
-  if (severity === "medium") return "default" as const;
-  return "secondary" as const;
-}
 
 function formatWhen(iso: string) {
   const diffMs = Date.now() - new Date(iso).getTime();
@@ -60,8 +56,8 @@ export function HighlightsFeed({
             <div className="flex flex-1 flex-col gap-0.5">
               <div className="flex items-center justify-between gap-2">
                 <span className="text-sm font-medium">{item.title}</span>
-                {item.severity && (
-                  <Badge variant={severityBadgeVariant(item.severity)}>{item.severity}</Badge>
+                {item.severity !== undefined && (
+                  <Badge variant={SEVERITY_BADGE_VARIANT[severityStatus(item.severity)]}>Severity {item.severity}</Badge>
                 )}
                 {item.kind === "missed_check" && <Badge variant="outline">Missed</Badge>}
               </div>

@@ -27,7 +27,7 @@ test("deriveHomeDashboard preserves Pacific-day totals and daily status", () => 
       {
         id: 7,
         observed_at: "2026-09-20T18:00:00.000Z",
-        severity: "medium",
+        severity: 3,
         issues: ["arm_curling"],
         tanks: { systems: { name: "Graham" } },
       },

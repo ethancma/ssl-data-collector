@@ -439,18 +439,18 @@ test.describe("e2e smoke", () => {
     expect(localDateOf(String(addition.added_at))).toBe(todayDateString());
   });
 
-  test("health observation blocks submit without a photo for lesion", async ({
+  test("health observation blocks submit with a severity outside 1-5", async ({
     page,
   }) => {
     await login(page);
     await gotoHydrated(page, "/protected/daily-operations?type=health-observation");
     await page.getByLabel("Animal", { exact: true }).selectOption(String(ssl25AnimalId));
-    await page.getByRole("button", { name: "Medium" }).click();
+    await page.locator("#health-observation-severity").fill("6");
     await page.getByLabel("Lesion").check();
     await page.getByLabel("Notes").fill(`${RUN_TAG} health obs blocked`);
     await page.getByRole("button", { name: "Save observation" }).click();
     // Client-side zod validation should block the insert and keep us on the form.
-    await expect(page.getByText(/photo is required/i)).toBeVisible();
+    await expect(page.getByText(/whole number from 1 to 5/i)).toBeVisible();
     await expect(page).toHaveURL(
       /\/protected\/daily-operations\?type=health-observation/,
     );
@@ -468,7 +468,7 @@ test.describe("e2e smoke", () => {
     await login(page);
     await gotoHydrated(page, "/protected/daily-operations?type=health-observation");
     await page.getByLabel("Animal", { exact: true }).selectOption(String(ssl25AnimalId));
-    await page.getByRole("button", { name: "Medium" }).click();
+    await page.locator("#health-observation-severity").fill("3");
     await page.getByLabel("Lesion").check();
     await page.getByLabel("Arm curling").check();
     await page
@@ -486,7 +486,7 @@ test.describe("e2e smoke", () => {
     expect(observations).toHaveLength(1);
     const observation = observations[0];
     expect(Number(observation.animal_id)).toBe(ssl25AnimalId);
-    expect(observation.severity).toBe("medium");
+    expect(Number(observation.severity)).toBe(3);
     expect(observation.has_photo).toBe(true);
     expect(observation.issues).toEqual(["lesion", "arm_curling"]);
     expect(localDateOf(String(observation.observed_at))).toBe(todayDateString());
@@ -680,7 +680,7 @@ test.describe("e2e smoke", () => {
     await expectDefaultDateAndTime(page);
     await page.getByLabel("Time").fill(PICKED_TIME);
     await page.getByLabel("Animal", { exact: true }).selectOption(String(ssl25AnimalId));
-    await page.getByRole("button", { name: "Low" }).click();
+    await page.locator("#health-observation-severity").fill("2");
     await page.getByLabel("Notes").fill(`${RUN_TAG} health obs picked time`);
     await page.getByRole("button", { name: "Save observation" }).click();
     await expect(page).toHaveURL(/\/protected\/home/);
@@ -692,7 +692,7 @@ test.describe("e2e smoke", () => {
     `);
     expect(rows).toHaveLength(1);
     expect(Number(rows[0].animal_id)).toBe(ssl25AnimalId);
-    expect(rows[0].severity).toBe("low");
+    expect(Number(rows[0].severity)).toBe(2);
     expect(rows[0].issues).toEqual([]);
     expect(localDateOf(String(rows[0].observed_at))).toBe(todayDateString());
     expect(localTimeOf(String(rows[0].observed_at))).toBe(PICKED_TIME);

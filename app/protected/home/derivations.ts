@@ -29,7 +29,7 @@ export type HealthObservationEntry = {
   id: number;
   system: string;
   issue: string;
-  severity: "low" | "medium" | "high";
+  severity: number;
   observedAt: string;
 };
 
@@ -107,7 +107,7 @@ export function deriveHomeDashboard(
           (observation.issues as HealthIssueType[])
             .map((issue) => ISSUE_LABELS[issue] ?? issue)
             .join(", ") || "—",
-        severity: observation.severity as HealthObservationEntry["severity"],
+        severity: observation.severity,
         observedAt: observation.observed_at,
       };
     },

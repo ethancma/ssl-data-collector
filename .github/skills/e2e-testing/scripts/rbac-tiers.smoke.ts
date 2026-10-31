@@ -297,7 +297,7 @@ for (const role of [
       await loginAs(page, role.email, role.password);
       await gotoHydrated(page, "/protected/daily-operations?type=health-observation");
       await page.getByLabel("Animal", { exact: true }).selectOption(String(ssl25AnimalId));
-      await page.getByRole("button", { name: "Low" }).click();
+      await page.locator("#health-observation-severity").fill("2");
       await page.getByLabel("Arm curling").check();
       await page.getByLabel("Flattening").check();
       await page.getByLabel("Notes").fill(`${TAG} health obs`);
@@ -309,7 +309,7 @@ for (const role of [
       );
       expect(rows).toHaveLength(1);
       expect(Number(rows[0]?.animal_id)).toBe(ssl25AnimalId);
-      expect(rows[0]?.severity).toBe("low");
+      expect(Number(rows[0]?.severity)).toBe(2);
       expect(rows[0]?.issues).toEqual(["arm_curling", "flattening"]);
     });
 
@@ -1035,11 +1035,11 @@ test.describe("P0 operational security: ordinary-log CRUD matrix (DB-level)", ()
       table: "health_observations",
       seedSql: (tag, recordedBy) => `insert into core.health_observations
         (animal_id, tank_id, severity, issues, notes, recorded_by)
-        values (${ssl25AnimalId ?? "null"}, ${ssl25TankId ?? "null"}, 'low', array['lesion', 'arm_curling']::text[], ${sqlLiteral(tag)}, ${recordedBy}) returning id`,
+        values (${ssl25AnimalId ?? "null"}, ${ssl25TankId ?? "null"}, 2, array['lesion', 'arm_curling']::text[], ${sqlLiteral(tag)}, ${recordedBy}) returning id`,
       insertPayload: (tag) => ({
         animal_id: ssl25AnimalId,
         tank_id: ssl25TankId,
-        severity: "low",
+        severity: 2,
         issues: ["lesion", "arm_curling"],
         notes: tag,
       }),
