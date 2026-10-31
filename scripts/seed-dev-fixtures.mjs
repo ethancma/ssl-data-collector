@@ -1,12 +1,31 @@
 // Seeds the hosted Dev project with tanks and animals shaped like Production's: the same tank
 // layout, Sunflower star individuals only, some retired. Animal names are synthetic.
-// Idempotent; run with `npm run seed:dev`. Refuses any database other than Dev.
+// Idempotent; `npm run seed:dev` targets hosted Dev, `--local` targets local Supabase for CI.
 import pg from "pg";
 
 const DEV_PROJECT_REF = "hcaopgzlvuyuyjcjxuvy";
+const local = process.argv.includes("--local");
+if (process.argv.slice(2).some((argument) => argument !== "--local")) {
+  throw new Error("Only --local is supported.");
+}
 const url = process.env.E2E_DB_URL;
-if (!url || !url.includes(DEV_PROJECT_REF)) {
-  throw new Error(`E2E_DB_URL must point at the Dev project (${DEV_PROJECT_REF}).`);
+if (!url) throw new Error("E2E_DB_URL is required.");
+const target = new URL(url);
+const localTarget = ["localhost", "127.0.0.1", "[::1]"].includes(target.hostname);
+const devTarget =
+  target.hostname === `db.${DEV_PROJECT_REF}.supabase.co` ||
+  (target.hostname.endsWith(".pooler.supabase.com") &&
+    decodeURIComponent(target.username) === `postgres.${DEV_PROJECT_REF}`);
+if (
+  !["postgres:", "postgresql:"].includes(target.protocol) ||
+  target.pathname !== "/postgres" ||
+  !(local ? localTarget : devTarget)
+) {
+  throw new Error(
+    local
+      ? "--local requires a loopback Postgres database URL."
+      : `E2E_DB_URL must point at the Dev project (${DEV_PROJECT_REF}).`,
+  );
 }
 
 // [system slug, tank name, tank type, shelf position, size L, active, retired]
@@ -32,6 +51,7 @@ try {
   const { rows: [species] } = await client.query(
     "select id from core.species where common_name = 'Sunflower star'",
   );
+  if (!species) throw new Error("Seed requires the Sunflower star species.");
   let created = 0;
   let serial = 0;
   for (const [slug, name, type, position, size, active, retired] of TANKS) {
@@ -42,6 +62,7 @@ try {
        returning id`,
       [slug, name, type, position, size],
     );
+    if (!tank) throw new Error(`Seed requires system ${slug}.`);
     for (let i = 0; i < active + retired; i++) {
       serial += 1;
       const isRetired = i >= active;
@@ -58,7 +79,7 @@ try {
     }
   }
   await client.query("commit");
-  console.log(`Dev fixtures ready: ${TANKS.length} tanks, ${created} new animals.`);
+  console.log(`${local ? "Local" : "Dev"} fixtures ready: ${TANKS.length} tanks, ${created} new animals.`);
 } catch (error) {
   await client.query("rollback");
   throw error;

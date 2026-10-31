@@ -85,6 +85,11 @@ weaken each section's UI and direct-Supabase assertions.
 - `npm run seed:dev` idempotently seeds Dev with tanks and animals shaped like Production's
   (it refuses any other project). Tests must find data by shape, as Production would have
   it (for example `findGrahamStar()`), never by a fixture name.
+- CI uses the same fixtures after starting local Supabase:
+  `node scripts/seed-dev-fixtures.mjs --local` with the local `E2E_DB_URL`.
+  `--local` refuses non-loopback database hosts; the default mode still accepts only hosted Dev.
+  Seeding adds synthetic individuals (including retired stars) and shelf tanks of different sizes;
+  it does not copy production animal names or historical observations.
 - Set `E2E_RESET_DB=1` only for local runs. It resets the shared local stack, never a hosted
   project.
 

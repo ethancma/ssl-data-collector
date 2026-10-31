@@ -617,11 +617,11 @@ test.describe("e2e smoke", () => {
     }
 
     await gotoHydrated(page, "/protected/iseau");
-    const patientCard = page.getByRole("link", { name: /SSL25/ });
+    const patientCard = page.locator(`a[href="/protected/iseau?star=${starAnimalId}"]`);
     await expect(patientCard).toBeVisible();
     await patientCard.click();
-    await expect(page.getByRole("heading", { name: "SSL25" })).toBeVisible();
-    await page.getByRole("button", { name: /Health observations for SSL25/ }).click();
+    await expect(page.getByRole("heading", { name: starName, exact: true })).toBeVisible();
+    await page.getByRole("button", { name: `Health observations for ${starName}:` }).click();
     await expect(page.getByRole("dialog")).toContainText(`${RUN_TAG} health obs with photo`);
   });
 

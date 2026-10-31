@@ -345,7 +345,7 @@ export function sqlLiteral(value: string): string {
   return `'${value.replaceAll("'", "''")}'`;
 }
 
-// Any active individual star housed in Graham, as Production data has; never a test fixture.
+// Match Production's data shape without depending on a synthetic fixture name.
 export function findGrahamStar() {
   const row = dbQuery(`select animal.id, animal.name, animal.tank_id, tank.system_id
     from core.animals animal
@@ -357,7 +357,7 @@ export function findGrahamStar() {
       and animal.name not like 'e2e-%'
     order by animal.id
     limit 1`)[0];
-  expect(row, "Graham needs an active individual star (npm run seed:dev)").toBeTruthy();
+  expect(row, "Graham needs an active individual star (npm run seed:dev, or seed-dev-fixtures.mjs --local for local Supabase)").toBeTruthy();
   return {
     id: Number(row.id),
     name: String(row.name),

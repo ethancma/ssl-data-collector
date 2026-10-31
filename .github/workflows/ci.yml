@@ -77,6 +77,9 @@ jobs:
         run: |
           npx supabase start -x studio,logflare,vector,edge-runtime
           npm run -s wt -- env >> "$GITHUB_ENV"
+      - name: Seed production-shaped local fixtures
+        if: steps.plan.outputs.skip != 'true'
+        run: node scripts/seed-dev-fixtures.mjs --local
       - name: Start the app
         if: steps.plan.outputs.skip != 'true'
         env:
