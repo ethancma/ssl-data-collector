@@ -201,6 +201,16 @@ fix for the usability/analysis risk of mixing live entry with manually-migrated
 Google Sheets and paper records — without it, trend charts can't distinguish real
 data gaps from migration lag, and a bad backfill can't be traced to its source.
 
+ISeaU is a read-only patient view over individually tracked star animals. A star is
+included after any severity 2–5 health observation, and is current after any severity
+2–5 observation within the past 14 days, even after a later severity 1 follow-up.
+Healthy-only sightings do not move a past patient into the current group. Health history is loaded
+across the patient's lifetime; water quality, AM-check temperature, feeding, and
+treatment charts use at most the last 60 days. Each health, feeding, and treatment
+record's `tank_id` supplies its historical system location; current tank placement
+comes from `animals.tank_id`. Water target ranges come from
+`water_quality_target_ranges`, with system-specific values overriding lab-wide values.
+
 User-entered operational wall times are interpreted in `America/Los_Angeles` and stored as
 `timestamptz` instants. Nonexistent spring-forward times are rejected; ambiguous fall-back
 times resolve to their earlier occurrence. Operational timestamps are displayed in Pacific

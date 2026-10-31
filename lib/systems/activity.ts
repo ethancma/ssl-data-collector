@@ -20,7 +20,7 @@ type Inputs = {
 
 const TREATMENT_LABELS: Record<string, string> = { probiotics: "Probiotics", reef_dip: "Reef dip" };
 
-function treatmentLabel(type: string) {
+export function treatmentLabel(type: string) {
   const known = TREATMENT_LABELS[type];
   if (known) return known;
   const text = type.replace(/_/g, " ");
