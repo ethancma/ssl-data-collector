@@ -25,7 +25,7 @@ export type SystemAgendaStatus = {
   testedThisWeek: boolean;
 };
 
-export type HealthObservationEntry = {
+type HealthObservationEntry = {
   id: number;
   system: string;
   issue: string;

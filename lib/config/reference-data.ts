@@ -27,8 +27,8 @@ export const HEALTH_ISSUE_LABELS: Record<HealthIssueType, string> = {
 export const SEVERITY_MIN = 1;
 export const SEVERITY_MAX = 5;
 // Dashboard thresholds: 2 = watch, 3 and above = attention.
-export const SEVERITY_WATCH = 2;
-export const SEVERITY_ATTENTION = 3;
+const SEVERITY_WATCH = 2;
+const SEVERITY_ATTENTION = 3;
 export type SeverityStatus = "ok" | "watch" | "attention";
 export function severityStatus(score: number): SeverityStatus {
   if (score >= SEVERITY_ATTENTION) return "attention";

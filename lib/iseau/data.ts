@@ -9,7 +9,7 @@ const DAY = 24 * 60 * 60 * 1000;
 export const RANGES = [7, 14, 30, 60] as const;
 export type Range = (typeof RANGES)[number];
 export type Parameter = WaterQualityParameter;
-export type Issue = HealthIssueType;
+type Issue = HealthIssueType;
 export type Severity = number;
 export type Status = "current" | "past";
 export type SystemFilter = "all" | number;
@@ -28,7 +28,7 @@ export type HealthRecord = {
   by: string;
   place: Place;
 };
-export type TreatmentRecord = {
+type TreatmentRecord = {
   id: number;
   animalId: number;
   at: number;
@@ -41,8 +41,8 @@ export type TreatmentRecord = {
   by: string;
   place: Place;
 };
-export type FeedingStatus = "full" | "partial" | "none" | "unknown";
-export type FeedingRecord = {
+type FeedingStatus = "full" | "partial" | "none" | "unknown";
+type FeedingRecord = {
   id: number;
   animalId: number;
   at: number;
@@ -187,7 +187,7 @@ export function buildIseauData(sources: IseauSources): IseauData {
   };
 }
 
-export function locationAt(star: Star, time: number): Place {
+function locationAt(star: Star, time: number): Place {
   return [...star.moves].reverse().find((move) => move.since <= time)?.place ?? star.moves[0]?.place ?? star.location;
 }
 
