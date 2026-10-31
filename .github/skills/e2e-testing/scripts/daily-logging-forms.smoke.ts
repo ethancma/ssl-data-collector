@@ -32,6 +32,7 @@ import {
   localTimeOf,
   PICKED_TIME,
   expectDefaultDateAndTime,
+  findGrahamStar,
   logSingleFeeding,
   selectBatchScope,
   gotoHydrated,
@@ -46,9 +47,10 @@ test.describe("e2e smoke", () => {
   test.skip(!TECH_PASSWORD, "E2E_TEST_TECH_PASSWORD not set");
 
   let grahamSystemId: number;
-  let ssl25AnimalId: number;
-  let ssl25TankId: number;
-  let ssl25SystemId: number;
+  let starAnimalId: number;
+  let starTankId: number;
+  let starSystemId: number;
+  let starName: string;
   let diTraceCatalogId: number;
 
   test.afterAll(async () => {
@@ -103,13 +105,11 @@ test.describe("e2e smoke", () => {
     // schema core" against the service-role client, see the gotcha in ../SKILL.md.
     const systemRows = dbQuery(`select id from core.systems where name = 'Graham'`);
     grahamSystemId = Number(systemRows[0]?.id);
-    const animalRows = dbQuery(`select animal.id, animal.tank_id, tank.system_id
-      from core.animals animal
-      join core.tanks tank on tank.id = animal.tank_id
-      where animal.name = 'SSL25'`);
-    ssl25AnimalId = Number(animalRows[0]?.id);
-    ssl25TankId = Number(animalRows[0]?.tank_id);
-    ssl25SystemId = Number(animalRows[0]?.system_id);
+    const star = findGrahamStar();
+    starAnimalId = star.id;
+    starTankId = star.tankId;
+    starSystemId = star.systemId;
+    starName = star.name;
     const catalogRows = dbQuery(
       `select id from core.chemical_addition_catalog where name = 'DI-Trace'`,
     );
@@ -243,14 +243,14 @@ test.describe("e2e smoke", () => {
     expect(localDateOf(String(check.checked_at))).toBe(todayDateString());
   });
 
-  test("feeding log for SSL25 lands in feeding_logs", async ({ page }) => {
+  test("feeding log for a Graham star lands in feeding_logs", async ({ page }) => {
     await login(page);
     await page.goto("/protected/daily-operations?type=feeding");
     await expect(page.getByLabel("Food name")).toHaveCount(0);
     await logSingleFeeding(page, {
-      systemId: ssl25SystemId,
-      tankId: ssl25TankId,
-      animalId: ssl25AnimalId,
+      systemId: starSystemId,
+      tankId: starTankId,
+      animalId: starAnimalId,
       food: "Krill",
       amount: "2.5",
       unit: "pieces",
@@ -271,7 +271,7 @@ test.describe("e2e smoke", () => {
       select id from core.food_catalog where name = 'Krill' and is_active
     `);
     expect(catalogRows).toHaveLength(1);
-    expect(Number(feeding.animal_id)).toBe(ssl25AnimalId);
+    expect(Number(feeding.animal_id)).toBe(starAnimalId);
     expect(Number(feeding.food_catalog_id)).toBe(Number(catalogRows[0].id));
     expect(feeding.food_name).toBe("Krill");
     expect(feeding.catalog_default_unit).toBe("pieces");
@@ -293,7 +293,7 @@ test.describe("e2e smoke", () => {
     );
     await expect(page.getByText("Consumption follow-up")).toBeVisible();
     await expect(
-      page.getByText("SSL25", { exact: true }).first().locator(".."),
+      page.getByText(starName, { exact: true }).first().locator(".."),
     ).toBeVisible();
 
     await page.goto("/protected/daily-operations?type=daily-check&check=PM");
@@ -303,7 +303,7 @@ test.describe("e2e smoke", () => {
       .selectOption(String(grahamSystemId));
     await expect(page.getByText("Consumption follow-up")).toBeVisible();
     const newestSsl25PendingFeeding = page
-      .getByText("SSL25", { exact: true })
+      .getByText(starName, { exact: true })
       .first()
       .locator("..");
     await expect(newestSsl25PendingFeeding).toBeVisible();
@@ -444,7 +444,7 @@ test.describe("e2e smoke", () => {
   }) => {
     await login(page);
     await gotoHydrated(page, "/protected/daily-operations?type=health-observation");
-    await page.getByLabel("Animal", { exact: true }).selectOption(String(ssl25AnimalId));
+    await page.getByLabel("Animal", { exact: true }).selectOption(String(starAnimalId));
     await page.locator("#health-observation-severity").fill("6");
     await page.getByLabel("Lesion").check();
     await page.getByLabel("Notes").fill(`${RUN_TAG} health obs blocked`);
@@ -467,7 +467,7 @@ test.describe("e2e smoke", () => {
   }) => {
     await login(page);
     await gotoHydrated(page, "/protected/daily-operations?type=health-observation");
-    await page.getByLabel("Animal", { exact: true }).selectOption(String(ssl25AnimalId));
+    await page.getByLabel("Animal", { exact: true }).selectOption(String(starAnimalId));
     await page.locator("#health-observation-severity").fill("3");
     await page.getByLabel("Lesion").check();
     await page.getByLabel("Arm curling").check();
@@ -485,7 +485,7 @@ test.describe("e2e smoke", () => {
     `);
     expect(observations).toHaveLength(1);
     const observation = observations[0];
-    expect(Number(observation.animal_id)).toBe(ssl25AnimalId);
+    expect(Number(observation.animal_id)).toBe(starAnimalId);
     expect(Number(observation.severity)).toBe(3);
     expect(observation.has_photo).toBe(true);
     expect(observation.issues).toEqual(["lesion", "arm_curling"]);
@@ -604,7 +604,7 @@ test.describe("e2e smoke", () => {
     await page.goto("/protected/daily-operations?type=feeding");
     await expectDefaultDateAndTime(page);
     await page.getByLabel("Time").fill(PICKED_TIME);
-    await selectBatchScope(page, { systemId: ssl25SystemId, tankId: ssl25TankId, animalId: ssl25AnimalId });
+    await selectBatchScope(page, { systemId: starSystemId, tankId: starTankId, animalId: starAnimalId });
     await page.getByRole("radio", { name: "Krill", exact: true }).check();
     await page.getByLabel("Amount per animal (optional)", { exact: true }).fill("2");
     await page.getByLabel("Notes", { exact: true }).fill(`${RUN_TAG} feeding picked time`);
@@ -679,7 +679,7 @@ test.describe("e2e smoke", () => {
     await gotoHydrated(page, "/protected/daily-operations?type=health-observation");
     await expectDefaultDateAndTime(page);
     await page.getByLabel("Time").fill(PICKED_TIME);
-    await page.getByLabel("Animal", { exact: true }).selectOption(String(ssl25AnimalId));
+    await page.getByLabel("Animal", { exact: true }).selectOption(String(starAnimalId));
     await page.locator("#health-observation-severity").fill("2");
     await page.getByLabel("Notes").fill(`${RUN_TAG} health obs picked time`);
     await page.getByRole("button", { name: "Save observation" }).click();
@@ -691,7 +691,7 @@ test.describe("e2e smoke", () => {
       where notes = '${RUN_TAG} health obs picked time'
     `);
     expect(rows).toHaveLength(1);
-    expect(Number(rows[0].animal_id)).toBe(ssl25AnimalId);
+    expect(Number(rows[0].animal_id)).toBe(starAnimalId);
     expect(Number(rows[0].severity)).toBe(2);
     expect(rows[0].issues).toEqual([]);
     expect(localDateOf(String(rows[0].observed_at))).toBe(todayDateString());
@@ -733,9 +733,9 @@ test.describe("food catalog quick picks", () => {
   const notesPrefix = `${RUN_TAG} catalog`;
   const feedingNotes = `${notesPrefix} feeding`;
   let catalogId: number;
-  let ssl25AnimalId: number;
-  let ssl25TankId: number;
-  let ssl25SystemId: number;
+  let starAnimalId: number;
+  let starTankId: number;
+  let starSystemId: number;
   let krillCatalogId: number;
   let brineShrimpCatalogId: number;
 
@@ -743,18 +743,15 @@ test.describe("food catalog quick picks", () => {
     page.getByText("Feeding", { exact: true }).locator("../..");
 
   test.beforeAll(() => {
-    const animal = dbQuery(
-      "select animal.id, animal.tank_id, tank.system_id from core.animals animal " +
-        "join core.tanks tank on tank.id = animal.tank_id where animal.name = 'SSL25'",
-    )[0];
-    ssl25AnimalId = Number(animal?.id);
-    ssl25TankId = Number(animal?.tank_id);
-    ssl25SystemId = Number(animal?.system_id);
+    const animal = findGrahamStar();
+    starAnimalId = animal.id;
+    starTankId = animal.tankId;
+    starSystemId = animal.systemId;
     const foods = dbQuery(`select id, name from core.food_catalog
       where name in ('Krill', 'Brine shrimp') and is_active`);
     krillCatalogId = Number(foods.find((row) => row.name === "Krill")?.id);
     brineShrimpCatalogId = Number(foods.find((row) => row.name === "Brine shrimp")?.id);
-    expect(ssl25AnimalId).toBeGreaterThan(0);
+    expect(starAnimalId).toBeGreaterThan(0);
     expect(krillCatalogId).toBeGreaterThan(0);
     expect(brineShrimpCatalogId).toBeGreaterThan(0);
   });
@@ -803,7 +800,7 @@ test.describe("food catalog quick picks", () => {
   test("selected food name and default unit come from the catalog", async ({ page }) => {
     await login(page);
     await page.goto("/protected/daily-operations?type=feeding");
-    await selectBatchScope(page, { systemId: ssl25SystemId, tankId: ssl25TankId, animalId: ssl25AnimalId });
+    await selectBatchScope(page, { systemId: starSystemId, tankId: starTankId, animalId: starAnimalId });
     await page.getByRole("radio", { name: "Brine shrimp", exact: true }).check();
     await page.getByLabel("Amount per animal (optional)", { exact: true }).fill("3");
     await page.getByLabel("Notes", { exact: true }).fill(`${notesPrefix} catalog selected`);
@@ -817,7 +814,7 @@ test.describe("food catalog quick picks", () => {
       join core.food_catalog as catalog on catalog.id = feeding.food_catalog_id
       where feeding.notes = ${sqlLiteral(`${notesPrefix} catalog selected`)}`)).toEqual([
       {
-        animal_id: ssl25AnimalId,
+        animal_id: starAnimalId,
         food_catalog_id: brineShrimpCatalogId,
         food_name: "Brine shrimp",
         catalog_default_unit: "pieces",
@@ -829,7 +826,7 @@ test.describe("food catalog quick picks", () => {
   test("amount is optional and the database rejects nonpositive amounts", async ({ page }) => {
     await login(page);
     await page.goto("/protected/daily-operations?type=feeding");
-    await selectBatchScope(page, { systemId: ssl25SystemId, tankId: ssl25TankId, animalId: ssl25AnimalId });
+    await selectBatchScope(page, { systemId: starSystemId, tankId: starTankId, animalId: starAnimalId });
     await page.getByRole("radio", { name: "Krill", exact: true }).check();
     await expect(page.getByLabel("Amount per animal (optional)", { exact: true })).toHaveValue("");
     const amountControl = page.getByLabel("Amount per animal (optional)").locator("..");
@@ -853,8 +850,8 @@ test.describe("food catalog quick picks", () => {
 
     const technician = await signInRoleClient(TECH_EMAIL, TECH_PASSWORD);
     const { error: zeroAmount } = await technician.from("feeding_logs").insert({
-      tank_id: ssl25TankId,
-      animal_id: ssl25AnimalId,
+      tank_id: starTankId,
+      animal_id: starAnimalId,
       food_catalog_id: krillCatalogId,
       amount_value: 0,
       notes: `${notesPrefix} db zero`,
@@ -890,7 +887,7 @@ test.describe("food catalog quick picks", () => {
       .toEqual([{ name: renamedName, default_unit: "L" }]);
 
     await page.goto("/protected/daily-operations?type=feeding");
-    await selectBatchScope(page, { systemId: ssl25SystemId, tankId: ssl25TankId, animalId: ssl25AnimalId });
+    await selectBatchScope(page, { systemId: starSystemId, tankId: starTankId, animalId: starAnimalId });
     await page.waitForLoadState("networkidle");
     await page.getByRole("radio", { name: renamedName, exact: true }).check();
     await expect(page.getByLabel("Food name")).toHaveCount(0);
@@ -942,16 +939,16 @@ test.describe("food catalog quick picks", () => {
 
     const technician = await signInRoleClient(TECH_EMAIL, TECH_PASSWORD);
     const { error: retiredPick } = await technician.from("feeding_logs").insert({
-      tank_id: ssl25TankId,
-      animal_id: ssl25AnimalId,
+      tank_id: starTankId,
+      animal_id: starAnimalId,
       food_catalog_id: catalogId,
       notes: `${notesPrefix} retired pick`,
     });
     expect(retiredPick?.code).toBe("23514");
     expect(retiredPick?.message).toBe("Select an active food quick pick.");
     const { error: missingCatalog } = await technician.from("feeding_logs").insert({
-      tank_id: ssl25TankId,
-      animal_id: ssl25AnimalId,
+      tank_id: starTankId,
+      animal_id: starAnimalId,
       notes: `${notesPrefix} missing catalog`,
     });
     expect(missingCatalog?.code).toBe("23514");

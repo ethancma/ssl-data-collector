@@ -6,8 +6,12 @@ description: 'Supabase CLI workflow for the SSL Data Collection project — writ
 # Supabase Migration Workflow (SSL Data Collection)
 
 ## Project state
-- Hosted project ref `bqylxmsifagnztxhixyl` (dummy data only; becomes staging at go-live).
-  The CLI is already linked and logged in; don't re-run `link`/`login`.
+- Two hosted projects (see "Pick the target" in the
+  [e2e-testing skill](../e2e-testing/SKILL.md)):
+  - Production `bqylxmsifagnztxhixyl`: the CLI is linked to it and logged in; don't re-run
+    `link`/`login`. Treat its data as real.
+  - Dev `hcaopgzlvuyuyjcjxuvy`: throwaway data for hosted testing. Not CLI-linked; don't
+    re-link to it, since `--linked` commands and e2e helpers would then silently hit Dev.
 - Schemas: `core` (operational tables, int PKs), `public` (kept empty).
 - One local Docker stack is shared by the main checkout and every worktree. Don't
   `supabase stop` it while worktrees may be using it.
@@ -36,7 +40,10 @@ attempted any other way (stored connection strings, service-role keys, `psql`).
 
 When hosted needs a change, hand the human:
 1. The exact commands (`npx supabase db push`, any `migration repair --status reverted <v>`).
+   For Dev, that's `npx supabase db push --db-url "<Dev connection string, percent-encoded>"`
+   so the CLI stays linked to Production. Push to Dev first when testing a schema change on
+   hosted.
 2. Any drop SQL for the Dashboard SQL Editor, with the reason (for example, a migration
    amended after it was applied).
-3. The check to run afterwards: `npx supabase migration list` shows matching local and remote
-   versions.
+3. The check to run afterwards: `npx supabase migration list` (add `--db-url` for Dev) shows
+   matching local and remote versions.

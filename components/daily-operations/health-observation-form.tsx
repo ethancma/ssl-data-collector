@@ -157,7 +157,7 @@ export function HealthObservationForm({
         <CardDescription>Log an issue observed on an animal.</CardDescription>
       </CardHeader>
       <CardContent>
-        <HydratedForm onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-6">
+        <HydratedForm noValidate onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-6">
           <input id="health-observation-tank" type="hidden" {...register("tankId")} />
 
           <DateTimeFields

@@ -4,6 +4,8 @@
   "type": "module",
   "scripts": {
     "dev": "next dev",
+    "dev:supabase-dev": "set -a && . ./.env.supabase-dev.local && set +a && next dev",
+    "seed:dev": "set -a && . ./.env.supabase-dev.local && set +a && node scripts/seed-dev-fixtures.mjs",
     "build": "next build",
     "start": "next start",
     "dev:vinext": "vite dev",

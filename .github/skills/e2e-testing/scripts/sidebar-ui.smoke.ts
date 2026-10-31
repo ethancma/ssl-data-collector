@@ -4,7 +4,7 @@
  * this file for further sidebar/theme/navigation changes.
  */
 import { test, expect } from "@playwright/test";
-import { login, TECH_PASSWORD } from "./helpers";
+import { gotoHydrated, login, TECH_PASSWORD } from "./helpers";
 
 // Covers the sidebar's new Home icon-button + theme-toggle row (components/layout/protected-sidebar.tsx).
 // UI-only (Tier 1 per docs/testing-strategy.md) — no Supabase row assertions needed.
@@ -51,7 +51,8 @@ test.describe("sidebar Home button and theme toggle", () => {
     }
 
     await login(page);
-    await page.goto("/protected/daily-operations");
+    // A screenshot taken mid-hydration trips a false React style-mismatch warning.
+    await gotoHydrated(page, "/protected/daily-operations");
 
     const homeButton = page.getByRole("link", { name: "Home" });
     const themeButton = page.getByRole("button", { name: /switch to \w+ mode/i });

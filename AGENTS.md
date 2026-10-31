@@ -22,6 +22,8 @@ Hooks in `.github/hooks/` enforce these and block hosted-Supabase writes and `.e
 - For features and DB changes, run the sections that
   `npm run test:e2e:plan -- --files <files you touched>` selects
   ([e2e-testing skill](.github/skills/e2e-testing/SKILL.md)) before a PR.
+- Two hosted Supabase projects exist: Production (`npm run dev`) and Dev
+  (`npm run dev:supabase-dev`). E2E runs on Local or Dev only, never Production; see "Pick the target" in the e2e-testing skill.
 - For pure logic in `lib/`, extend the matching test in `tests/unit/`.
 
 ## Keep changes small and in-pattern
