@@ -105,7 +105,8 @@ weaken each section's UI and direct-Supabase assertions.
      `ph_source` set correctly (`apex_probe` vs `manual`).
    - Chemical addition → confirm `chemical_additions` row.
    - Health observation with a photo → confirm `health_observations` row plus the
-     `attachments` row and the object landing in Supabase Storage.
+     `attachments` row and the object landing in Supabase Storage; the affected star
+     appears in ISeaU as a current patient with that observation in its history.
    - Maintenance task marked performed → confirm `maintenance_logs` row and that
      `next_due_at` recomputed correctly.
    - Historical import / paper backfill → confirm rows are tagged with the right
@@ -130,7 +131,8 @@ growing an existing one indefinitely:
   every file below.
 - [daily-logging-forms.smoke.ts](./scripts/daily-logging-forms.smoke.ts) — the 6 daily forms
   (AM/PM check, feeding + consumption follow-up, water quality, chemical addition, health
-  observation, maintenance), the Today dashboard, and each form's date/time-box behavior.
+  observation, maintenance), ISeaU visibility for a newly logged health observation, the
+  Today dashboard, and each form's date/time-box behavior.
 - [auth-and-admin.smoke.ts](./scripts/auth-and-admin.smoke.ts) — sign-up → pending →
   admin-approval flow, plus the `/protected/admin` approve/deny UI.
 - [sidebar-ui.smoke.ts](./scripts/sidebar-ui.smoke.ts) — sidebar Home button + theme toggle

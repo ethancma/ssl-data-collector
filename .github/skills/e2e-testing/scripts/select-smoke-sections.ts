@@ -174,10 +174,9 @@ const rules: SelectionRule[] = [
     sections: "full",
   },
   {
-    // Mock data only; replace this rule with a real section once ISeaU reads from Supabase.
-    description: "ISeaU mock-data pages (no browser coverage)",
-    matches: (file) => /^(app\/protected\/iseau|components\/iseau)(\/|$)/.test(file),
-    sections: [],
+    description: "ISeaU pages (checked after the daily-operations health observation)",
+    matches: (file) => /^(app\/protected\/iseau|components\/iseau|lib\/iseau)(\/|$)/.test(file),
+    sections: ["daily-operations"],
   },
   {
     description: "database, migration, seed, grant, or RLS change (Tier 3+)",

@@ -7,18 +7,26 @@ import { cn } from "@/lib/utils";
 import { formatPacificDateTime } from "@/lib/pacific-date-time";
 import { severityTone } from "./severity-tone";
 import {
-  RANGES, SYSTEMS, currentLocation, daysSince, isCurrent, lastHealth, lastTemperature, trend,
-  type Severity, type Star,
-} from "./mock-data";
-import { starsFor, type IseauState } from "./use-iseau";
+  RANGES,
+  starsFor,
+  daysSince,
+  isCurrent,
+  lastHealth,
+  lastTemperature,
+  trend,
+  type IseauData,
+  type Severity,
+  type Star,
+} from "@/lib/iseau/data";
+import type { IseauState } from "./use-iseau";
 
 export const focusClass = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background";
 
 export function dateLabel(time: number, withTime = false) {
   return formatPacificDateTime(new Date(time), { month: "short", day: "numeric", ...(withTime ? { hour: "numeric", minute: "2-digit" } : {}) });
 }
-export function relativeDay(time: number) {
-  const days = daysSince(time);
+export function relativeDay(time: number, now: number) {
+  const days = daysSince(time, now);
   return days <= 0 ? "today" : days === 1 ? "yesterday" : `${days} days ago`;
 }
 
@@ -30,15 +38,15 @@ export function SeverityLabel({ severity }: { severity: Severity }) {
   return <span className="inline-flex items-center gap-2"><SeverityDot severity={severity} />Severity {severity}</span>;
 }
 
-export function starSentence(star: Star) {
+export function starSentence(star: Star, now: number) {
   const latest = lastHealth(star);
-  if (!isCurrent(star)) return `No health observations for ${daysSince(latest.at)} days.`;
+  if (!isCurrent(star, now)) return "No score of 2 or higher in the past 14 days.";
   const level = latest.severity;
   switch (trend(star)) {
     case "improving": return `${star.name} is improving, down to severity ${level}.`;
     case "worsening": return `${star.name} is getting worse, now at severity ${level}.`;
     case "steady": return `${star.name} is holding steady at severity ${level}.`;
-    default: return `${star.name} was first observed ${relativeDay(latest.at)}.`;
+    default: return `${star.name} was first observed ${relativeDay(latest.at, now)}.`;
   }
 }
 
@@ -56,7 +64,7 @@ export function StatusSwitch({ state }: { state: IseauState }) {
 }
 export function SystemSwitch({ state }: { state: IseauState }) {
   return <Segmented label="System" value={state.system} onChange={state.setSystem}
-    options={[{ value: "all", label: "All systems" }, ...SYSTEMS.map((system) => ({ value: system, label: `${system} (${starsFor(state.status, system).length})` }))]} />;
+    options={[{ value: "all", label: "All systems" }, ...state.data.systems.map((system) => ({ value: system.id, label: `${system.name} (${starsFor(state.data, state.status, system.id).length})` }))]} />;
 }
 export function RangeSwitch({ state }: { state: IseauState }) {
   return <Segmented label="Time range" value={state.range} onChange={state.setRange} options={RANGES.map((days) => ({ value: days, label: `${days} days` }))} />;
@@ -69,16 +77,16 @@ export function EmptyNote({ children }: { children: ReactNode }) {
   return <p role="status" className="py-6 text-sm text-muted-foreground">{children}</p>;
 }
 
-export function StarCard({ star, href }: { star: Star; href: string }) {
-  const place = currentLocation(star);
-  const temperature = lastTemperature(star);
+export function StarCard({ star, href, data }: { star: Star; href: string; data: IseauData }) {
+  const place = star.location;
+  const temperature = lastTemperature(star, data);
   // Every line is a single truncated row, so all tiles keep the same height at any width.
   return <Link href={href} className={cn("flex h-full w-full min-w-0 flex-col gap-1 rounded-3xl bg-muted p-5 text-left transition-colors hover:bg-accent", focusClass)}>
     <span className="block truncate text-2xl font-semibold tracking-tight">{star.name}</span>
     <span className="block truncate text-sm text-muted-foreground">{place.tank} in {place.system}</span>
     <span className="my-2 block truncate text-sm"><SeverityLabel severity={lastHealth(star).severity} /></span>
-    <span className="block truncate text-sm text-muted-foreground">Last observed {relativeDay(lastHealth(star).at)}</span>
-    <span className="block truncate text-sm text-muted-foreground">AM check {temperature.celsius.toFixed(1)} °C</span>
+    <span className="block truncate text-sm text-muted-foreground">Last observed {relativeDay(lastHealth(star).at, data.now)}</span>
+    <span className="block truncate text-sm text-muted-foreground">{temperature ? `AM check ${temperature.celsius.toFixed(1)} °C` : "No AM temperature data"}</span>
   </Link>;
 }
 
@@ -105,7 +113,4 @@ export function PageHeader({ title, description }: { title: string; description:
     <h1 className="text-4xl font-semibold tracking-tight sm:text-6xl">{title}</h1>
     <p className="text-lg text-muted-foreground">{description}</p>
   </header>;
-}
-export function SampleNote() {
-  return <p className="text-xs text-muted-foreground">Sample data as of Oct 5, 2026</p>;
 }

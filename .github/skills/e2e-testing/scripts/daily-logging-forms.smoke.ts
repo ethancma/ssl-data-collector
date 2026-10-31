@@ -1,7 +1,7 @@
 /**
  * Daily-logging forms: the 6 core forms a lab tech uses every day.
  * AM/PM check, feeding + consumption follow-up, water quality, chemical addition,
- * health observation (with/without photo), maintenance (incl. backdated date),
+ * health observation (with/without photo, including ISeaU patient visibility), maintenance (incl. backdated date),
  * the Today dashboard, and each form's date/time-box defaults + picked-time handling.
  * Extend this file when changing one of those forms; see ../SKILL.md for the full
  * procedure and ../references/test-accounts.md for which accounts to use.
@@ -37,6 +37,113 @@ import {
   selectBatchScope,
   gotoHydrated,
 } from "./helpers";
+
+test.describe("ISeaU patient classification", () => {
+  test.describe.configure({ mode: "serial" });
+  test.skip(
+    !process.env.E2E_DB_URL ||
+      !["localhost", "127.0.0.1"].includes(new URL(process.env.E2E_DB_URL ?? "http://invalid").hostname),
+    "Classification fixtures require local Supabase.",
+  );
+
+  const tag = `${RUN_TAG}-iseau`;
+  const names = ["current", "recovered", "past", "healthy"].map((kind) => `${tag}-${kind}`);
+  const animalIds: number[] = [];
+  const observationIds: number[] = [];
+  let tankId: number | undefined;
+
+  test.beforeAll(() => {
+    const prerequisites = dbQuery(`select
+      (select id from core.systems order by id limit 1) as system_id,
+      (select id from core.species where category = 'star' order by id limit 1) as species_id,
+      (select id from core.profiles where role = 'technician' and status = 'active' limit 1) as profile_id`)[0];
+    for (const value of Object.values(prerequisites)) expect(value).not.toBeNull();
+    tankId = Number(dbQuery(`insert into core.tanks (system_id, name, tank_type)
+      values (${Number(prerequisites.system_id)}, ${sqlLiteral(tag)}, 'main') returning id`)[0].id);
+    for (const name of names) {
+      animalIds.push(Number(dbQuery(`insert into core.animals
+        (tank_id, species_id, name, tracking_type, date_added)
+        values (${tankId}, ${Number(prerequisites.species_id)}, ${sqlLiteral(name)},
+          'individual', current_date - 100) returning id`)[0].id));
+    }
+    for (const [patient, days, severity] of [
+      [0, 1, 2], [1, 10, 2], [1, 1, 1], [2, 90, 2], [2, 1, 1], [3, 1, 1],
+    ]) {
+      observationIds.push(Number(dbQuery(`insert into core.health_observations
+        (animal_id, tank_id, observed_at, severity, notes, recorded_by, data_source)
+        values (${animalIds[patient]}, ${tankId}, statement_timestamp() - interval '${days} days',
+          ${severity}, ${sqlLiteral(tag)}, ${Number(prerequisites.profile_id)}, 'import')
+        returning id`)[0].id));
+    }
+  });
+
+  test.afterAll(() => {
+    if (observationIds.length) dbQuery(`delete from core.health_observations
+      where id in (${observationIds.join(",")}) and notes = ${sqlLiteral(tag)} returning id`);
+    if (animalIds.length) dbQuery(`delete from core.animals
+      where id in (${animalIds.join(",")}) and name in (${names.map(sqlLiteral).join(",")}) returning id`);
+    if (tankId !== undefined) {
+      expect(dbQuery(`delete from core.tanks where id = ${tankId}
+        and name = ${sqlLiteral(tag)} and not exists
+          (select 1 from core.animals where tank_id = ${tankId}) returning id`)).toHaveLength(1);
+    }
+    expect(dbQuery(`select id from core.animals where name in (${names.map(sqlLiteral).join(",")})`)).toHaveLength(0);
+  });
+
+  for (const [role, email, password] of [
+    ["technician", TECH_EMAIL, TECH_PASSWORD],
+    ["viewer", VIEWER_EMAIL, VIEWER_PASSWORD],
+  ]) {
+    test(`${role} sees lifetime score 2+ patients split by qualifying sightings`, async ({ page }) => {
+      const observations = dbQuery(`select animal_id, severity from core.health_observations
+        where id in (${observationIds.join(",")})`);
+      expect(observations).toHaveLength(6);
+      expect(observations.filter((row) => Number(row.severity) === 2)).toHaveLength(3);
+      await loginAs(page, email, password);
+      await gotoHydrated(page, "/protected/iseau");
+      const card = (index: number) => page.locator(`a[href="/protected/iseau?star=${animalIds[index]}"]`);
+      await expect(card(0)).toBeVisible();
+      await expect(card(1)).toBeVisible();
+      await expect(card(2)).toHaveCount(0);
+      await expect(card(3)).toHaveCount(0);
+      await page.getByRole("button", { name: "Past patients", exact: true }).click();
+      await expect(card(2)).toBeVisible();
+      await expect(card(0)).toHaveCount(0);
+      await expect(card(1)).toHaveCount(0);
+      await expect(card(3)).toHaveCount(0);
+      await card(2).click();
+      await expect(page.getByRole("heading", { name: names[2], exact: true })).toBeVisible();
+      await expect(page.getByText("No score of 2 or higher in the past 14 days.", { exact: true })).toBeVisible();
+    });
+  }
+
+  test("comparison groups and exported health history use the same live patients", async ({ page }) => {
+    await login(page);
+    await gotoHydrated(page, `/protected/iseau/compare?stars=${animalIds.join(",")}`);
+    const firstColumn = page.getByLabel("Star 1", { exact: true });
+    await expect(firstColumn).toHaveValue(String(animalIds[0]));
+    for (const index of [0, 1]) {
+      await expect(firstColumn.locator(`optgroup[label="Current patients"] option[value="${animalIds[index]}"]`)).toHaveCount(1);
+    }
+    await expect(firstColumn.locator(`optgroup[label="Past patients"] option[value="${animalIds[2]}"]`)).toHaveCount(1);
+    await expect(firstColumn.locator(`option[value="${animalIds[3]}"]`)).toHaveCount(0);
+    await gotoHydrated(page, `/protected/iseau?star=${animalIds[1]}`);
+    await expect(page.getByRole("button", { name: "Current patients", exact: true })).toHaveAttribute("aria-pressed", "true");
+    const downloading = page.waitForEvent("download");
+    await page.getByRole("button", { name: `Export ${names[1]} as CSV`, exact: true }).click();
+    const download = await downloading;
+    expect(download.suggestedFilename()).toBe(`iseau-${animalIds[1]}-14days.csv`);
+    const stream = await download.createReadStream();
+    if (!stream) throw new Error("CSV download did not provide a readable stream.");
+    const chunks: Buffer[] = [];
+    for await (const chunk of stream) chunks.push(Buffer.from(chunk));
+    const csv = Buffer.concat(chunks).toString("utf8");
+    expect(csv).toContain("Severity 2");
+    expect(csv).toContain("Severity 1");
+    expect(csv).toContain(tag);
+    expect(csv).not.toContain('"sample"');
+  });
+});
 
 function sqlLiteral(value: string) {
   return `'${value.replaceAll("'", "''")}'`;
@@ -508,6 +615,14 @@ test.describe("e2e smoke", () => {
         .list(`health_observations/${observation.id}`);
       expect(storageFiles?.length ?? 0).toBeGreaterThan(0);
     }
+
+    await gotoHydrated(page, "/protected/iseau");
+    const patientCard = page.getByRole("link", { name: /SSL25/ });
+    await expect(patientCard).toBeVisible();
+    await patientCard.click();
+    await expect(page.getByRole("heading", { name: "SSL25" })).toBeVisible();
+    await page.getByRole("button", { name: /Health observations for SSL25/ }).click();
+    await expect(page.getByRole("dialog")).toContainText(`${RUN_TAG} health obs with photo`);
   });
 
   test("one maintenance submission creates one row with the selected task_type", async ({
