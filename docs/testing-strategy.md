@@ -42,3 +42,21 @@ Examples: the one-time Google Sheets import, paper backfill runs, bulk edits/del
 
 ## Always
 A human reviews and merges every PR — the agent never merges its own work, regardless of tier.
+
+## Agent verification and PR preparation
+
+- During development, run `npm run verify` (typecheck, lint, unit tests).
+- Before a PR, also run `npm run check:dead-code` and `git diff --check`; report exact
+  commands with passed/failed/not-run results using [prepare-pr](../.github/prompts/prepare-pr.prompt.md).
+- Plan session changes with `--files`. For a committed PR use
+  `npm run test:e2e:plan -- --base origin/main`; add `--working-tree` only in an owned,
+  single-purpose worktree. Working-tree mode includes staged, unstaged, and untracked files;
+  `--git-diff` is its alias and does not include committed branch changes.
+- Before browser writes, run `npm run test:e2e:preflight` with an explicit app origin.
+  See the [E2E skill](../.github/skills/e2e-testing/SKILL.md) for Local/Dev safety, fixture
+  readiness, lock behavior, and server-launch confirmation. Never test against Production.
+- Harness selector/instruction changes use unit/doc tests. Shared E2E setup, target guards,
+  fixture, or CI changes select the full suite. If shared-server/database ownership prevents
+  execution, report browser coverage as not run rather than weakening the guard.
+- For runtime/build changes follow [workers-deployment.md](workers-deployment.md);
+  a Next.js-only pass is not evidence that the compiled Worker works.

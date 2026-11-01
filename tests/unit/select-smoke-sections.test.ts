@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
+import { execFileSync, spawnSync } from "node:child_process";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { createRequire } from "node:module";
+import path from "node:path";
 import test from "node:test";
 import {
+  gitChangedFiles,
   selectSmokeSections,
   SMOKE_SECTIONS,
 } from "@/.github/skills/e2e-testing/scripts/select-smoke-sections";
@@ -233,6 +239,79 @@ test("does not require browser coverage for docs-only changes", () => {
   ]);
   assert.deepEqual(selection.sections, []);
   assert.equal(selection.escalatedToFullSuite, false);
+});
+
+test("instruction, prompt, selector, and harness unit-test changes need no browser sections", () => {
+  assert.deepEqual(selectedIds([
+    "AGENTS.md",
+    ".github/prompts/prepare-pr.prompt.md",
+    ".github/skills/feature-data-wiring/SKILL.md",
+    ".github/skills/e2e-testing/scripts/select-smoke-sections.ts",
+    "tests/unit/e2e-preflight.test.ts",
+  ]), []);
+  for (const file of [
+    ".github/skills/e2e-testing/scripts/preflight.mjs",
+    "scripts/seed-dev-fixtures.mjs",
+    "scripts/worktree.sh",
+    ".github/workflows/ci.yml",
+    ".github/workflows/copilot-setup-steps.yml",
+  ]) {
+    assert.equal(selectSmokeSections([file]).escalatedToFullSuite, true, file);
+  }
+});
+
+test("unknown runtime escalation explains the exact triggering path", () => {
+  const selection = selectSmokeSections(["lib/new-runtime.ts"]);
+  for (const section of SMOKE_SECTIONS) {
+    assert.deepEqual(selection.reasons.get(section.id),
+      ["lib/new-runtime.ts: unknown application/runtime file"]);
+  }
+});
+
+test("Git modes distinguish committed branch changes from staged, unstaged, and untracked paths", () => {
+  const cwd = mkdtempSync(path.join(tmpdir(), "ssl-selector-test-"));
+  const git = (...args: string[]) => execFileSync("git", args, {
+    cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"],
+  });
+  try {
+    git("init", "-q");
+    git("config", "user.name", "Harness test");
+    git("config", "user.email", "harness@example.test");
+    writeFileSync(path.join(cwd, "baseline.ts"), "baseline");
+    git("add", ".");
+    git("commit", "-qm", "baseline");
+    const base = git("rev-parse", "HEAD").trim();
+    writeFileSync(path.join(cwd, "committed.ts"), "branch");
+    git("add", ".");
+    git("commit", "-qm", "branch change");
+    const staged = "staged file.ts";
+    const untracked = "untracked\nfile.ts";
+    writeFileSync(path.join(cwd, staged), "staged");
+    git("add", staged);
+    writeFileSync(path.join(cwd, "baseline.ts"), "unstaged");
+    writeFileSync(path.join(cwd, untracked), "untracked");
+    assert.deepEqual(gitChangedFiles({ cwd, base, workingTree: false }), ["committed.ts"]);
+    assert.deepEqual(gitChangedFiles({ cwd, workingTree: true }).sort(),
+      ["baseline.ts", staged, untracked].sort());
+    assert.deepEqual(gitChangedFiles({ cwd, base, workingTree: true }).sort(),
+      ["baseline.ts", "committed.ts", staged, untracked].sort());
+    assert.throws(() => gitChangedFiles({ cwd, base: "missing-ref", workingTree: false }));
+
+    const script = path.resolve(".github/skills/e2e-testing/scripts/select-smoke-sections.ts");
+    const tsx = createRequire(import.meta.url).resolve("tsx");
+    const cli = (...args: string[]) => spawnSync(process.execPath, ["--import", tsx, script, ...args],
+      { cwd, encoding: "utf8" });
+    const empty = cli("--base", "HEAD");
+    assert.equal(empty.status, 0, empty.stderr);
+    assert.match(empty.stdout, /Selected smoke sections: none/);
+    assert.notEqual(cli("--files").status, 0);
+    assert.notEqual(cli("--base", "--run").status, 0);
+    assert.notEqual(cli("--base", base, "--files", "file.ts").status, 0);
+    assert.equal(cli("--base", base, "--working-tree").status, 0);
+    assert.equal(cli("--git-diff").status, 0);
+  } finally {
+    rmSync(cwd, { recursive: true, force: true });
+  }
 });
 test("selects the feeding-schedules section for schedule surfaces", () => {
   assert.deepEqual(selectedIds(["app/protected/settings/feeding-schedules/page.tsx"]), [

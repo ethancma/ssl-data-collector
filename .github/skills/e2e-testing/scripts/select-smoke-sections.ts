@@ -168,9 +168,12 @@ const rules: SelectionRule[] = [
   {
     description: "shared e2e helper or Playwright configuration",
     matches: (file) =>
-      /^\.github\/skills\/e2e-testing\/scripts\/(helpers\.ts|global-(setup|teardown)\.ts|db-worker\.mjs)$/.test(
+      /^\.github\/skills\/e2e-testing\/scripts\/(helpers\.ts|global-(setup|teardown)\.ts|db-worker\.mjs|preflight\.mjs)$/.test(
         file,
-      ) || file === "playwright.config.ts",
+      ) || file === "playwright.config.ts" ||
+      file === "scripts/seed-dev-fixtures.mjs" ||
+      file === "scripts/worktree.sh" ||
+      /^\.github\/workflows\/(ci|copilot-setup-steps)\.yml$/.test(file),
     sections: "full",
   },
   {
@@ -203,7 +206,7 @@ const unknownRuntimeRule: SelectionRule = {
 };
 
 function normalizeFile(file: string, cwd: string): string {
-  const normalized = file.trim().replaceAll("\\", "/");
+  const normalized = file.replaceAll("\\", "/");
   const relative = path.isAbsolute(normalized)
     ? path.relative(cwd, normalized).replaceAll("\\", "/")
     : normalized;
@@ -245,18 +248,22 @@ export function selectSmokeSections(
   };
 }
 
-function gitChangedFiles(): string[] {
-  const commands = [
-    ["diff", "--name-only", "--relative", "HEAD", "--"],
-    ["ls-files", "--others", "--exclude-standard"],
-  ];
+export function gitChangedFiles(
+  { base, workingTree, cwd = process.cwd() }: { base?: string; workingTree: boolean; cwd?: string },
+): string[] {
+  const commands: string[][] = [];
+  if (base) commands.push(["diff", "--name-only", "-z", "--relative", `${base}...HEAD`, "--"]);
+  if (workingTree) commands.push(
+    ["diff", "--name-only", "-z", "--relative", "HEAD", "--"],
+    ["ls-files", "-z", "--others", "--exclude-standard"],
+  );
 
   return commands.flatMap((args) => {
-    const result = spawnSync("git", args, { encoding: "utf8" });
+    const result = spawnSync("git", args, { cwd, encoding: "utf8" });
     if (result.status !== 0) {
       throw new Error(result.stderr.trim() || `git ${args.join(" ")} failed`);
     }
-    return result.stdout.split("\n").filter(Boolean);
+    return result.stdout.split("\0").filter(Boolean);
   });
 }
 
@@ -264,10 +271,12 @@ interface CliOptions {
   files: string[];
   full: boolean;
   run: boolean;
+  base?: string;
+  workingTree: boolean;
 }
 
 function parseArgs(args: readonly string[]): CliOptions {
-  const options: CliOptions = { files: [], full: false, run: false };
+  const options: CliOptions = { files: [], full: false, run: false, workingTree: false };
   let sourceCount = 0;
 
   for (let index = 0; index < args.length; index += 1) {
@@ -277,9 +286,13 @@ function parseArgs(args: readonly string[]): CliOptions {
     } else if (argument === "--full") {
       options.full = true;
       sourceCount += 1;
-    } else if (argument === "--git-diff") {
-      options.files.push(...gitChangedFiles());
-      sourceCount += 1;
+    } else if (argument === "--git-diff" || argument === "--working-tree") {
+      if (options.workingTree) throw new Error("Working-tree mode was specified twice.");
+      options.workingTree = true;
+    } else if (argument === "--base") {
+      const base = args[++index];
+      if (!base || base.startsWith("-") || options.base) throw new Error("--base requires one Git ref.");
+      options.base = base;
     } else if (argument === "--files") {
       sourceCount += 1;
       while (args[index + 1] && !args[index + 1].startsWith("--")) {
@@ -291,9 +304,12 @@ function parseArgs(args: readonly string[]): CliOptions {
     }
   }
 
-  if (sourceCount !== 1 || (!options.full && options.files.length === 0)) {
-    throw new Error("Choose exactly one of --files <paths...>, --git-diff, or --full");
+  const gitSource = options.base !== undefined || options.workingTree;
+  if (sourceCount + Number(gitSource) !== 1 ||
+      (!gitSource && !options.full && options.files.length === 0)) {
+    throw new Error("Choose --files <paths...>, --full, or --base <ref> and/or --working-tree (--git-diff alias).");
   }
+  if (gitSource) options.files = gitChangedFiles(options);
   return options;
 }
 
@@ -324,6 +340,9 @@ function printSelection(selection: SmokeSelection, full: boolean, run: boolean):
 function main(): void {
   try {
     const options = parseArgs(process.argv.slice(2));
+    if (options.base || options.workingTree) {
+      console.log(`Source: ${[options.base && `committed branch diff against ${options.base}`, options.workingTree && "staged, unstaged, and untracked files"].filter(Boolean).join(" + ")}`);
+    }
     const selection = options.full
       ? {
           files: [],

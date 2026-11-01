@@ -24,3 +24,10 @@ jobs:
         run: |
           npx supabase start -x studio,logflare,vector,edge-runtime
           npm run -s wt -- env > .env.local
+          printf 'PORT=3100\nNEXT_PUBLIC_SITE_URL=http://localhost:3100\nE2E_BASE_URL=http://localhost:3100\nE2E_RESET_DB=0\n' >> .env.local
+      - name: Seed synthetic Local fixtures
+        run: |
+          set -a
+          . ./.env.local
+          set +a
+          node scripts/seed-dev-fixtures.mjs --local
