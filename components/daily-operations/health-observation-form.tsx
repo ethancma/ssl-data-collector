@@ -75,7 +75,6 @@ export function HealthObservationForm({
       tankId: "",
       severity: "",
       issues: [],
-      photoFile: undefined,
       notes: "",
     },
   });
@@ -97,7 +96,7 @@ export function HealthObservationForm({
 
     const supabase = createClient();
 
-    const { data: observation, error } = await supabase
+    const { error } = await supabase
       .from("health_observations")
       .insert({
         observed_at: instant.iso,
@@ -106,44 +105,10 @@ export function HealthObservationForm({
         severity: values.severity,
         issues: values.issues,
         notes: nullIfBlank(values.notes),
-      })
-      .select("id")
-      .single();
-    if (error || !observation) {
-      setServerError(error?.message ?? "Failed to save observation");
+      });
+    if (error) {
+      setServerError(error.message);
       return;
-    }
-
-    if (values.photoFile) {
-      const path = `health_observations/${observation.id}/${values.photoFile.name}`;
-      const { error: uploadError } = await supabase.storage
-        .from("attachments")
-        .upload(path, values.photoFile);
-      if (uploadError) {
-        setServerError(uploadError.message);
-        return;
-      }
-
-      const { error: attachmentError } = await supabase
-        .from("attachments")
-        .insert({
-          parent_table: "health_observations",
-          parent_id: observation.id,
-          storage_path: path,
-        });
-      if (attachmentError) {
-        setServerError(attachmentError.message);
-        return;
-      }
-
-      const { error: updateError } = await supabase
-        .from("health_observations")
-        .update({ has_photo: true })
-        .eq("id", observation.id);
-      if (updateError) {
-        setServerError(updateError.message);
-        return;
-      }
     }
 
     router.push("/protected/home");
@@ -239,24 +204,9 @@ export function HealthObservationForm({
             />
           </div>
 
-          <div className="grid gap-2">
-            <Label htmlFor="health-observation-photo">Photo (optional)</Label>
-            <input
-              id="health-observation-photo"
-              type="file"
-              accept="image/*"
-              className="text-sm"
-              onChange={(e) =>
-                setValue("photoFile", e.target.files?.[0], {
-                  shouldValidate: true,
-                })
-              }
-            />
-            <FieldError
-              id="health-observation-photo-error"
-              message={errors.photoFile?.message}
-            />
-          </div>
+          <p className="text-sm text-muted-foreground">
+            Photo uploads are temporarily unavailable.
+          </p>
 
           <div className="grid gap-2">
             <Label htmlFor="health-observation-notes">Notes</Label>

@@ -59,6 +59,7 @@ export type SharedFormData = {
     animalName: string;
     systemId: number;
   }[];
+  pendingFeedingLoadError?: string;
   chemicalCatalog: ChemicalAdditionCatalogItem[];
   chemicalCatalogLoadError?: string;
   foodCatalog: FoodCatalogItem[];
@@ -134,6 +135,7 @@ export function renderLogForm(
           defaultSystemId={selected.systemId}
           defaultCheckType={selected.checkType}
           pendingFeedingLogs={data.pendingFeedingLogs}
+          pendingFeedingLoadError={data.pendingFeedingLoadError}
         />
       );
     case "feeding":

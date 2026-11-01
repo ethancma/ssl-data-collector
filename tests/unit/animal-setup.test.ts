@@ -140,7 +140,10 @@ test("retiring requires a date between the date added and today", () => {
   assert.equal(future.error?.issues[0]?.message, "Date can't be in the future");
 });
 
-test("a duplicate name explains that names are unique lab-wide", () => {
-  assert.match(animalSaveError({ code: "23505", message: "duplicate key" }, "SSL25"), /SSL25 already exists/);
+test("a duplicate name explains that only one active animal may use it", () => {
+  assert.match(
+    animalSaveError({ code: "23505", message: "duplicate key" }, "SSL25"),
+    /active animal named SSL25 already exists/,
+  );
   assert.equal(animalSaveError({ code: "42501", message: "permission denied" }, "SSL25"), "permission denied");
 });

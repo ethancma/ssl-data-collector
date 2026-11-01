@@ -142,7 +142,7 @@ erDiagram
   metadata (see lab operations plan for the full list of 8 systems).
 - `tanks` — id, system_id, name/label, tank_type (shelf|cone_bottom|main), pair_group (nullable, for larval pairs — feeding/health/water-quality logs for larval tanks are recorded once per `pair_group`, not per individual cone-bottom tank)
 - `species` — id, common_name, scientific_name, category (star|urchin|abalone|other)
-- `animals` — id, tank_id (current), species_id, name (nickname, e.g. "Sitara"; unique lab-wide, not just per tank), life_stage/size_class, tracking_type (individual|cohort), quantity (default 1), status (active|deceased|transferred), date_added, notes
+- `animals` — id, tank_id (current), species_id, name (nickname, e.g. "Sitara"; unique lab-wide among active animals, ignoring case, reusable after death or transfer), life_stage/size_class, tracking_type (individual|cohort), quantity (default 1), status (active|deceased|transferred), date_added, notes
 - `animal_movements` — id, animal_id, from_tank_id, to_tank_id, moved_at, reason, recorded_by
 - `water_quality_readings` — id, system_id, tested_at (the actual test date — weekly
   cadence, not daily), recorded_by, ph, ph_source (manual|apex_probe), magnesium,
@@ -282,8 +282,9 @@ Hosted configuration, photo reliability, and proven recovery are production gate
 - Unimplemented requirement: an AM/PM check that flags an issue opens a linked health
   observation that can be saved as a follow-up rather than completed on the spot; it stays
   flagged on the check record (no separate dashboard-level nagging) until filled in.
-- Individual animals are identified by a unique, lab-wide nickname rather than a
-  tank-scoped tag/label, matching how staff already name animals informally; every
+- Individual animals are identified by a lab-wide nickname rather than a
+  tank-scoped tag/label (only one active animal may hold a nickname, ignoring case; it can be reused
+  after death or transfer), matching how staff already name animals informally; every
   feeding, consumption, and health log is recorded per animal, even when several
   named animals share one tub.
 - Larval cone-bottom pairs are logged as one unit (per `pair_group`), not per

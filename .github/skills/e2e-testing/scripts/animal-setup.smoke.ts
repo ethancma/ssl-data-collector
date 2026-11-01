@@ -103,18 +103,21 @@ test.describe("animal setup", () => {
     expect(animalRow(COHORT)).toMatchObject({ tracking_type: "cohort", quantity: 12, tank: "9.6L" });
   });
 
-  test("names are unique across the lab", async ({ page }) => {
+  test("active names are unique across the lab", async ({ page }) => {
     await login(page);
     await gotoHydrated(page, "/protected/settings/animal-setup");
     await page.getByLabel("System", { exact: true }).selectOption({ label: SYSTEM_NAME });
     await page.getByRole("button", { name: "Add animal" }).click();
     const form = page.getByRole("form", { name: "Add animal" });
-    await form.getByLabel("Name").fill(STAR);
+    // Matching ignores case.
+    await form.getByLabel("Name").fill(STAR.toUpperCase());
     await form.getByLabel("Species").selectOption({ label: "Bat star" });
     await form.getByLabel("Tank size (L)").fill("5");
     await expect(form.getByText("Tank name: 5L (new tank)")).toBeVisible();
     await form.getByRole("button", { name: "Add animal" }).click();
-    await expect(form.getByRole("alert")).toContainText(`An animal named ${STAR} already exists`);
+    await expect(form.getByRole("alert")).toContainText(
+      `An active animal named ${STAR.toUpperCase()} already exists`,
+    );
     // The rejected save must not leave the new tank behind.
     expect(tankRows().map((tank) => tank.name)).toEqual(["9.6L", "Lower-9.6L"]);
   });
@@ -206,5 +209,54 @@ test.describe("animal setup", () => {
     dbQuery(
       `insert into core.tanks (system_id, name, tank_type, shelf_position) values (${systemId}, 'Right-5L', 'shelf', 'right')`,
     );
+  });
+
+  test("a retired name can be reused, but never by two active animals", async ({ page }) => {
+    await login(page);
+    await gotoHydrated(page, "/protected/settings/animal-setup");
+    await page.getByLabel("System", { exact: true }).selectOption({ label: SYSTEM_NAME });
+    await page.getByRole("button", { name: `Retire ${STAR}` }).click();
+    const retireForm = page.getByRole("form", { name: `Retire ${STAR}` });
+    await retireForm.getByLabel("Reason").selectOption({ label: "Deceased" });
+    await retireForm.getByLabel("Date", { exact: true }).fill(todayDateString());
+    await retireForm.getByRole("button", { name: "Retire" }).click();
+    await expect(page.getByRole("status")).toContainText(`${STAR} retired (deceased).`);
+
+    await page.getByRole("button", { name: "Add animal" }).click();
+    const form = page.getByRole("form", { name: "Add animal" });
+    await form.getByLabel("Name").fill(STAR);
+    await form.getByLabel("Species").selectOption({ label: "Bat star" });
+    await form.getByLabel("Shelf position (optional)").selectOption({ label: "Lower" });
+    await form.getByLabel("Tank size (L)").fill("9.6");
+    await form.getByRole("button", { name: "Add animal" }).click();
+    await expect(page.getByRole("status")).toContainText(`${STAR} added to Lower-9.6L.`);
+
+    expect(
+      dbQuery(
+        `select status from core.animals where name = ${sqlLiteral(STAR)} order by id`,
+      ).map((row) => row.status),
+    ).toEqual(["deceased", "active"]);
+
+    await page.getByText("Retired animals (1)").click();
+    await page.getByRole("button", { name: `Reactivate ${STAR}` }).click();
+    const reactivateForm = page.getByRole("form", { name: `Reactivate ${STAR}` });
+    await reactivateForm.getByRole("button", { name: "Reactivate" }).click();
+    await expect(reactivateForm.getByRole("alert")).toContainText(
+      `An active animal named ${STAR} already exists`,
+    );
+
+    const retiredId = Number(
+      dbQuery(
+        `select id from core.animals where name = ${sqlLiteral(STAR)} and status = 'deceased'`,
+      )[0].id,
+    );
+    expect(() =>
+      dbQuery(`update core.animals set status = 'active', retired_on = null where id = ${retiredId}`),
+    ).toThrow();
+    expect(
+      dbQuery(
+        `select count(*)::int as n from core.animals where name = ${sqlLiteral(STAR)} and status = 'active'`,
+      )[0].n,
+    ).toBe(1);
   });
 });

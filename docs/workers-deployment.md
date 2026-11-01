@@ -14,7 +14,7 @@ output, so build credentials cannot silently override local runtime bindings.
 | Environment | Runtime and origin | Data and credentials |
 | --- | --- | --- |
 | PR CI | Standard Next.js and compiled local Worker, `http://localhost:3000` | Local Supabase, seeded test users, no deployment token or production data |
-| Staging | `ssl-data-collector-staging`, `https://ssl-data-collector-staging.ssl-lab.workers.dev` | A separate Supabase staging project and its own runtime secret |
+| Staging | `ssl-data-collector-staging`, `https://ssl-data-collector-staging.ssl-lab.workers.dev` | The hosted Dev Supabase project (`hcaopgzlvuyuyjcjxuvy`, throwaway data) and its own runtime secret |
 | Production | `ssl-data-collector`, `https://ssl-data-collector.ssl-lab.workers.dev` | The designated production Supabase project and runtime secret |
 
 Supabase hosts Auth, Postgres/RLS, and primary photo Storage. No database is moved
@@ -62,7 +62,7 @@ local secret, so Auth Admin tests also check that the binding is runtime-only.
    for this app. They do not wait for GitHub checks and are not the release path.
    Do not disable GitHub checks or weaken branch protection. No hosted setting
    changes happen merely by merging these files.
-2. Create the staging Supabase project. Confirm migrations, roles, RLS, the access
+2. Use the hosted Dev Supabase project as staging. Confirm migrations, roles, RLS, the access
    token hook, Storage policies, and invited-account behavior separately in each
    hosted project. Do not populate production with development seed users/data.
    Hosted schema changes remain human-operated.
@@ -118,8 +118,9 @@ local passing tests do not establish Free-plan suitability.
 Use the same main commit for staging and production. If main changes, stage the
 new commit first. The workflow reruns tests but does not attest to manual staging
 acceptance; the production environment reviewer must check it. Production launch
-also requires a fresh recoverable backup, photo reliability acceptance, an owner
-for monitoring/recovery, and a named second maintainer.
+also requires a fresh recoverable backup, an owner for monitoring/recovery, and a
+named second maintainer. Photo reliability acceptance is required before re-enabling
+health photo uploads.
 
 ## Rollback
 
@@ -138,8 +139,12 @@ new releases and disable any stray automatic Workers Builds integration first.
 
 ## Photo processing and recovery requirements
 
-These are accepted implementation constraints, not shipped capabilities or an executable
-backup/restore procedure. They must be implemented and verified before production launch.
+These are accepted implementation constraints. Photo processing remains unimplemented
+while photo uploads are disabled and is a future-release gate. The backup workflow is
+an initial gated implementation, not a proven restore procedure; backup and recovery
+must be verified before production launch and must include existing attachment objects.
+See the [backup and recovery procedure](backup-recovery.md) for workflow setup and
+restore acceptance.
 
 ### Health photos
 
@@ -154,9 +159,10 @@ backup/restore procedure. They must be implemented and verified before productio
 
 ### Backup and recovery
 
-- One weekly job plus manual dispatch; retain four weekly recovery points in private
-  R2 Standard. Back up the full logical database plus encrypted, versioned new/changed
-  photos and manifests; R2 is backup storage, not the primary photo store.
+- One weekly job plus manual dispatch; retain only the two newest verified backups
+  total in private R2 Standard across both run types. Back up the full logical database
+  plus encrypted, versioned new/changed photos and manifests; R2 is backup storage,
+  not the primary photo store.
 - Include app data, Auth, custom roles/grants, managed-schema customizations, migration
   history, photo ownership, and bucket metadata. A default schema dump is insufficient.
 - Keep the private decryption key in a password manager plus a separate recovery copy;
@@ -171,7 +177,8 @@ backup/restore procedure. They must be implemented and verified before productio
 - Prove decrypt/restore in isolated Supabase, including Auth/RLS, row counts, photo
   hashes/ownership, and measured recovery time, before relying on backups.
 
-The primary maintainer owns weekly backup-freshness checks, failure alerts, usage reviews,
-MFA/recovery material, and quarterly restore drills; name a second maintainer. Monitor
+The primary maintainer (@ethancma) owns weekly backup-freshness checks, failure alerts, usage
+reviews, MFA/recovery material, and quarterly restore drills; a second maintainer is not yet
+named and remains a launch gate. Monitor
 database/photo storage, source egress, R2 headroom, and GitHub Actions allowances. Billing
 alerts are not hard caps; Free tiers do not promise an SLA or point-in-time recovery.

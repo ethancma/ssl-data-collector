@@ -83,9 +83,11 @@ export async function loadDailyOperationsData(): Promise<SharedFormData> {
     pendingFeedingQuery = pendingFeedingQuery.eq("recorded_by", profile.id);
   }
 
-  const { data: logs } = await pendingFeedingQuery;
+  const { data: logs, error: pendingFeedingError } = await pendingFeedingQuery;
   const todayKey = pacificDateKey(new Date());
-  const pendingFeedingLogs = derivePendingFeedingLogs(logs ?? [], todayKey);
+  const pendingFeedingLogs = pendingFeedingError
+    ? []
+    : derivePendingFeedingLogs(logs ?? [], todayKey);
 
   let starScope: StarTreatmentScope = { starSystems: [], starTanks: [], stars: [] };
   let starTreatmentLoadError: string | undefined;
@@ -118,6 +120,7 @@ export async function loadDailyOperationsData(): Promise<SharedFormData> {
     canManageStarTreatments,
     ...starScope,
     pendingFeedingLogs,
+    pendingFeedingLoadError: pendingFeedingError?.message,
     chemicalCatalogLoadError: chemicalCatalogError?.message,
     foodCatalogLoadError: foodCatalogError?.message,
     starTreatmentCatalogLoadError: starTreatmentCatalogError?.message,

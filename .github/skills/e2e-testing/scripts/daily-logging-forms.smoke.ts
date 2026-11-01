@@ -1,12 +1,11 @@
 /**
  * Daily-logging forms: the 6 core forms a lab tech uses every day.
  * AM/PM check, feeding + consumption follow-up, water quality, chemical addition,
- * health observation (with/without photo, including ISeaU patient visibility), maintenance (incl. backdated date),
+ * health observation (photo uploads temporarily disabled, including ISeaU patient visibility), maintenance (incl. backdated date),
  * the Today dashboard, and each form's date/time-box defaults + picked-time handling.
  * Extend this file when changing one of those forms; see ../SKILL.md for the full
  * procedure and ../references/test-accounts.md for which accounts to use.
  */
-import path from "node:path";
 import { test, expect } from "@playwright/test";
 import {
   ADMIN_EMAIL,
@@ -491,6 +490,28 @@ test.describe("e2e smoke", () => {
     expect(localDateOf(String(reading.tested_at))).toBe(todayDateString());
   });
 
+  test("water quality rejects infinite readings without inserting a row", async ({
+    page,
+  }) => {
+    await login(page);
+    await page.goto(
+      `/protected/daily-operations?type=water-quality&system=${grahamSystemId}`,
+    );
+    await page.getByLabel("pH (unitless)", { exact: true }).fill("Infinity");
+    await page.getByLabel("Notes").fill(`${RUN_TAG} water quality invalid`);
+    await page.getByRole("button", { name: "Save reading" }).click();
+
+    await expect(page.getByText("Enter a valid number for pH")).toBeVisible();
+    await expect(page).toHaveURL(
+      /\/protected\/daily-operations\?type=water-quality/,
+    );
+    expect(
+      dbQuery(
+        `select id from core.water_quality_readings where notes = ${sqlLiteral(`${RUN_TAG} water quality invalid`)}`,
+      ),
+    ).toHaveLength(0);
+  });
+
   test("chemical addition for Graham lands in chemical_additions", async ({
     page,
   }) => {
@@ -569,32 +590,33 @@ test.describe("e2e smoke", () => {
     ).toHaveLength(0);
   });
 
-  test("health observation with photo stores multiple issues on the parent row and uploads to Storage", async ({
+  test("health observation saves without photo upload and remains visible in ISeaU", async ({
     page,
   }) => {
     await login(page);
     await gotoHydrated(page, "/protected/daily-operations?type=health-observation");
+    await expect(
+      page.getByText("Photo uploads are temporarily unavailable."),
+    ).toBeVisible();
+    await expect(page.locator('input[type="file"]')).toHaveCount(0);
     await page.getByLabel("Animal", { exact: true }).selectOption(String(starAnimalId));
     await page.locator("#health-observation-severity").fill("3");
     await page.getByLabel("Lesion").check();
     await page.getByLabel("Arm curling").check();
-    await page
-      .locator("#health-observation-photo")
-      .setInputFiles(path.join(path.dirname(test.info().file), "fixtures/test-photo.png"));
-    await page.getByLabel("Notes").fill(`${RUN_TAG} health obs with photo`);
+    await page.getByLabel("Notes").fill(`${RUN_TAG} health obs without photo`);
     await page.getByRole("button", { name: "Save observation" }).click();
     await expect(page).toHaveURL(/\/protected\/home/);
 
     const observations = dbQuery(`
       select id, animal_id, severity, has_photo, observed_at, to_json(issues) as issues
       from core.health_observations
-      where notes = '${RUN_TAG} health obs with photo'
+      where notes = '${RUN_TAG} health obs without photo'
     `);
     expect(observations).toHaveLength(1);
     const observation = observations[0];
     expect(Number(observation.animal_id)).toBe(starAnimalId);
     expect(Number(observation.severity)).toBe(3);
-    expect(observation.has_photo).toBe(true);
+    expect(observation.has_photo).toBe(false);
     expect(observation.issues).toEqual(["lesion", "arm_curling"]);
     expect(localDateOf(String(observation.observed_at))).toBe(todayDateString());
 
@@ -604,25 +626,14 @@ test.describe("e2e smoke", () => {
       where parent_table = 'health_observations'
         and parent_id = ${Number(observation.id)}
     `);
-    expect(attachments).toHaveLength(1);
-    expect(attachments[0].storage_path).toContain(
-      `health_observations/${observation.id}/`,
-    );
-
-    if (db) {
-      const { data: storageFiles } = await db.storage
-        .from("attachments")
-        .list(`health_observations/${observation.id}`);
-      expect(storageFiles?.length ?? 0).toBeGreaterThan(0);
-    }
-
     await gotoHydrated(page, "/protected/iseau");
     const patientCard = page.locator(`a[href="/protected/iseau?star=${starAnimalId}"]`);
     await expect(patientCard).toBeVisible();
     await patientCard.click();
     await expect(page.getByRole("heading", { name: starName, exact: true })).toBeVisible();
     await page.getByRole("button", { name: `Health observations for ${starName}:` }).click();
-    await expect(page.getByRole("dialog")).toContainText(`${RUN_TAG} health obs with photo`);
+    await expect(page.getByRole("dialog")).toContainText(`${RUN_TAG} health obs without photo`);
+    expect(attachments).toHaveLength(0);
   });
 
   test("one maintenance submission creates one row with the selected task_type", async ({
