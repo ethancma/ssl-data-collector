@@ -59,8 +59,9 @@ setup() {
   port=$(sed -n 's/^PORT=//p' .env.local 2>/dev/null || true)
   port=${port:-$(free_port)}
   env=$(local_env)
-  printf 'PORT=%s\nNEXT_PUBLIC_SITE_URL=http://localhost:%s\nE2E_RESET_DB=1\n%s\n' "$port" "$port" "$env" >.env.local
-  echo "Ready. Dev server: npm run dev -- -p $port   E2E: npx playwright test <section>"
+  printf 'PORT=%s\nNEXT_PUBLIC_SITE_URL=http://localhost:%s\nE2E_BASE_URL=http://localhost:%s\nE2E_RESET_DB=0\n%s\n' "$port" "$port" "$port" "$env" >.env.local
+  echo "Ready. Dev server: npm run dev -- -p $port   E2E: npm run test:e2e:preflight"
+  echo "Reset is opt-in: coordinate shared DB access before E2E_RESET_DB=1 tests."
 }
 
 case "${1:-}" in

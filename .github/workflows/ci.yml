@@ -65,9 +65,9 @@ jobs:
         env:
           BASE_REF: ${{ github.base_ref }}
         run: |
+          set -euo pipefail
           if [ -n "$BASE_REF" ]; then
-            git diff --name-only "origin/$BASE_REF...HEAD" > changed.txt
-            npm run -s test:e2e:plan -- --files $(cat changed.txt) | tee plan.txt
+            npm run -s test:e2e:plan -- --base "origin/$BASE_REF" | tee plan.txt
           else
             npm run -s test:e2e:plan -- --full | tee plan.txt
           fi
@@ -88,6 +88,7 @@ jobs:
           set -euo pipefail
           npx playwright install --with-deps chromium
           echo "NEXT_PUBLIC_SITE_URL=http://localhost:3000" >> "$GITHUB_ENV"
+          echo "E2E_BASE_URL=http://localhost:3000" >> "$GITHUB_ENV"
           export NEXT_PUBLIC_SITE_URL=http://localhost:3000
           if [ "$APP_RUNTIME" = next ]; then
             npm run -s build > build.log 2>&1 || { cat build.log; exit 1; }
@@ -107,9 +108,11 @@ jobs:
           exit 1
       - name: Run selected e2e sections
         if: steps.plan.outputs.skip != 'true'
+        env:
+          BASE_REF: ${{ github.base_ref }}
         run: |
-          if [ -f changed.txt ]; then
-            npm run -s test:e2e:plan -- --files $(cat changed.txt) --run
+          if [ -n "$BASE_REF" ]; then
+            npm run -s test:e2e:plan -- --base "origin/$BASE_REF" --run
           else
             npm run -s test:e2e:plan -- --full --run
           fi

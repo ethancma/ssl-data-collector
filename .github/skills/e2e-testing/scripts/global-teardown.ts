@@ -1,4 +1,4 @@
-import { releaseE2eLock } from "./global-setup";
+import { acquireE2eLock, releaseE2eLock } from "./global-setup";
 import { db, dbQuery, sqlLiteral } from "./helpers";
 
 const summary: Record<string, number> = {
@@ -191,7 +191,7 @@ export { globalTeardown as sweepE2eData };
 export default globalTeardown;
 
 if (process.argv[1]?.endsWith("global-teardown.ts")) {
-  void globalTeardown().catch((error) => {
+  void acquireE2eLock().then(globalTeardown).catch((error) => {
     console.error("E2E standalone cleanup failed unexpectedly:", error);
     process.exitCode = 1;
   });

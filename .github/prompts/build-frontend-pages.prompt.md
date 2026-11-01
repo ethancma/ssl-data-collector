@@ -1,11 +1,18 @@
 ---
-description: "Build out the SSL Data Collection frontend page inventory (landing, home, daily-ops hub, settings, admin CRUD, systems/monitoring, analytics, animals+growth, food monitoring, historical import) using only the schema/RLS that already exists — no backend or migration changes."
+description: "Historical frontend backlog reference. Use only when explicitly revisiting an unfinished item; revalidate routes, schema, and scope against the current README and checklist before implementation."
 name: "Build SSL Frontend Pages"
 argument-hint: "Which page/phase to build (e.g. 'Settings + nav update'); omit to see the full plan"
 agent: "agent"
 ---
 
 # Build out the SSL Data Collection frontend
+
+This is a historical planning snapshot, not the current file map or standing authorization.
+Start from the [README map](../../README.md#file-map) and
+[implementation checklist](../../docs/implementation-checklist.md). Existing pages, form
+counts, roles, and chart implementations have changed; reconfirm the selected item's scope.
+Do not install dependencies or implement import writes based on this old inventory.
+Real import/backfill tooling requires Tier 3/4 verification and human-operated production writes.
 
 Frontend-only pass over the page inventory below. If `${input}` names a specific
 page/phase, build only that one; otherwise treat this as the full backlog and ask

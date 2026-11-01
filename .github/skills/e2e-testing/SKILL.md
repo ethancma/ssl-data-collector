@@ -9,7 +9,7 @@ description: 'Run an end-to-end Playwright pass through the SSL Data Collection 
 - After any change that touches a form, a table, or an RLS policy.
 - After any schema migration.
 - Before opening a PR for anything at or above the "standard feature" tier — see
-  [docs/testing-strategy.md](../../../docs/testing-strategy.md).
+  [docs/testing-strategy.md](../../../../docs/testing-strategy.md).
 
 ## What "done" looks like
 Drive the app the way a lab tech, volunteer, or admin actually would, using Playwright — and
@@ -27,8 +27,11 @@ npm run test:e2e:plan -- --files <session-file> [<session-file> ...]
 
 This is a dry run. It prints the selected section files, why each was selected, and the exact
 Playwright command. Review it, then either run that printed command or repeat with `--run`.
-Use `--git-diff` instead of `--files` only as a convenience when the worktree contains no
-unrelated changes. Use `npm run test:e2e:full` as the explicit full-suite escape hatch.
+Use `--working-tree` only when the checkout contains no unrelated changes; it includes staged,
+unstaged, and untracked files (`--git-diff` is its compatibility alias). For committed PR
+changes, use `--base origin/main`; combine it with `--working-tree` only for an owned worktree.
+An empty Git diff selects no sections successfully. Use `npm run test:e2e:full` as the
+explicit full-suite escape hatch. CI uses `--base`, not shell-expanded filenames.
 
 The selector applies this policy:
 
@@ -41,11 +44,16 @@ The selector applies this policy:
 | Star treatments and the Probiotics boundary | `star-treatments.smoke.ts` |
 | Batch feeding and batch Star treatment logging | `batch-logging.smoke.ts` |
 | Systems page and water-quality trend charts | `systems-trends.smoke.ts` |
+| ISeaU patient lineup/comparison and real-data transformations | `daily-logging-forms.smoke.ts` |
+| Feeding schedules (settings, Home, Systems) | `feeding-schedules.smoke.ts` |
 | History page (`app/protected/history`, `components/history`, `lib/history`) | `history.smoke.ts` |
 | Animal setup (`app/protected/settings/animal-setup`, its components and validation) | `animal-setup.smoke.ts` |
 | Shared application or runtime files, unknown application or runtime files, shared e2e helpers | Full suite |
 | Supabase migrations, RLS/grants, database config, or seed data | Full suite (Tier 3+) |
 | Documentation or other non-runtime files only | No browser section |
+
+Selector-only changes and their unit tests need no browser section. Changes to preflight,
+setup/cleanup, helpers, fixtures, worktree setup, or CI select the full suite.
 
 The full suite includes every section script, so migration and broad changes cannot
 silently omit operational RBAC coverage. The selector only chooses sections; it does not
@@ -80,8 +88,8 @@ weaken each section's UI and direct-Supabase assertions.
   `dev:supabase-dev` runs at a time. Ask the human which one is up; never stop it.
 - Playwright loads only `.env.local`, so source the Dev file in the same shell first:
   `set -a; . ./.env.supabase-dev.local; set +a; unset E2E_RESET_DB`, then
-  `npx playwright test ...`. `helpers.ts` refuses to run if `E2E_DB_URL` is unset or any
-  Supabase URL points at Production.
+  explicitly export `E2E_BASE_URL` matching that server's `NEXT_PUBLIC_SITE_URL`.
+  Run `npm run test:e2e:preflight`, then `npx playwright test ...`.
 - `npm run seed:dev` idempotently seeds Dev with tanks and animals shaped like Production's
   (it refuses any other project). Tests must find data by shape, as Production would have
   it (for example `findGrahamStar()`), never by a fixture name.
@@ -91,13 +99,36 @@ weaken each section's UI and direct-Supabase assertions.
   Seeding adds synthetic individuals (including retired stars) and shelf tanks of different sizes;
   it does not copy production animal names or historical observations.
 - Set `E2E_RESET_DB=1` only for local runs. It resets the shared local stack, never a hosted
-  project.
+  project. New worktree setups default to reset disabled; coordinate with other sessions
+  before opting in. Existing worktrees may still have the old reset default.
+
+### Preflight before writes
+
+`npm run test:e2e:preflight` is read-only. It requires explicit matching app and site origins,
+app and assertion Supabase origins, a direct Postgres URL, and both keys. Only the designated
+hosted Dev project or the shared Local API/Postgres ports (54321/54322) are accepted.
+Production, unknown projects, hosted app origins, and hosted resets are rejected.
+
+It reports branch/HEAD and pending files, target, listener PID/checkout, lock state,
+reset/cleanup mode, HTTP readiness, and baseline fixture readiness (four active test roles
+and an active Graham star). It never prints keys or database credentials.
+
+The listener checkout must match the current checkout; set `E2E_SERVER_CWD` only when
+intentionally testing a server from another verified checkout. `lsof` must be available.
+This checks process location and shell configuration, not the server's actual launch/build
+environment: confirm its owner started/built it with the same target, especially for Workers.
+Preflight does not claim ownership of or restart any server.
+
+Global setup repeats these checks under the machine-wide E2E lock before any reset or
+test write. An opted-in Local reset reseeds synthetic animals/tanks and checks fixtures
+again; failures release the lock. Standalone cleanup also acquires the lock. Manual
+seed/reset commands do not acquire it: coordinate those separately.
 
 ## Procedure
 
 1. **Reuse the running dev server** for the target chosen above; never stop or restart
    `:3000`. In a worktree (`npm run wt -- setup`), start `npm run dev -- -p $PORT` once and
-   reuse it; global setup there takes a machine-wide lock and runs `supabase db reset` first.
+   reuse it; global setup takes a machine-wide lock and resets only when explicitly enabled.
 2. **Auth & account state** — sign in with a designated test account (see
    [test-accounts.md](./references/test-accounts.md)). If the change touches onboarding:
    create a new sign-in, confirm it lands as `profiles.status = pending`, approve it as an
@@ -106,14 +137,14 @@ weaken each section's UI and direct-Supabase assertions.
    - AM/PM check → confirm a new `daily_checks` row (right `system_id`, `check_type`).
    - Feeding log → confirm `feeding_logs` row, then do the same-day consumption follow-up and
      confirm it updates that same row rather than creating a duplicate.
-   - Water quality reading (all 6 params) → confirm `water_quality_readings` row, with
+   - Water quality reading (configured `WATER_QUALITY_PARAMS`) → confirm `water_quality_readings` row, with
      `ph_source` set correctly (`apex_probe` vs `manual`).
    - Chemical addition → confirm `chemical_additions` row.
-   - Health observation with a photo → confirm `health_observations` row plus the
-     `attachments` row and the object landing in Supabase Storage; the affected star
-     appears in ISeaU as a current patient with that observation in its history.
-   - Maintenance task marked performed → confirm `maintenance_logs` row and that
-     `next_due_at` recomputed correctly.
+   - Health observation → confirm the numeric score and `health_observations` row; verify
+     ISeaU patient inclusion/current status against the agreed threshold and time window.
+     Test attachments only if photo upload is enabled in the release under test.
+   - Maintenance log → confirm the `maintenance_logs` row. Do not assume recurring-task
+     tables or due-date recomputation exist; check the implemented schema first.
    - Historical import / paper backfill → confirm rows are tagged with the right
      `data_source` (`import` / `paper_backfill`) and correct `entered_at` vs.
      event-time split.
@@ -172,7 +203,10 @@ npm run test:e2e:plan -- --files components/daily-operations/water-quality-form.
 npm run test:e2e:plan -- --files components/daily-operations/water-quality-form.tsx lib/validation/water-quality.ts --run
 
 # Convenience for a clean, single-purpose worktree, or force every section
-npm run test:e2e:plan -- --git-diff
+npm run test:e2e:plan -- --working-tree
+# Committed branch coverage, optionally unioned with owned pending changes
+npm run test:e2e:plan -- --base origin/main
+npm run test:e2e:plan -- --base origin/main --working-tree
 npm run test:e2e:full
 ```
 
@@ -181,8 +215,8 @@ npm run test:e2e:full
   (`db.from(...)`).** The hosted project's `service_role` Postgres role has no `USAGE` grant
   on schema `core` (only `authenticated` does), so any `db.from("<core table>")` call 403s
   with "permission denied for schema core". Use the `dbQuery(sql)` helper from
-  [helpers.ts](./scripts/helpers.ts) instead (runs SQL via `supabase db query -f ... --linked`,
-  connects as `postgres`, and needs schema-qualified table names, e.g. `core.profiles`).
+  [helpers.ts](./scripts/helpers.ts) instead (runs SQL through the validated `E2E_DB_URL`,
+  and needs schema-qualified table names, e.g. `core.profiles`).
   `db.auth.admin.*` calls (Auth Admin API, not a schema query) are unaffected and fine to use
   directly.
 - **Scope `test.describe.configure({ mode: "serial" })` inside each `test.describe` block**,

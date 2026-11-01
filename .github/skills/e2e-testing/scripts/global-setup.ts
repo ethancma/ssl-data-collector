@@ -2,9 +2,10 @@ import { execFileSync } from "node:child_process";
 import { mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { E2E_LOCK_DIR, runPreflight, validateE2eTarget } from "./preflight.mjs";
 
 // Worktrees share one Supabase stack and the teardown sweeps every e2e-tagged row, so runs take turns.
-const LOCK_DIR = path.join(tmpdir(), "ssl-e2e.lock");
+const LOCK_DIR = E2E_LOCK_DIR;
 
 function lockHolderAlive(): boolean {
   try {
@@ -25,7 +26,7 @@ export function releaseE2eLock(): void {
   }
 }
 
-export default async function globalSetup(): Promise<void> {
+export async function acquireE2eLock(): Promise<void> {
   const deadline = Date.now() + 20 * 60_000;
   let announced = false;
   for (;;) {
@@ -46,7 +47,21 @@ export default async function globalSetup(): Promise<void> {
       await new Promise((resolve) => setTimeout(resolve, 2_000));
     }
   }
-  if (process.env.E2E_RESET_DB === "1") {
-    execFileSync("npx", ["supabase", "db", "reset"], { stdio: "inherit" });
+}
+
+export default async function globalSetup(): Promise<void> {
+  validateE2eTarget(process.env);
+  await acquireE2eLock();
+  try {
+    const reset = process.env.E2E_RESET_DB === "1";
+    await runPreflight(process.env, !reset);
+    if (reset) {
+      execFileSync("npx", ["supabase", "db", "reset"], { stdio: "inherit" });
+      execFileSync(process.execPath, ["scripts/seed-dev-fixtures.mjs", "--local"], { stdio: "inherit" });
+      await runPreflight();
+    }
+  } catch (error) {
+    releaseE2eLock();
+    throw error;
   }
 }

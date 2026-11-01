@@ -1,11 +1,15 @@
 ---
-description: "Build the History page: a read-only, filterable, sortable table over every log dataset, backed by core.v_history_* SQL views, with CSV export of all matching rows. Also removes the unused analytics schema from the migration history. Starts with sample UIs to choose from."
+description: "Historical History-page design reference. Use only when explicitly revisiting its decisions; the page is implemented and old migration exceptions are not current authorization."
 name: "Build history page"
 argument-hint: "Optional: a phase to run (1-6) or a decision to override below"
 agent: "agent"
 ---
 
 # History page
+
+This is a historical implementation plan. The page already exists; use the
+[README map](../../README.md#file-map) for current entry points. Its old branch, phases,
+and migration/hook exceptions do not authorize new changes or bypassing guardrails.
 
 A read-only page at `/protected/history`. Active members browse every log dataset, filter and
 sort it, open a row for detail, and export all matching rows to CSV. Read
@@ -66,8 +70,7 @@ dummy data only.
   Everything else in `.github/hooks/` still applies: no push, no hosted commands, no `.env`
   edits, and leave the port-3000 server alone.
 - **How:** delete files with `git rm`. If the edit tool denies an edit to one of those
-  migration files, apply the same change with a scripted terminal edit and show the
-  `git diff`.
+  migration files, stop and ask the human. Never bypass a tool denial through another tool.
 
 ## Phases
 
