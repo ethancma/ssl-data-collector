@@ -162,8 +162,14 @@ export function AnimalSetupManager({
       const supabase = createClient();
       const targetSystemId = Number(values.systemId);
 
-      // Check the name first so a duplicate never leaves a freshly created tank behind.
-      const duplicate = await supabase.from("animals").select("id").eq("name", values.name).limit(1);
+      // Saving always leaves the animal active, so only another active animal blocks the name
+      // (case-insensitively). Check it first so a duplicate never leaves a freshly created tank behind.
+      const duplicate = await supabase
+        .from("animals")
+        .select("id")
+        .ilike("name", values.name.replace(/[\\%_]/g, "\\$&"))
+        .eq("status", "active")
+        .limit(1);
       if (duplicate.data?.some((row) => row.id !== existing?.id)) {
         return animalSaveError({ code: "23505", message: "" }, values.name);
       }

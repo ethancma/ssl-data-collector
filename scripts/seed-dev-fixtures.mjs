@@ -70,9 +70,9 @@ try {
       const status = !isRetired ? "active" : serial % 2 ? "transferred" : "deceased";
       const result = await client.query(
         `insert into core.animals (tank_id, species_id, name, tracking_type, quantity, status, date_added, retired_on)
-         values ($1, $2, $3, 'individual', 1, $4, current_date - 60,
-           case when $4 = 'active' then null else current_date - 7 end)
-         on conflict (name) do nothing`,
+         select $1::int, $2::int, $3::text, 'individual', 1, $4::text, current_date - 60,
+           case when $4::text = 'active' then null else current_date - 7 end
+         where not exists (select 1 from core.animals where name = $3::text)`,
         [tank.id, species.id, `Dev star ${String(serial).padStart(2, "0")}`, status],
       );
       created += result.rowCount ?? 0;

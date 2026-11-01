@@ -7,6 +7,7 @@ import {
   waterQualityValuesRequireNotes,
   type WaterQualityTargetRange,
 } from "@/lib/daily-operations/water-quality-targets";
+import { waterQualitySchema } from "@/lib/validation/water-quality";
 
 const targets: WaterQualityTargetRange[] = [
   {
@@ -62,4 +63,39 @@ test("requires notes only when a value is outside its effective target", () => {
   assert.equal(waterQualityValuesRequireNotes({ ph: 8.3 }, targets, 3), true);
   assert.equal(waterQualityValuesRequireNotes({ ph: null }, targets, 3), false);
   assert.equal(waterQualityValuesRequireNotes({ salinity: 40 }, targets, 3), false);
+});
+
+test("accepts finite readings and rejects non-finite numeric values", () => {
+  const base = {
+    date: "2026-10-31",
+    time: "12:00",
+    systemId: "1",
+    phSource: "manual" as const,
+  };
+
+  assert.equal(waterQualitySchema.safeParse({ ...base, ph: "8.1" }).success, true);
+  for (const ph of ["Infinity", "-Infinity", "NaN"]) {
+    const result = waterQualitySchema.safeParse({ ...base, ph });
+    assert.equal(result.success, false, `${ph} should be rejected`);
+  }
+});
+
+test("treats whitespace-only readings as empty", () => {
+  const result = waterQualitySchema.safeParse({
+    date: "2026-10-31",
+    time: "12:00",
+    systemId: "1",
+    phSource: "manual",
+    ph: "  ",
+  });
+
+  assert.equal(result.success, false);
+  if (!result.success) {
+    assert.equal(
+      result.error.issues.some((issue) =>
+        issue.message.includes("at least one water quality parameter"),
+      ),
+      true,
+    );
+  }
 });

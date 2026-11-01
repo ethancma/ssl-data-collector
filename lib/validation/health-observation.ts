@@ -9,7 +9,7 @@ import { dateField, idField, timeField } from "@/lib/validation/common-fields";
 
 const severityMessage = `Enter a whole number from ${SEVERITY_MIN} to ${SEVERITY_MAX}`;
 
-// Severity starts blank and must be entered; photos are always optional.
+// Severity starts blank and must be entered.
 export const healthObservationSchema = z.object({
   date: dateField,
   time: timeField,
@@ -23,7 +23,6 @@ export const healthObservationSchema = z.object({
     .transform(Number)
     .pipe(z.number().int().min(SEVERITY_MIN, severityMessage).max(SEVERITY_MAX, severityMessage)),
   issues: z.array(z.enum(HEALTH_ISSUE_TYPES)).default([]),
-  photoFile: z.instanceof(File).optional(),
   notes: z.string().max(2000, "Keep notes under 2000 characters").optional(),
 });
 

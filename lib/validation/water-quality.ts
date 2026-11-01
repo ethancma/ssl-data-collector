@@ -17,7 +17,7 @@ const optionalNumeric = (label: string) =>
     .string()
     .optional()
     .refine(
-      (v) => !v || !Number.isNaN(Number(v)),
+      (v) => v === undefined || !v.trim() || Number.isFinite(Number(v)),
       `Enter a valid number for ${label}`,
     );
 
@@ -41,7 +41,7 @@ export const waterQualitySchema = z
     notes: z.string().max(2000, "Keep notes under 2000 characters").optional(),
   })
   .superRefine((values, ctx) => {
-    const hasAnyParam = WATER_QUALITY_PARAMS.some((p) => values[p.key]);
+    const hasAnyParam = WATER_QUALITY_PARAMS.some((p) => values[p.key]?.trim());
     if (!hasAnyParam) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,

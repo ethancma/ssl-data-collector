@@ -127,9 +127,7 @@ export function WaterQualityForm({
       tested_at: instant.iso,
       system_id: values.systemId,
       ph_source: values.phSource,
-      ...Object.fromEntries(
-        WATER_QUALITY_PARAMETERS.map((key) => [key, values[key] ? Number(values[key]) : null]),
-      ),
+      ...numericValues,
       notes: nullIfBlank(values.notes),
     });
     if (error) {
