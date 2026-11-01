@@ -114,7 +114,10 @@ reset/cleanup mode, HTTP readiness, and baseline fixture readiness (four active 
 and an active Graham star). It never prints keys or database credentials.
 
 The listener checkout must match the current checkout; set `E2E_SERVER_CWD` only when
-intentionally testing a server from another verified checkout. `lsof` must be available.
+intentionally testing a server from another verified checkout. Linux requires `ss` and
+`/proc`; macOS requires `lsof`. Linux `lsof` can silently omit Next's truncated process
+name ([upstream bug](https://github.com/lsof-org/lsof/issues/359)), so Linux uses `ss`
+for socket ownership and `/proc/<pid>/cwd` for the checkout check instead.
 This checks process location and shell configuration, not the server's actual launch/build
 environment: confirm its owner started/built it with the same target, especially for Workers.
 Preflight does not claim ownership of or restart any server.

@@ -68,6 +68,24 @@ function git(args) {
   return execFileSync("git", args, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
 }
 
+/** @param {string} output
+ *  @param {string} port */
+export function listenerPidsFromSs(output, port) {
+  const lines = output.split("\n").filter((line) => line.trim());
+  if (!lines.length) throw new Error(`Cannot inspect app listener on port ${port}: ss found no visible listener.`);
+  /** @type {Set<string>} */
+  const pids = new Set();
+  for (const line of lines) {
+    if (!/^\s*LISTEN\s/.test(line)) throw new Error(`Unexpected ss listener output on port ${port}.`);
+    const owners = [...line.matchAll(/\bpid=([1-9]\d*)(?=,|\))/g)].map((match) => match[1]);
+    if (!owners.length || owners.some((pid) => !Number.isSafeInteger(Number(pid)))) {
+      throw new Error(`Cannot inspect app listener on port ${port}: ss found a listener without a visible owner. Check process permissions.`);
+    }
+    for (const pid of owners) pids.add(pid);
+  }
+  return [...pids];
+}
+
 /** @param {NodeJS.ProcessEnv} env
  *  @param {boolean} checkFixtures */
 export async function runPreflight(env = process.env, checkFixtures = true) {
@@ -81,19 +99,24 @@ export async function runPreflight(env = process.env, checkFixtures = true) {
 
   const appUrl = new URL(target.appOrigin);
   const port = appUrl.port || (appUrl.protocol === "https:" ? "443" : "80");
-  let pids;
+  const linux = process.platform === "linux";
+  const tool = linux ? "ss" : "lsof";
+  let listeners;
   try {
-    pids = execFileSync("lsof", ["-nP", `-iTCP:${port}`, "-sTCP:LISTEN", "-t"],
-      { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim().split(/\s+/);
+    listeners = execFileSync(tool,
+      linux ? ["-H", "-ltnp", `( sport = :${port} )`] : ["-nP", `-iTCP:${port}`, "-sTCP:LISTEN", "-t"],
+      { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
   } catch (error) {
-    const missingLsof = error instanceof Error && "code" in error && error.code === "ENOENT";
-    throw new Error(missingLsof
-      ? "Cannot inspect app listener: lsof is not installed."
-      : `Cannot inspect app listener on port ${port}: lsof found no visible listener or failed. Check the app and process permissions.`);
+    const missingTool = error instanceof Error && "code" in error && error.code === "ENOENT";
+    throw new Error(missingTool
+      ? `Cannot inspect app listener: ${tool} is not installed.`
+      : `Cannot inspect app listener on port ${port}: ${tool} found no visible listener or failed. Check the app and process permissions.`);
   }
+  const pids = linux ? listenerPidsFromSs(listeners, port) : listeners.trim().split(/\s+/).filter(Boolean);
+  if (!pids.length) throw new Error(`Cannot inspect app listener on port ${port}: ${tool} found no visible listener.`);
   const expected = realpathSync(env.E2E_SERVER_CWD || root);
   for (const pid of new Set(pids)) {
-    const cwd = execFileSync("lsof", ["-a", "-p", pid, "-d", "cwd", "-Fn"],
+    const cwd = linux ? realpathSync(`/proc/${pid}/cwd`) : execFileSync("lsof", ["-a", "-p", pid, "-d", "cwd", "-Fn"],
       { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] })
       .split("\n").find((line) => line.startsWith("n"))?.slice(1);
     if (!cwd || realpathSync(cwd) !== expected) {

@@ -115,11 +115,6 @@ jobs:
             sleep 2
           done
           if [ "$ready" != true ]; then cat app.log; exit 1; fi
-          echo "App process group:"
-          ps -eo pid,ppid,pgid,comm | awk -v group="$app_pid" 'NR == 1 || $3 == group'
-          echo "Listener diagnostics:"
-          lsof -nP -iTCP:3000 -sTCP:LISTEN || true
-          ss -ltnp '( sport = :3000 )' || true
           if [ -n "$BASE_REF" ]; then
             npm run -s test:e2e:plan -- --base "origin/$BASE_REF" --run
           else

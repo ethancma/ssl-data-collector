@@ -7,7 +7,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { promisify } from "node:util";
-import { runPreflight, validateE2eTarget } from "@/.github/skills/e2e-testing/scripts/preflight.mjs";
+import { listenerPidsFromSs, runPreflight, validateE2eTarget } from "@/.github/skills/e2e-testing/scripts/preflight.mjs";
 
 const DEV = "hcaopgzlvuyuyjcjxuvy";
 const SECRET = "test-only-secret-not-a-credential";
@@ -108,7 +108,24 @@ test("rejects malformed URLs, credential-bearing origins, and Postgres query ove
   }
 });
 
-test("listener checkout and HTTP failures stop preflight before database access", async (context) => {
+test("Linux listener parsing handles IPv4, IPv6, and truncated Next process names", () => {
+  assert.deepEqual(listenerPidsFromSs([
+    'LISTEN 0 511 *:3101 *:* users:(("next-server (v1",pid=123,fd=18))',
+    'LISTEN 0 511 127.0.0.1:3101 0.0.0.0:* users:(("node",pid=456,fd=19),("node",pid=123,fd=18))',
+  ].join("\n"), "3101"), ["123", "456"]);
+  assert.throws(() => listenerPidsFromSs("", "3101"), /no visible listener/);
+  assert.throws(() => listenerPidsFromSs("LISTEN 0 511 *:3101 *:*", "3101"), /without a visible owner/);
+  assert.throws(() => listenerPidsFromSs([
+    'LISTEN 0 511 *:3101 *:* users:(("node",pid=123,fd=18))',
+    "LISTEN 0 511 127.0.0.1:3101 0.0.0.0:*",
+  ].join("\n"), "3101"), /without a visible owner/);
+  assert.throws(() => listenerPidsFromSs("unexpected output", "3101"), /Unexpected ss/);
+  assert.throws(() => listenerPidsFromSs(
+    'LISTEN 0 511 *:3101 *:* users:(("node",pid=999999999999999999,fd=18))', "3101",
+  ), /without a visible owner/);
+});
+
+test("Next process names, listener checkout, and HTTP failures stop preflight before database access", async (context) => {
   context.mock.method(console, "log", () => {});
   const server = createServer((_request, response) => {
     response.writeHead(503);
@@ -119,10 +136,13 @@ test("listener checkout and HTTP failures stop preflight before database access"
   if (!address || typeof address === "string") throw new Error("Expected TCP listener");
   const origin = `http://127.0.0.1:${address.port}`;
   const env = local({ E2E_BASE_URL: origin, NEXT_PUBLIC_SITE_URL: origin });
+  const previousTitle = process.title;
   try {
+    process.title = "next-server (v16.3.4)";
     await assert.rejects(runPreflight({ ...env, E2E_SERVER_CWD: tmpdir() }), /expected checkout/);
     await assert.rejects(runPreflight(env), /HTTP 503/);
   } finally {
+    process.title = previousTitle;
     await new Promise<void>((resolve, reject) =>
       server.close((error) => error ? reject(error) : resolve()));
   }
