@@ -51,11 +51,13 @@ export function DailyCheckForm({
   defaultSystemId,
   defaultCheckType,
   pendingFeedingLogs = [],
+  pendingFeedingLoadError,
 }: {
   systems: SystemOption[];
   defaultSystemId?: string;
   defaultCheckType?: (typeof CHECK_TYPES)[number];
   pendingFeedingLogs?: PendingFeedingLog[];
+  pendingFeedingLoadError?: string;
 }) {
   const router = useRouter();
   const [serverError, setServerError] = useState<string | null>(null);
@@ -240,6 +242,13 @@ export function DailyCheckForm({
               message={errors.notes?.message}
             />
           </div>
+
+          {pendingFeedingLoadError && (
+            <p className="text-sm text-red-500" role="alert">
+              Pending feeding follow-ups could not be loaded. Consumption updates may be
+              incomplete. {pendingFeedingLoadError}
+            </p>
+          )}
 
           {pendingFeedingLogsForSystem.length > 0 && checkType === "PM" && (
             <div className="grid gap-4">

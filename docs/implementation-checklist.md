@@ -8,17 +8,18 @@ Do not invent values marked **BLOCKED**. Lab context and staff questions live in
 
 ## Staff Decisions
 
-- **BLOCKED: feeding cadence.** Staff must supply schedules by system/species/life stage.
-  Settings supports weekday schedules with tank overrides; no cadences are seeded.
+- Feeding cadence is configured by staff in Settings (weekday schedules with tank
+  overrides); no cadences are seeded.
 - Health severity is a whole-number score from 1 (healthy) to 5 (dead), matching the
   historical heat-map scores. Dashboards treat 2 as watch and 3-5 as attention. Photos
-  are always optional.
+  are optional when uploads are available; uploads are temporarily disabled.
 - **BLOCKED: empty health observations.** Confirm whether selecting no issues is valid.
-- **BLOCKED: nickname reuse.** Confirm whether names may be reused after death or transfer.
-  Current names are unique lab-wide.
-- **BLOCKED: Apex coverage.** Only Graham and Wholey pH probes are confirmed.
-- **BLOCKED: historical sources.** Inventory systems, date ranges, and Sheets/paper coverage;
-  identify the paper-backfill owner and deadline before building import workflows.
+- Nicknames may be reused after an animal dies or is transferred; only one active animal
+  may hold a nickname at a time, ignoring case.
+- **Deferred to a future release:** Apex probe integration. Only Graham and Wholey pH
+  probes are confirmed.
+- Historical backfill into Production uses the reviewed archive bundle kept outside the
+  repository; a human runs it after rehearsal on an isolated database.
 - Water-quality ranges are optional lab-wide values with per-system overrides, configured
   by Admins/Technicians with no seeded numeric defaults. Salinity is part of the weekly
   panel and uses `ppt`.
@@ -27,20 +28,24 @@ Do not invent values marked **BLOCKED**. Lab context and staff questions live in
 
 ## Health Photos And Follow-Ups
 
+Photo uploads are temporarily disabled in the application. Keep the processing,
+ownership, retry, and recovery requirements below for a future release.
+
 Photo uploads are not atomic with observation creation: upload failure can leave
 an observation without its attachment. A reliable implementation must support retry and
 reconciliation without duplicate observations. Image-processing requirements are retained
 in [workers-deployment.md](workers-deployment.md#photo-processing-and-recovery-requirements).
 
-The daily-check **Flag issue** requirement calls for a linked health follow-up that may
-remain incomplete and visibly flagged on the check; it does not require a separate
-dashboard notification. The relationship is not implemented.
+**Deferred to a future release:** The daily-check **Flag issue** requirement calls for a
+linked health follow-up that may remain incomplete and visibly flagged on the check; it
+does not require a separate dashboard notification. The relationship is not implemented.
 
 ## Domain Extensions
 
 These are requirements, not claims that the corresponding tables or workflows exist:
 
-- Animal movements must preserve location history rather than rewrite historical events.
+- **Deferred to a future release:** Animal movements must preserve location history rather
+  than rewrite historical events.
 - Larval cone-bottom pairs are the cohort logging unit.
 - Micro-Algae production needs timestamped density, harvest volume, and condition notes.
 - Recurring maintenance is configured per system, with due/overdue state; reminder digests

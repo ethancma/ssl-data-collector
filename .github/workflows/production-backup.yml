@@ -1,0 +1,48 @@
+name: Production backup
+
+on:
+  schedule:
+    - cron: "23 9 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-backup
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    if: github.ref == 'refs/heads/main' && vars.PRODUCTION_BACKUPS_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    environment: production-backups
+    env:
+      BACKUP_KIND: ${{ github.event_name == 'schedule' && 'weekly' || 'manual' }}
+      EXPECTED_SUPABASE_PROJECT_REF: bqylxmsifagnztxhixyl
+      SUPABASE_PROJECT_REF: bqylxmsifagnztxhixyl
+      NEXT_PUBLIC_SUPABASE_URL: https://bqylxmsifagnztxhixyl.supabase.co
+      AGE_RECIPIENT: ${{ vars.AGE_RECIPIENT }}
+      R2_ACCOUNT_ID: ${{ vars.R2_ACCOUNT_ID }}
+      R2_BUCKET: ${{ vars.R2_BACKUP_BUCKET }}
+      SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+      SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+      R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+      R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+      AWS_DEFAULT_REGION: auto
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Install encryption and R2 client tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes age awscli
+      - name: Validate backup configuration and create encrypted snapshot
+        run: node scripts/production-backup.mjs

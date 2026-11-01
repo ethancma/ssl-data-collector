@@ -149,7 +149,7 @@ export function isSamePlacement(a: PlacementInput, b: PlacementInput) {
 
 export function animalSaveError(error: { code?: string; message: string }, name: string) {
   if (error.code === "23505") {
-    return `An animal named ${name} already exists. Names are unique across the lab, including retired animals.`;
+    return `An active animal named ${name} already exists. Retire it first or choose another name.`;
   }
   return error.message;
 }
