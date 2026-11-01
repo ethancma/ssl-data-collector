@@ -85,8 +85,11 @@ export async function runPreflight(env = process.env, checkFixtures = true) {
   try {
     pids = execFileSync("lsof", ["-nP", `-iTCP:${port}`, "-sTCP:LISTEN", "-t"],
       { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim().split(/\s+/);
-  } catch {
-    throw new Error("Cannot inspect app listener. Ensure lsof is available and the explicit app server is running.");
+  } catch (error) {
+    const missingLsof = error instanceof Error && "code" in error && error.code === "ENOENT";
+    throw new Error(missingLsof
+      ? "Cannot inspect app listener: lsof is not installed."
+      : `Cannot inspect app listener on port ${port}: lsof found no visible listener or failed. Check the app and process permissions.`);
   }
   const expected = realpathSync(env.E2E_SERVER_CWD || root);
   for (const pid of new Set(pids)) {

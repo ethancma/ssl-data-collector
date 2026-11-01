@@ -80,16 +80,19 @@ jobs:
       - name: Seed production-shaped local fixtures
         if: steps.plan.outputs.skip != 'true'
         run: node scripts/seed-dev-fixtures.mjs --local
-      - name: Start the app
+      - name: Start the app and run selected e2e sections
         if: steps.plan.outputs.skip != 'true'
         env:
           APP_RUNTIME: ${{ matrix.runtime }}
+          BASE_REF: ${{ github.base_ref }}
         run: |
           set -euo pipefail
           npx playwright install --with-deps chromium
           echo "NEXT_PUBLIC_SITE_URL=http://localhost:3000" >> "$GITHUB_ENV"
           echo "E2E_BASE_URL=http://localhost:3000" >> "$GITHUB_ENV"
           export NEXT_PUBLIC_SITE_URL=http://localhost:3000
+          export E2E_BASE_URL=http://localhost:3000
+          set -m
           if [ "$APP_RUNTIME" = next ]; then
             npm run -s build > build.log 2>&1 || { cat build.log; exit 1; }
             npm run -s start -- -p 3000 > app.log 2>&1 &
@@ -100,17 +103,18 @@ jobs:
               npm run -s check:client-secrets -- dist/client
             npm run -s preview:cloudflare -- --port 3000 > app.log 2>&1 &
           fi
+          app_pid=$!
+          trap 'kill -- -"$app_pid" 2>/dev/null || true; wait "$app_pid" 2>/dev/null || true' EXIT
+          ready=false
           for _ in $(seq 1 60); do
-            if curl -sf http://localhost:3000/auth/login > /dev/null; then exit 0; fi
+            if curl -sf http://localhost:3000/auth/login > /dev/null; then
+              ready=true
+              break
+            fi
+            if ! kill -0 "$app_pid" 2>/dev/null; then cat app.log; exit 1; fi
             sleep 2
           done
-          cat app.log
-          exit 1
-      - name: Run selected e2e sections
-        if: steps.plan.outputs.skip != 'true'
-        env:
-          BASE_REF: ${{ github.base_ref }}
-        run: |
+          if [ "$ready" != true ]; then cat app.log; exit 1; fi
           if [ -n "$BASE_REF" ]; then
             npm run -s test:e2e:plan -- --base "origin/$BASE_REF" --run
           else

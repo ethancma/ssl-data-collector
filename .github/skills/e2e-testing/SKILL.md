@@ -121,8 +121,11 @@ Preflight does not claim ownership of or restart any server.
 
 Global setup repeats these checks under the machine-wide E2E lock before any reset or
 test write. An opted-in Local reset reseeds synthetic animals/tanks and checks fixtures
-again; failures release the lock. Standalone cleanup also acquires the lock. Manual
+again; setup failures attempt to release the lock. Standalone cleanup also acquires the lock. Manual
 seed/reset commands do not acquire it: coordinate those separately.
+Global teardown skips its sweep if setup failed or otherwise no longer owns the lock.
+Stale or unverifiable locks are never removed automatically. Confirm that no E2E run
+or cleanup is active before manually removing the exact lock directory named in the error.
 
 ## Procedure
 

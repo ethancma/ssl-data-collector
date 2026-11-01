@@ -1,4 +1,4 @@
-import { acquireE2eLock, releaseE2eLock } from "./global-setup";
+import { acquireE2eLock, didE2eSetupFail, ownsE2eLock, releaseE2eLock } from "./global-setup";
 import { db, dbQuery, sqlLiteral } from "./helpers";
 
 const summary: Record<string, number> = {
@@ -103,6 +103,14 @@ async function cleanupAuthUsers(): Promise<void> {
 }
 
 async function globalTeardown(): Promise<void> {
+  if (didE2eSetupFail()) {
+    console.log("E2E global cleanup skipped: global setup failed.");
+    return;
+  }
+  if (!ownsE2eLock()) {
+    console.log("E2E global cleanup skipped: this process does not own the E2E lock.");
+    return;
+  }
   try {
     await sweep();
   } finally {
