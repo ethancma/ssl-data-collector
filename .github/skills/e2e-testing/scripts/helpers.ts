@@ -34,8 +34,20 @@ nextEnv.loadEnvConfig(process.cwd());
 const SUPABASE_URL =
   process.env.SUPABASE_URL ?? "https://bqylxmsifagnztxhixyl.supabase.co";
 const SECRET_KEY = process.env.SUPABASE_SECRET_KEY;
-// Direct Postgres URL (set by `npm run wt -- setup` for the local stack); unset falls back to the linked CLI.
+// Direct Postgres URL for the local stack (`npm run wt -- setup`) or Dev (.env.supabase-dev.local).
 const E2E_DB_URL = process.env.E2E_DB_URL;
+// E2E writes and deletes rows, so it runs only against local or the Dev project, never Production.
+const PRODUCTION_PROJECT_REF = "bqylxmsifagnztxhixyl";
+if (
+  !E2E_DB_URL ||
+  [SUPABASE_URL, E2E_DB_URL, process.env.NEXT_PUBLIC_SUPABASE_URL].some((value) =>
+    value?.includes(PRODUCTION_PROJECT_REF),
+  )
+) {
+  throw new Error(
+    "E2E targets Production. Load .env.supabase-dev.local (or a worktree's local env) first.",
+  );
+}
 export const BASE_URL =
   process.env.E2E_BASE_URL ?? `http://localhost:${process.env.PORT ?? 3000}`;
 export const TECH_EMAIL = process.env.E2E_TEST_TECH_EMAIL ?? "test-tech@ssl.dev";
@@ -187,14 +199,25 @@ export async function logSingleFeeding(
 // verify UPDATE/DELETE/SELECT permissions directly — the app currently has no edit/delete
 // UI for any operational log (only */new create routes exist), so those tiers can only be
 // exercised this way rather than by clicking through the app. See rbac-tiers.smoke.ts.
-export async function signInRoleClient(email: string, password: string) {
-  const client = createClient(SUPABASE_URL, PUBLISHABLE_KEY, {
-    db: { schema: "core" },
-    auth: { persistSession: false },
-  });
-  const { error } = await client.auth.signInWithPassword({ email, password });
-  if (error) throw error;
-  return client;
+// Cached per worker: hosted Supabase rate-limits sign-ins per IP, and no test signs these out.
+const roleClients = new Map<string, Promise<ReturnType<typeof createClient>>>();
+export function signInRoleClient(email: string, password: string) {
+  const key = `${email}\n${password}`;
+  let pending = roleClients.get(key);
+  if (!pending) {
+    pending = (async () => {
+      const client = createClient(SUPABASE_URL, PUBLISHABLE_KEY, {
+        db: { schema: "core" },
+        auth: { persistSession: false },
+      });
+      const { error } = await client.auth.signInWithPassword({ email, password });
+      if (error) throw error;
+      return client;
+    })();
+    pending.catch(() => roleClients.delete(key));
+    roleClients.set(key, pending);
+  }
+  return pending;
 }
 
 // No session at all — mirrors a signed-out visitor hitting PostgREST directly.
@@ -320,6 +343,27 @@ function dbQueryDirect(sql: string): Record<string, unknown>[] {
 
 export function sqlLiteral(value: string): string {
   return `'${value.replaceAll("'", "''")}'`;
+}
+
+// Match Production's data shape without depending on a synthetic fixture name.
+export function findGrahamStar() {
+  const row = dbQuery(`select animal.id, animal.name, animal.tank_id, tank.system_id
+    from core.animals animal
+    join core.tanks tank on tank.id = animal.tank_id
+    join core.systems system on system.id = tank.system_id
+    join core.species species on species.id = animal.species_id
+    where system.name = 'Graham' and animal.status = 'active'
+      and animal.tracking_type = 'individual' and species.category = 'star'
+      and animal.name not like 'e2e-%'
+    order by animal.id
+    limit 1`)[0];
+  expect(row, "Graham needs an active individual star (npm run seed:dev, or seed-dev-fixtures.mjs --local for local Supabase)").toBeTruthy();
+  return {
+    id: Number(row.id),
+    name: String(row.name),
+    tankId: Number(row.tank_id),
+    systemId: Number(row.system_id),
+  };
 }
 
 // Cleanup actions are idempotent deletes, so retry transient CLI transport errors.

@@ -63,17 +63,26 @@ test("a missed check yesterday is a watch item", () => {
   assert.equal(snapshot.headline, "Yesterday's PM check was missed");
 });
 
-test("health observations: high needs attention, medium is a watch, low is ignored", () => {
-  const observe = (severity: "low" | "medium" | "high") =>
+test("health observations: 3-5 need attention, 2 is a watch, 1 is ignored", () => {
+  const observe = (severity: number) =>
     deriveSystemSnapshot(base({ healthObservations: [{ observedAt: "2026-10-11T17:00:00Z", severity }] }));
-  assert.equal(observe("high").status, "attention");
-  assert.equal(observe("high").headline, "High-severity health observation 2 days ago");
-  assert.equal(observe("medium").status, "watch");
-  assert.equal(observe("low").status, "ok");
+  assert.equal(observe(5).status, "attention");
+  assert.equal(observe(3).status, "attention");
+  assert.equal(observe(3).headline, "Severity 3 health observation 2 days ago");
+  assert.equal(observe(2).status, "watch");
+  assert.equal(observe(1).status, "ok");
+});
+
+test("the highest recent score wins", () => {
+  const snapshot = deriveSystemSnapshot(base({ healthObservations: [
+    { observedAt: "2026-10-12T17:00:00Z", severity: 2 },
+    { observedAt: "2026-10-11T17:00:00Z", severity: 4 },
+  ] }));
+  assert.equal(snapshot.headline, "Severity 4 health observation 2 days ago");
 });
 
 test("health observations older than 14 days are ignored", () => {
-  const snapshot = deriveSystemSnapshot(base({ healthObservations: [{ observedAt: "2026-09-20T17:00:00Z", severity: "high" }] }));
+  const snapshot = deriveSystemSnapshot(base({ healthObservations: [{ observedAt: "2026-09-20T17:00:00Z", severity: 4 }] }));
   assert.equal(snapshot.status, "ok");
 });
 
@@ -104,7 +113,7 @@ test("water test and feeding ages are labelled relative to now", () => {
 test("concerns are ordered attention first", () => {
   const snapshot = deriveSystemSnapshot(base({
     checks: [check("AM", "2026-10-13T15:00:00Z", { waterRunning: false })],
-    healthObservations: [{ observedAt: "2026-10-11T17:00:00Z", severity: "medium" }],
+    healthObservations: [{ observedAt: "2026-10-11T17:00:00Z", severity: 2 }],
   }));
   assert.deepEqual(snapshot.concerns.map((concern) => concern.kind), ["water_off", "health", "yesterday_missed"]);
 });

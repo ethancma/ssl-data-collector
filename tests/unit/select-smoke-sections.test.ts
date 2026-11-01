@@ -147,14 +147,19 @@ test("maps each smoke section file back to only that section", () => {
   }
 });
 
-test("keeps ISeaU mock-data pages off the browser suite", () => {
+test("maps ISeaU real-data routes to the daily-operations section", () => {
   const selection = selectSmokeSections([
     "app/protected/iseau/page.tsx",
     "app/protected/iseau/compare/page.tsx",
+    "app/protected/iseau/data.ts",
     "components/iseau/widgets.tsx",
+    "lib/iseau/data.ts",
   ]);
   assert.equal(selection.escalatedToFullSuite, false);
-  assert.deepEqual(selection.sections, []);
+  assert.deepEqual(
+    selection.sections.map(({ id }) => id),
+    ["daily-operations"],
+  );
 });
 
 test("escalates shared runtime files to the full suite", () => {

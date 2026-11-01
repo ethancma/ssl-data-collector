@@ -37,7 +37,7 @@ export type ChemicalAdditionPoint = {
 export type HealthObservationPoint = {
   id: number;
   observedAt: string;
-  severity: "low" | "medium" | "high";
+  severity: number;
   notes: string | null;
   hasPhoto: boolean;
   tankName: string;
@@ -63,7 +63,7 @@ export type HighlightItem = {
   at: string;
   title: string;
   detail: string | null;
-  severity?: "low" | "medium" | "high";
+  severity?: number;
 };
 
 export type SystemDetailData = {

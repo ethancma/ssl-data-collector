@@ -136,20 +136,42 @@ data recovery, stop and use the separate reviewed backup/restore procedure.
 Validate rollback on staging before production launch. During an incident freeze
 new releases and disable any stray automatic Workers Builds integration first.
 
-## Local verification checkpoint (2026-10-22)
+## Photo processing and recovery requirements
 
-- `npm run verify`: typecheck, lint, and 157 unit tests passed.
-- `npm run check:dead-code`: passed.
-- `npm run build` and `npm run build:vinext`: passed with local-only Supabase.
-- `npm run check:client-secrets -- .next/static dist/client`: passed; 116 files
-  scanned with the supplied local server secret.
-- `npm run check:cloudflare`: offline dry run passed, about 2.2 MiB uncompressed.
-- `npm run test:e2e:plan -- --full --run`: 204 passed, 3 existing skips on each
-  runtime, with isolated app port 3102 and local Supabase. The final Worker run
-  used different build/runtime secrets. An intermediate auth-only run timed out;
-  its retry and the subsequent full suite passed without relaxing the test.
-- Existing RBAC Storage SQL cleanup warnings remain; the final Storage API
-  cleanup removed their tagged fixtures.
+These are accepted implementation constraints, not shipped capabilities or an executable
+backup/restore procedure. They must be implemented and verified before production launch.
 
-These results do not validate GitHub Actions execution, environment approvals,
-hosted OAuth, staging/production secret pairing, CPU limits, or rollback.
+### Health photos
+
+- Accept JPEG/PNG/WebP inputs up to 10 MB. Resize to a longest edge of 2048 pixels,
+  without upscaling; encode JPEG at 85% quality with correct orientation and metadata
+  removed. Do not retain originals.
+- Output-byte ceiling, transparency handling, and actual HEIC/device workflow still need
+  decisions and representative-image/device acceptance.
+- Enforce stored MIME/size limits; client resizing alone is not a security boundary.
+- Define retry/reconciliation for partial uploads without duplicate observations.
+  Test failure paths and Storage ownership, not just successful uploads.
+
+### Backup and recovery
+
+- One weekly job plus manual dispatch; retain four weekly recovery points in private
+  R2 Standard. Back up the full logical database plus encrypted, versioned new/changed
+  photos and manifests; R2 is backup storage, not the primary photo store.
+- Include app data, Auth, custom roles/grants, managed-schema customizations, migration
+  history, photo ownership, and bucket metadata. A default schema dump is insufficient.
+- Keep the private decryption key in a password manager plus a separate recovery copy;
+  only the public encryption recipient belongs in CI.
+- Never prune a good backup on failure or delete photo versions referenced by retained
+  snapshots. Specify database/photo consistency reconciliation, incomplete-run cleanup,
+  retention behavior, and failure notifications.
+- The accepted recovery target is about seven days of potential loss and restoration
+  within one working day. Missed jobs increase loss. CSV snapshots are out of scope.
+- No retention lock is planned; the human accepted deletion risk from compromised
+  backup credentials. This is not protection against all account-compromise scenarios.
+- Prove decrypt/restore in isolated Supabase, including Auth/RLS, row counts, photo
+  hashes/ownership, and measured recovery time, before relying on backups.
+
+The primary maintainer owns weekly backup-freshness checks, failure alerts, usage reviews,
+MFA/recovery material, and quarterly restore drills; name a second maintainer. Monitor
+database/photo storage, source egress, R2 headroom, and GitHub Actions allowances. Billing
+alerts are not hard caps; Free tiers do not promise an SLA or point-in-time recovery.

@@ -10,15 +10,15 @@ sea star health/SSWD symptom onset over time, plus clean exports for research.
 - Daily AM/PM checks, individual feeding plus same-day consumption follow-up, weekly
   water quality, System chemical additions, health observations/photos, ad-hoc
   maintenance, and individual Star treatments.
-- Role-gated email/password access for Admin, Technician, Volunteer, and Viewer, with
-  Admin approval before a new account can enter the application.
+- Invite-only password/Google access for Admin, Technician, Volunteer, and Viewer.
+  An Admin chooses the invited role; hosted Google OAuth requires provider configuration.
 - A Home dashboard for daily completion/activity and a Systems dashboard for chemistry
   trends, comparisons, and operational highlights.
 - URL-backed Daily Operations forms and a filtered Star treatment correction surface.
 - A reviewed one-time Graham CSV import bundle kept separate from repeatable migrations.
 
-The authoritative list of delivered work, integrity fixes, remaining features, and staff
-decisions is [docs/implementation-checklist.md](docs/implementation-checklist.md).
+Unresolved requirements and staff decisions that constrain implementation are recorded in
+[docs/implementation-checklist.md](docs/implementation-checklist.md).
 
 ## Stack
 Next.js + TypeScript + Supabase (Postgres, Auth, Storage, RLS). Standard Next.js
@@ -55,7 +55,7 @@ validation/config and database dependencies as needed.
 | Reference data and configurable quick picks | [`lib/config/reference-data.ts`](lib/config/reference-data.ts), [`lib/daily-operations/quick-pick-catalog-config.ts`](lib/daily-operations/quick-pick-catalog-config.ts) | [`components/settings/quick-pick-catalog-manager.tsx`](components/settings/quick-pick-catalog-manager.tsx), [`components/settings/quick-pick-catalog-item.tsx`](components/settings/quick-pick-catalog-item.tsx), [`lib/daily-operations/quick-pick-catalog-manager.ts`](lib/daily-operations/quick-pick-catalog-manager.ts), [`lib/daily-operations/quick-pick-catalogs.ts`](lib/daily-operations/quick-pick-catalogs.ts) |
 | Database schema, RLS, and seed data | [`supabase/migrations/`](supabase/migrations/), [`supabase/seeds/`](supabase/seeds/) | [`supabase/config.toml`](supabase/config.toml), [`supabase/seed.sql`](supabase/seed.sql), [`supabase/snippets/`](supabase/snippets/) |
 | Unit and end-to-end tests | [`tests/unit/`](tests/unit/), [`.github/skills/e2e-testing/`](.github/skills/e2e-testing/) | [`playwright.config.ts`](playwright.config.ts), [`docs/testing-strategy.md`](docs/testing-strategy.md) |
-| Requirements, status, and architecture | [`docs/implementation-checklist.md`](docs/implementation-checklist.md), [`docs/platform-architecture.md`](docs/platform-architecture.md) | [`docs/lab-operations-plan.md`](docs/lab-operations-plan.md), [`docs/style-guide.md`](docs/style-guide.md) |
+| Requirements and architecture | [`docs/implementation-checklist.md`](docs/implementation-checklist.md), [`docs/platform-architecture.md`](docs/platform-architecture.md) | [`docs/lab-operations-plan.md`](docs/lab-operations-plan.md), [`docs/style-guide.md`](docs/style-guide.md) |
 
 Top-level structure:
 
@@ -81,11 +81,14 @@ Top-level structure:
 ├── tests/unit/                  # focused unit tests
 ├── proxy.ts                    # session refresh and route protection
 ├── docs/
-│   ├── platform-architecture.md   # stack, data model, roles, roadmap, cost
-│   ├── lab-operations-plan.md     # the lab: systems, cadence, rollout
-│   ├── implementation-checklist.md # current delivery status and remaining backlog
-│   ├── testing-strategy.md        # test-by-blast-radius tiers
-│   └── agent-dev-tools.md         # dev tool access checklist for the agent
+│   ├── platform-architecture.md   # stack, data model, roles
+│   ├── lab-operations-plan.md     # lab requirements: systems and cadence
+│   ├── implementation-checklist.md # unresolved requirements and BLOCKED decisions
+│   ├── auth-invitations.md        # invitation/reset flows and provider setup
+│   ├── star-treatments-design.md  # treatment feature contract
+│   ├── style-guide.md            # shared UI conventions
+│   ├── testing-strategy.md       # test-by-blast-radius tiers
+│   └── workers-deployment.md     # hosting, verification, release, rollback
 └── .github/
     ├── PULL_REQUEST_TEMPLATE.md
     └── skills/e2e-testing/          # Playwright end-to-end testing skill
@@ -97,10 +100,3 @@ README — this file stays a high-level map.
 ## Getting started
 1. Copy `.env.example` to `.env.local` and fill in your Supabase project URL/publishable key.
 2. `npm install` (if not already installed), then `npm run dev` — runs on port 3000.
-
-## Status
-The core live-entry workflow and first dashboards are implemented. The highest-priority
-remaining work is access-control/provenance hardening, complete reference data, staff-led
-cadence and validation decisions, scheduled maintenance, historical import/backfill tools,
-full History/export, Google OAuth, and rollout at lab stations. See the
-[implementation status](docs/implementation-checklist.md) for the current breakdown.

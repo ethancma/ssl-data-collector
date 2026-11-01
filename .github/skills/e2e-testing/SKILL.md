@@ -67,12 +67,37 @@ weaken each section's UI and direct-Supabase assertions.
 5. Extend a test only after the targeted run proves the behavior is uncovered. Reuse
   `helpers.ts`; do not rediscover login, role, date/time, or DB-query behavior.
 
+## Pick the target
+
+| Target | Supabase project | Start the app | Use for |
+|---|---|---|---|
+| Local | Docker stack shared by worktrees | Worktree: `npm run dev -- -p $PORT` | Default for e2e, migrations, and anything destructive |
+| Dev | `hcaopgzlvuyuyjcjxuvy` | Main checkout: `npm run dev:supabase-dev` | Hosted e2e (Auth, Storage, OAuth, redirects) with throwaway data |
+| Production | `bqylxmsifagnztxhixyl` (linked CLI project, real data) | Main checkout: `npm run dev` on `:3000` (the human's) | Read-only checks only; never e2e |
+
+- `npm run dev:supabase-dev` loads `.env.supabase-dev.local` (gitignored, human-maintained),
+  which overrides `.env.local`. It also uses `:3000`, so only one of `dev` or
+  `dev:supabase-dev` runs at a time. Ask the human which one is up; never stop it.
+- Playwright loads only `.env.local`, so source the Dev file in the same shell first:
+  `set -a; . ./.env.supabase-dev.local; set +a; unset E2E_RESET_DB`, then
+  `npx playwright test ...`. `helpers.ts` refuses to run if `E2E_DB_URL` is unset or any
+  Supabase URL points at Production.
+- `npm run seed:dev` idempotently seeds Dev with tanks and animals shaped like Production's
+  (it refuses any other project). Tests must find data by shape, as Production would have
+  it (for example `findGrahamStar()`), never by a fixture name.
+- CI uses the same fixtures after starting local Supabase:
+  `node scripts/seed-dev-fixtures.mjs --local` with the local `E2E_DB_URL`.
+  `--local` refuses non-loopback database hosts; the default mode still accepts only hosted Dev.
+  Seeding adds synthetic individuals (including retired stars) and shelf tanks of different sizes;
+  it does not copy production animal names or historical observations.
+- Set `E2E_RESET_DB=1` only for local runs. It resets the shared local stack, never a hosted
+  project.
+
 ## Procedure
 
-1. **Reuse the running dev server.** In the main checkout that's `:3000` (talks to the hosted
-   dev project); never stop or restart it. In a worktree (`npm run wt -- setup`), start
-   `npm run dev -- -p $PORT` once and reuse it; e2e there runs against the local Supabase
-   stack, and global setup takes a machine-wide lock and runs `supabase db reset` first.
+1. **Reuse the running dev server** for the target chosen above; never stop or restart
+   `:3000`. In a worktree (`npm run wt -- setup`), start `npm run dev -- -p $PORT` once and
+   reuse it; global setup there takes a machine-wide lock and runs `supabase db reset` first.
 2. **Auth & account state** — sign in with a designated test account (see
    [test-accounts.md](./references/test-accounts.md)). If the change touches onboarding:
    create a new sign-in, confirm it lands as `profiles.status = pending`, approve it as an
@@ -85,7 +110,8 @@ weaken each section's UI and direct-Supabase assertions.
      `ph_source` set correctly (`apex_probe` vs `manual`).
    - Chemical addition → confirm `chemical_additions` row.
    - Health observation with a photo → confirm `health_observations` row plus the
-     `attachments` row and the object landing in Supabase Storage.
+     `attachments` row and the object landing in Supabase Storage; the affected star
+     appears in ISeaU as a current patient with that observation in its history.
    - Maintenance task marked performed → confirm `maintenance_logs` row and that
      `next_due_at` recomputed correctly.
    - Historical import / paper backfill → confirm rows are tagged with the right
@@ -110,7 +136,8 @@ growing an existing one indefinitely:
   every file below.
 - [daily-logging-forms.smoke.ts](./scripts/daily-logging-forms.smoke.ts) — the 6 daily forms
   (AM/PM check, feeding + consumption follow-up, water quality, chemical addition, health
-  observation, maintenance), the Today dashboard, and each form's date/time-box behavior.
+  observation, maintenance), ISeaU visibility for a newly logged health observation, the
+  Today dashboard, and each form's date/time-box behavior.
 - [auth-and-admin.smoke.ts](./scripts/auth-and-admin.smoke.ts) — sign-up → pending →
   admin-approval flow, plus the `/protected/admin` approve/deny UI.
 - [sidebar-ui.smoke.ts](./scripts/sidebar-ui.smoke.ts) — sidebar Home button + theme toggle

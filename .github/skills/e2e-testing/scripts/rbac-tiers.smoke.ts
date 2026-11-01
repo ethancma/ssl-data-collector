@@ -8,6 +8,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   cleanupStep,
   dbQuery,
+  findGrahamStar,
   collectBrowserFailures,
   loginAs,
   signInRoleClient,
@@ -137,21 +138,20 @@ for (const role of [
 
     const TAG = `${RUN_TAG}-rbac-${role.label}-${Date.now()}`;
     let grahamSystemId: number;
-    let ssl25AnimalId: number;
-    let ssl25TankId: number;
-    let ssl25SystemId: number;
+    let starAnimalId: number;
+    let starTankId: number;
+    let starSystemId: number;
+    let starName: string;
 
     test.beforeAll(async () => {
       grahamSystemId = Number(
         dbQuery(`select id from core.systems where name = 'Graham'`)[0]?.id,
       );
-      const ssl25 = dbQuery(`select animal.id, animal.tank_id, tank.system_id
-        from core.animals animal
-        join core.tanks tank on tank.id = animal.tank_id
-        where animal.name = 'SSL25'`)[0];
-      ssl25AnimalId = Number(ssl25?.id);
-      ssl25TankId = Number(ssl25?.tank_id);
-      ssl25SystemId = Number(ssl25?.system_id);
+      const star = findGrahamStar();
+      starAnimalId = star.id;
+      starTankId = star.tankId;
+      starSystemId = star.systemId;
+      starName = star.name;
     });
 
     test(`${role.label} AM check lands in daily_checks`, async ({ page }) => {
@@ -178,9 +178,9 @@ for (const role of [
       await loginAs(page, role.email, role.password);
       await gotoHydrated(page, "/protected/daily-operations?type=feeding");
       await logSingleFeeding(page, {
-        systemId: ssl25SystemId,
-        tankId: ssl25TankId,
-        animalId: ssl25AnimalId,
+        systemId: starSystemId,
+        tankId: starTankId,
+        animalId: starAnimalId,
         food: "Krill",
         amount: "2",
         notes: `${TAG} feeding`,
@@ -198,7 +198,7 @@ for (const role of [
       );
       expect(rows).toHaveLength(1);
       expect(catalogRows).toHaveLength(1);
-      expect(Number(rows[0]?.animal_id)).toBe(ssl25AnimalId);
+      expect(Number(rows[0]?.animal_id)).toBe(starAnimalId);
       expect(Number(rows[0]?.food_catalog_id)).toBe(Number(catalogRows[0].id));
       expect(rows[0]?.food_name).toBe("Krill");
       expect(rows[0]?.catalog_default_unit).toBe("pieces");
@@ -213,7 +213,7 @@ for (const role of [
       );
       await expect(page.getByText("Consumption follow-up")).toBeVisible();
       await page
-        .getByText("SSL25", { exact: true })
+        .getByText(starName, { exact: true })
         .first()
         .locator("..")
         .getByRole("button", { name: "Full", exact: true })
@@ -296,8 +296,8 @@ for (const role of [
     test(`${role.label} health observation lands in health_observations`, async ({ page }) => {
       await loginAs(page, role.email, role.password);
       await gotoHydrated(page, "/protected/daily-operations?type=health-observation");
-      await page.getByLabel("Animal", { exact: true }).selectOption(String(ssl25AnimalId));
-      await page.getByRole("button", { name: "Low" }).click();
+      await page.getByLabel("Animal", { exact: true }).selectOption(String(starAnimalId));
+      await page.locator("#health-observation-severity").fill("2");
       await page.getByLabel("Arm curling").check();
       await page.getByLabel("Flattening").check();
       await page.getByLabel("Notes").fill(`${TAG} health obs`);
@@ -308,8 +308,8 @@ for (const role of [
          from core.health_observations where notes = '${TAG} health obs'`,
       );
       expect(rows).toHaveLength(1);
-      expect(Number(rows[0]?.animal_id)).toBe(ssl25AnimalId);
-      expect(rows[0]?.severity).toBe("low");
+      expect(Number(rows[0]?.animal_id)).toBe(starAnimalId);
+      expect(Number(rows[0]?.severity)).toBe(2);
       expect(rows[0]?.issues).toEqual(["arm_curling", "flattening"]);
     });
 
@@ -950,8 +950,8 @@ test.describe("P0 operational security: ordinary-log CRUD matrix (DB-level)", ()
 
   const TAG = `${RUN_TAG}-rbac-matrix-${Date.now()}`;
   let grahamSystemId: number;
-  let ssl25AnimalId: number;
-  let ssl25TankId: number;
+  let starAnimalId: number;
+  let starTankId: number;
   let krillCatalogId: number;
   let adminProfileId: number;
   let technicianProfileId: number;
@@ -960,11 +960,9 @@ test.describe("P0 operational security: ordinary-log CRUD matrix (DB-level)", ()
     grahamSystemId = Number(
       dbQuery(`select id from core.systems where name = 'Graham'`)[0]?.id,
     );
-    const animalRow = dbQuery(
-      `select id, tank_id from core.animals where name = 'SSL25'`,
-    )[0];
-    ssl25AnimalId = Number(animalRow?.id);
-    ssl25TankId = Number(animalRow?.tank_id);
+    const animalRow = findGrahamStar();
+    starAnimalId = animalRow.id;
+    starTankId = animalRow.tankId;
     const krillRows = dbQuery(`select id from core.food_catalog
       where name = 'Krill' and is_active`);
     expect(krillRows).toHaveLength(1);
@@ -1035,11 +1033,11 @@ test.describe("P0 operational security: ordinary-log CRUD matrix (DB-level)", ()
       table: "health_observations",
       seedSql: (tag, recordedBy) => `insert into core.health_observations
         (animal_id, tank_id, severity, issues, notes, recorded_by)
-        values (${ssl25AnimalId ?? "null"}, ${ssl25TankId ?? "null"}, 'low', array['lesion', 'arm_curling']::text[], ${sqlLiteral(tag)}, ${recordedBy}) returning id`,
+        values (${starAnimalId ?? "null"}, ${starTankId ?? "null"}, 2, array['lesion', 'arm_curling']::text[], ${sqlLiteral(tag)}, ${recordedBy}) returning id`,
       insertPayload: (tag) => ({
-        animal_id: ssl25AnimalId,
-        tank_id: ssl25TankId,
-        severity: "low",
+        animal_id: starAnimalId,
+        tank_id: starTankId,
+        severity: 2,
         issues: ["lesion", "arm_curling"],
         notes: tag,
       }),
@@ -1056,10 +1054,10 @@ test.describe("P0 operational security: ordinary-log CRUD matrix (DB-level)", ()
       table: "feeding_logs",
       seedSql: (tag, recordedBy) => `insert into core.feeding_logs
         (tank_id, animal_id, food_catalog_id, amount_value, notes, recorded_by)
-        values (${ssl25TankId ?? "null"}, ${ssl25AnimalId ?? "null"}, ${krillCatalogId}, 1, ${sqlLiteral(tag)}, ${recordedBy}) returning id`,
+        values (${starTankId ?? "null"}, ${starAnimalId ?? "null"}, ${krillCatalogId}, 1, ${sqlLiteral(tag)}, ${recordedBy}) returning id`,
       insertPayload: (tag) => ({
-        tank_id: ssl25TankId,
-        animal_id: ssl25AnimalId,
+        tank_id: starTankId,
+        animal_id: starAnimalId,
         food_catalog_id: krillCatalogId,
         amount_value: 1,
         notes: tag,
@@ -2016,7 +2014,7 @@ test.describe("P1 quick-pick catalog RBAC matrix (DB-level)", () => {
       const { data: star, error: starError } = await adminClient
         .from("animals")
         .select("id, tank_id")
-        .eq("name", "SSL25")
+        .eq("id", findGrahamStar().id)
         .single();
       expect(starError).toBeNull();
 

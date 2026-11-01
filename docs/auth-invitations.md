@@ -1,197 +1,98 @@
-# Invite-Only Access — Proposed Architecture
+# Invite-Only Access
 
-Status: **proposal, core decisions made** (see [Decisions](#decisions)). Replaces the
-earlier Supabase-native email invite draft.
+The app uses Admin-created copy/share links, not public registration or Supabase's
+native invite-email flow. This guide describes the application contract and required
+provider setup; repository configuration does not prove hosted settings are applied.
 
-## Goal
+## Admin workflow
 
-- Only an active **Admin** can invite someone, choosing their role up front.
-- The invited person **creates their own account** (their own password, or Google).
-- **Public sign-up stays disabled**, including through Google.
-- Admins can revoke an open invite and remove access for an active user; historical
-  records stay attributed to the person.
-- The 4 existing active users are unaffected.
+1. On `/protected/admin`, an active Admin enters an email and chooses Admin,
+   Technician, Volunteer, or Viewer.
+2. The app creates a seven-day invitation and shows its raw link once. Copy and share
+   it privately with the intended person. The database stores only the token hash.
+3. Open invitations show expiry and offer **Revoke** and **Regenerate**. Regeneration
+   invalidates the previous link.
+4. **Remove access** sets the profile to `denied`, preserving historical attribution.
+   Re-inviting that person reactivates the same identity on acceptance.
 
-## Options considered
+Copy/share does not independently prove mailbox ownership on the password path: an
+Admin must share the link securely. Do not publish invitation or recovery links in logs,
+issues, or analytics.
 
-| | A. Supabase native invite email | B. App invite link (copy & share) | C. App invite link + app-sent email | D. Allowlist + self sign-up hook |
-|---|---|---|---|---|
-| How | Server calls `auth.admin.inviteUserByEmail`; Supabase emails a one-use link | App stores a hashed token; Admin copies a link and sends it however they like | Same as B, and the app emails the link through a provider API (e.g. Resend) | Admin adds an email to an allowlist; person uses a sign-up page; a Before User Created hook rejects non-listed emails |
-| Link lifetime | Email OTP expiry (default **1 hour**) | We choose (e.g. 7 days) | We choose | n/a |
-| Email provider | **Required** (custom SMTP) | Not required | Required (API key) | Required for password confirmations |
-| Google sign-in | Awkward: user is pre-created before acceptance | Clean: pre-create at acceptance, Google auto-links | Clean | Native, but sign-up must be enabled |
-| Re-invite a former user | Blocked for confirmed accounts | Works | Works | Works |
-| Proves mailbox ownership | Yes | Only via Google path, or trust in who the Admin shared it with | Yes | Yes (with confirmation) |
-| Service/secret key | Required | Required (account creation at acceptance) | Required | Not for creation |
-| Main risk | Short expiry, email scanners consuming links | Link forwarded to the wrong person | Extra secret and provider setup | Sign-up endpoint is open; the hook is the only gate |
+## Acceptance and sign-in
 
-**Recommendation: B now, C when a sending domain is ready.** Both use the same
-invitation model, so email delivery is an additive feature later. Option A was
-the previous draft; it is dropped because of the short link lifetime, the blocked
-re-invite for former users, and the mandatory SMTP setup before any invite works.
-Option D reopens sign-up and relies on a single hook to keep it closed.
+`/invite/[token]` is public. GET displays invitation details but never consumes the token.
+The person chooses a password or **Continue with Google**.
 
-## Proposed design (B, with C as an add-on)
+- Password acceptance creates the confirmed Auth user, accepts the invitation, and signs
+  in. If creation succeeds but acceptance fails, retry resumes against the existing user
+  rather than creating a duplicate.
+- Google acceptance pre-creates the invited account, keeps invitation context in a
+  short-lived httpOnly cookie, and starts OAuth. `/auth/callback` exchanges the code,
+  requires the matching email, accepts the invitation, and refreshes the session.
+  A mismatched Google email is rejected and signed out.
+- Expired, revoked, and already accepted links cannot be reused.
+- `/auth/login` offers password and Google sign-in. Hosted Supabase sign-up must remain
+  disabled, including uninvited Google account creation. Existing users can use a
+  matching verified Google identity.
 
-### Data model
+## Password recovery
 
-New table `core.invitations` (RLS on, no direct client writes):
+An Admin uses **Copy reset link** for an active user and shares it privately. The
+server generates a Supabase recovery link without sending email; the Admin never
+sees or chooses the password. The recovery page consumes the token only after an
+explicit button press, not on GET. Recovery links are single-use.
 
-| Column | Notes |
-|---|---|
-| `id` | PK |
-| `email` | lower-cased; one **open** invite per email (partial unique index) |
-| `role` | admin, technician, volunteer, viewer |
-| `token_hash` | SHA-256 of a 32-byte random token; the raw token is never stored |
-| `created_by` | inviting Admin's profile |
-| `created_at`, `expires_at` | `expires_at` defaults to 7 days after creation |
-| `revoked_at`, `accepted_at`, `accepted_auth_user_id` | terminal states |
-| `emailed_at` | set only when option C sends the link |
+Google-only users recover through Google. Self-service emailed recovery and app-sent
+invitation email are not part of the copy-link workflow.
 
-Profiles keep `pending | active | denied`. A profile is created by the existing
-Auth trigger at acceptance and immediately activated by the acceptance RPC, so the
-`invited` status and the invite columns on `core.profiles` are no longer needed.
+## Implementation boundaries
 
-Server-only RPCs (executable by `service_role` only, re-checking the Admin's live
-role inside the function):
+- `core.invitations` has RLS and no direct client writes. It stores lower-cased email,
+  role, a SHA-256 hash of a 32-byte random token, creator/expiry timestamps, and terminal
+  acceptance/revocation state. Only one open invitation per email is allowed.
+- Server-only invitation RPCs recheck the Admin's live role. Acceptance locks the invite,
+  checks expiry/state and matching Auth email, activates the profile with the invited
+  role, and marks acceptance in one transaction.
+- Profiles use `pending | active | denied`; clients cannot edit their own role/status.
+  Live-role policies block stale-token access after removal; the proxy refreshes claims
+  on the next application request.
+- `SUPABASE_SECRET_KEY` is server/runtime-only. Never use it in browser configuration.
+- `NEXT_PUBLIC_SITE_URL` is the exact canonical app origin, HTTPS except local loopback.
+  Auth/admin mutations enforce Origin and redirects must remain internal. Preserve
+  `private, no-store` responses and session cookies through refreshes and redirects.
 
-- `create_invitation(admin_uid, email, role, token_hash, expires_at)`: rejects emails
-  with an active profile or an open invite.
-- `revoke_invitation(admin_uid, invitation_id)`.
-- `accept_invitation(token_hash, auth_user_id)`: locks the row; checks it is open,
-  unexpired, and matches the Auth user's email; sets the profile to `active` with
-  the invited role; marks the invite accepted. All in one transaction.
+See the routes in `app/api/admin/`, `app/invite/`, and `app/auth/`, plus
+`lib/invitations.ts` and `lib/site-origin.ts`.
 
-Keep from the current work: the live-role restrictive RLS policies, the JWT role-claim
-fix, and the rule that clients cannot change their own `role` or `status`.
+## Hosted Google setup
 
-### Flows
+1. Create a Web application OAuth client in Google Auth Platform. Use the intended app
+   origins and `https://<project-ref>.supabase.co/auth/v1/callback` as the authorized
+   redirect URI.
+2. Configure app name *Sunflower Star Laboratory*, basic email/profile/openid scopes,
+   ownership/consent settings, and a privacy-policy link.
+3. Configure the Google provider in each Supabase project. Store the Google client secret
+   in Supabase, not the app. Keep **Allow new users to sign up** disabled.
+4. Set Supabase Site URL and exact callback/reset allowlists for each environment.
+   Do not use arbitrary wildcard preview callbacks.
+5. Configure the matching app runtime secret and canonical origin using the
+   [Workers runbook](workers-deployment.md). Staging and production use separate projects.
 
-**Admin invites**
-1. The Admin enters an email and role on `/protected/admin`.
-2. The server checks the Admin's active profile, generates the token, and stores its hash.
-3. The UI shows the link once with **Copy link**. With option C it also shows
-   **Email invite**, which sends the link through the provider.
-4. Open invites are listed with their expiry, plus **Revoke** and **Regenerate**
-   (regenerate revokes the old link and issues a new one).
+## Optional email integration requirements
 
-**Invitee accepts: `/invite/[token]`** (public route; the token is only read, never
-consumed on GET)
-- The page shows the invited email, role, and expiry, or a clear expired/revoked
-  message.
-- **Continue with Google**: the server pre-creates a confirmed, passwordless Auth user
-  for the invited email, stores the invite id in a short-lived httpOnly cookie, and
-  starts Google OAuth. `/auth/callback` exchanges the code, checks that the Google
-  email matches the invite, calls `accept_invitation`, and refreshes the session.
-  If the Google email doesn't match, it signs the user out and shows an error.
-- **Create a password**: the server creates the Auth user with the chosen password
-  and `email_confirm: true`, calls `accept_invitation`, and signs the user in.
-- If account creation succeeds but acceptance fails, the invite stays open and a
-  retry resumes against the same Auth user instead of creating a duplicate.
+Email delivery needs a lab-controlled sending domain and a separate implementation.
+If using Resend, verify SPF/DKIM, use a domain-owned From address, keep `RESEND_API_KEY`
+server-only, and disable click tracking so sensitive links are not rewritten.
+Supabase custom SMTP can use the provider for recovery email; merely setting SMTP
+does not add an application **Forgot password?** or **Email invite** action.
+Copy-link flows do not require SMTP. Confirm provider limits before adoption.
 
-**Signing in**: `/auth/login` offers email/password and **Continue with Google**.
-Because sign-up is disabled, Google cannot create an account for someone uninvited;
-Supabase links Google to an existing account with the same verified email. Existing
-users can therefore start using Google with no migration.
+## Verification
 
-**Removing access**: **Remove access** sets the profile to `denied`. Stale tokens are
-already blocked by the live-role policies. To re-invite that person, create a new
-invite; acceptance reactivates the same identity, so their history stays attributed.
-
-**Forgot password** (password accounts only; Google accounts recover through Google)
-- **Before email exists**: the person asks an Admin, who clicks **Copy reset link** on
-  their row and shares it the same way as an invite. The server generates a one-time
-  Supabase recovery link without sending email; the person opens it, sets a new
-  password, and is signed in. The Admin never sees or chooses the password. People
-  with a Gmail/Workspace address can also just use **Continue with Google**.
-- **After email is added**: **Forgot password?** on `/auth/login` emails the recovery
-  link directly. **Copy reset link** stays as a backup.
-- Reset links go only to active users, and the recovery landing page accepts the
-  token only on an explicit button press (not on page load), like invites.
-
-## External setup
-
-### Google sign-in (free)
-1. In Google Cloud (Google Auth Platform), create a **Web application** OAuth client.
-   Authorized JavaScript origins: the app URLs (production, preview/staging,
-   `http://localhost:3000`). Authorized redirect URI:
-   `https://<project-ref>.supabase.co/auth/v1/callback`.
-2. On the consent screen, use app name *Sunflower Star Laboratory*, basic scopes only
-   (email, profile, openid), and a privacy-policy link.
-3. In Supabase > Authentication > Providers > Google, paste the client ID and secret.
-   Keep **Allow new users to sign up** disabled at the project level.
-4. In Supabase URL configuration, allowlist `https://<app-host>/auth/callback` for
-   each environment.
-
-### Email provider (only for option C and password resets)
-
-| Provider | Fit | Notes |
-|---|---|---|
-| **Resend** (recommended) | Simple HTTP API and SMTP; supports both invite emails and Supabase SMTP | Free tier covers a 10–20 person lab; confirm current limits |
-| Brevo | Free daily allowance, SMTP | More marketing-oriented dashboard |
-| Amazon SES | Cheapest at scale | Sandbox approval and more AWS setup; overkill here |
-| Gmail/Workspace SMTP | Uses an existing mailbox | App passwords, sending caps, weaker deliverability; not recommended |
-
-Setup (Resend):
-1. Verify a domain the lab controls and add the SPF/DKIM DNS records it provides.
-   Use a From address like `no-reply@<lab-domain>`.
-2. Put the API key in server-only env `RESEND_API_KEY` (never `NEXT_PUBLIC_`).
-3. Optionally, point Supabase custom SMTP at Resend (`smtp.resend.com`, port 465,
-   user `resend`, API key as the password) so password resets also send.
-4. Turn off click tracking so links aren't rewritten.
-
-### Secrets
-- `SUPABASE_SECRET_KEY`: server only; needed to create Auth users at acceptance.
-- `RESEND_API_KEY`: server only; option C only.
-- Google client secret: stored in Supabase only, not in the app.
-
-## Implementation plan
-
-1. **Schema**
-   - Replace the unpushed `20260929010106_native_auth_invitation_acceptance.sql` with
-     `core.invitations` and the three RPCs (`20260929010106_app_invitations.sql`).
-   - Overwrite the invite pieces in the already-pushed
-     `20260928222050_invited_profile_activation_guard.sql` instead of adding a cleanup
-     migration: no `invite_password_fingerprint`, `invited_by`/`invited_at`/
-     `credential_changed_at`, `invited` status, register/activate functions, or invite
-     clauses in the guard trigger. Versions and filenames stay the same, so no
-     `migration repair` is needed.
-   - Hosted already has the old pieces, so a human first runs
-     `supabase/snippets/20260930_01_drop_invite_temp_password_pieces.sql` in the SQL
-     Editor (drop-only; hosted holds no invite data, and operational data is untouched).
-     Then `supabase db push` applies only the two unpushed migrations, after human
-     approval.
-   - Keep the live-role policies and the JWT claim fix.
-2. **App**
-   - Admin invite panel: copy link, open invites list, revoke/regenerate.
-   - `/invite/[token]` page; password and Google acceptance routes; `/auth/callback`.
-   - Google button on login.
-   - **Copy reset link** on active user rows, and a recovery page to set a new password.
-     First confirm Supabase's `generateLink` (type `recovery`) returns the link without
-     sending email.
-   - Delete the native-invite pieces (already removed): the accept route, the onboarding
-     activate API, the old invitation password form, the
-     `invited` branch in `app/protected/layout.tsx`, and the invite guard in
-     `app/auth/confirm/route.ts`.
-3. **External config** (human): Google OAuth client and Supabase provider, redirect
-   allowlist, server secret in the host environment, hosted sign-up disabled.
-4. **Email** (later): Resend domain, the **Email invite** action,
-   Supabase SMTP, and **Forgot password?** on the login page.
-5. **Verification** (`e2e-verifier`, Tier 3): on staging, cover the password and Google
-   acceptance paths; expired, revoked, and reused links; a Google email mismatch;
-   uninvited Google sign-in being rejected; remove and re-invite; Admin reset link
-   (single use, active users only); stale-token API
-   denial; all four roles; existing users unaffected. Then the full suite and a
-   preview deploy.
-
-## Decisions
-
-1. **Invite lifetime**: 7 days.
-2. **Sign-in methods**: password and Google, both offered on the invite and login pages.
-3. **Email delivery**: later (option C). Copy-link ships first.
-4. **Password resets before email exists**: Admin **Copy reset link**, or the person
-   uses Google. **Forgot password?** is added with email.
-
-Still open:
-
-- **Lab sending domain** for Resend, when email is added.
+Auth changes are Tier 3 under [testing-strategy.md](testing-strategy.md). Cover password
+and Google acceptance, expired/revoked/reused links, email mismatch, uninvited sign-in
+rejection, removal/re-invite, single-use active-user recovery, stale tokens, all four
+roles, and existing-account continuity. Verify Auth users, profiles, invitations, RLS,
+redirects, cache headers, and two-session isolation directly in staging with explicit
+approval for hosted test writes; local tests do not establish hosted provider correctness.

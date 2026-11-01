@@ -1,7 +1,7 @@
 /**
  * Daily-logging forms: the 6 core forms a lab tech uses every day.
  * AM/PM check, feeding + consumption follow-up, water quality, chemical addition,
- * health observation (with/without photo), maintenance (incl. backdated date),
+ * health observation (with/without photo, including ISeaU patient visibility), maintenance (incl. backdated date),
  * the Today dashboard, and each form's date/time-box defaults + picked-time handling.
  * Extend this file when changing one of those forms; see ../SKILL.md for the full
  * procedure and ../references/test-accounts.md for which accounts to use.
@@ -32,10 +32,118 @@ import {
   localTimeOf,
   PICKED_TIME,
   expectDefaultDateAndTime,
+  findGrahamStar,
   logSingleFeeding,
   selectBatchScope,
   gotoHydrated,
 } from "./helpers";
+
+test.describe("ISeaU patient classification", () => {
+  test.describe.configure({ mode: "serial" });
+  test.skip(
+    !process.env.E2E_DB_URL ||
+      !["localhost", "127.0.0.1"].includes(new URL(process.env.E2E_DB_URL ?? "http://invalid").hostname),
+    "Classification fixtures require local Supabase.",
+  );
+
+  const tag = `${RUN_TAG}-iseau`;
+  const names = ["current", "recovered", "past", "healthy"].map((kind) => `${tag}-${kind}`);
+  const animalIds: number[] = [];
+  const observationIds: number[] = [];
+  let tankId: number | undefined;
+
+  test.beforeAll(() => {
+    const prerequisites = dbQuery(`select
+      (select id from core.systems order by id limit 1) as system_id,
+      (select id from core.species where category = 'star' order by id limit 1) as species_id,
+      (select id from core.profiles where role = 'technician' and status = 'active' limit 1) as profile_id`)[0];
+    for (const value of Object.values(prerequisites)) expect(value).not.toBeNull();
+    tankId = Number(dbQuery(`insert into core.tanks (system_id, name, tank_type)
+      values (${Number(prerequisites.system_id)}, ${sqlLiteral(tag)}, 'main') returning id`)[0].id);
+    for (const name of names) {
+      animalIds.push(Number(dbQuery(`insert into core.animals
+        (tank_id, species_id, name, tracking_type, date_added)
+        values (${tankId}, ${Number(prerequisites.species_id)}, ${sqlLiteral(name)},
+          'individual', current_date - 100) returning id`)[0].id));
+    }
+    for (const [patient, days, severity] of [
+      [0, 1, 2], [1, 10, 2], [1, 1, 1], [2, 90, 2], [2, 1, 1], [3, 1, 1],
+    ]) {
+      observationIds.push(Number(dbQuery(`insert into core.health_observations
+        (animal_id, tank_id, observed_at, severity, notes, recorded_by, data_source)
+        values (${animalIds[patient]}, ${tankId}, statement_timestamp() - interval '${days} days',
+          ${severity}, ${sqlLiteral(tag)}, ${Number(prerequisites.profile_id)}, 'import')
+        returning id`)[0].id));
+    }
+  });
+
+  test.afterAll(() => {
+    if (observationIds.length) dbQuery(`delete from core.health_observations
+      where id in (${observationIds.join(",")}) and notes = ${sqlLiteral(tag)} returning id`);
+    if (animalIds.length) dbQuery(`delete from core.animals
+      where id in (${animalIds.join(",")}) and name in (${names.map(sqlLiteral).join(",")}) returning id`);
+    if (tankId !== undefined) {
+      expect(dbQuery(`delete from core.tanks where id = ${tankId}
+        and name = ${sqlLiteral(tag)} and not exists
+          (select 1 from core.animals where tank_id = ${tankId}) returning id`)).toHaveLength(1);
+    }
+    expect(dbQuery(`select id from core.animals where name in (${names.map(sqlLiteral).join(",")})`)).toHaveLength(0);
+  });
+
+  for (const [role, email, password] of [
+    ["technician", TECH_EMAIL, TECH_PASSWORD],
+    ["viewer", VIEWER_EMAIL, VIEWER_PASSWORD],
+  ]) {
+    test(`${role} sees lifetime score 2+ patients split by qualifying sightings`, async ({ page }) => {
+      const observations = dbQuery(`select animal_id, severity from core.health_observations
+        where id in (${observationIds.join(",")})`);
+      expect(observations).toHaveLength(6);
+      expect(observations.filter((row) => Number(row.severity) === 2)).toHaveLength(3);
+      await loginAs(page, email, password);
+      await gotoHydrated(page, "/protected/iseau");
+      const card = (index: number) => page.locator(`a[href="/protected/iseau?star=${animalIds[index]}"]`);
+      await expect(card(0)).toBeVisible();
+      await expect(card(1)).toBeVisible();
+      await expect(card(2)).toHaveCount(0);
+      await expect(card(3)).toHaveCount(0);
+      await page.getByRole("button", { name: "Past patients", exact: true }).click();
+      await expect(card(2)).toBeVisible();
+      await expect(card(0)).toHaveCount(0);
+      await expect(card(1)).toHaveCount(0);
+      await expect(card(3)).toHaveCount(0);
+      await card(2).click();
+      await expect(page.getByRole("heading", { name: names[2], exact: true })).toBeVisible();
+      await expect(page.getByText("No score of 2 or higher in the past 14 days.", { exact: true })).toBeVisible();
+    });
+  }
+
+  test("comparison groups and exported health history use the same live patients", async ({ page }) => {
+    await login(page);
+    await gotoHydrated(page, `/protected/iseau/compare?stars=${animalIds.join(",")}`);
+    const firstColumn = page.getByLabel("Star 1", { exact: true });
+    await expect(firstColumn).toHaveValue(String(animalIds[0]));
+    for (const index of [0, 1]) {
+      await expect(firstColumn.locator(`optgroup[label="Current patients"] option[value="${animalIds[index]}"]`)).toHaveCount(1);
+    }
+    await expect(firstColumn.locator(`optgroup[label="Past patients"] option[value="${animalIds[2]}"]`)).toHaveCount(1);
+    await expect(firstColumn.locator(`option[value="${animalIds[3]}"]`)).toHaveCount(0);
+    await gotoHydrated(page, `/protected/iseau?star=${animalIds[1]}`);
+    await expect(page.getByRole("button", { name: "Current patients", exact: true })).toHaveAttribute("aria-pressed", "true");
+    const downloading = page.waitForEvent("download");
+    await page.getByRole("button", { name: `Export ${names[1]} as CSV`, exact: true }).click();
+    const download = await downloading;
+    expect(download.suggestedFilename()).toBe(`iseau-${animalIds[1]}-14days.csv`);
+    const stream = await download.createReadStream();
+    if (!stream) throw new Error("CSV download did not provide a readable stream.");
+    const chunks: Buffer[] = [];
+    for await (const chunk of stream) chunks.push(Buffer.from(chunk));
+    const csv = Buffer.concat(chunks).toString("utf8");
+    expect(csv).toContain("Severity 2");
+    expect(csv).toContain("Severity 1");
+    expect(csv).toContain(tag);
+    expect(csv).not.toContain('"sample"');
+  });
+});
 
 function sqlLiteral(value: string) {
   return `'${value.replaceAll("'", "''")}'`;
@@ -46,9 +154,10 @@ test.describe("e2e smoke", () => {
   test.skip(!TECH_PASSWORD, "E2E_TEST_TECH_PASSWORD not set");
 
   let grahamSystemId: number;
-  let ssl25AnimalId: number;
-  let ssl25TankId: number;
-  let ssl25SystemId: number;
+  let starAnimalId: number;
+  let starTankId: number;
+  let starSystemId: number;
+  let starName: string;
   let diTraceCatalogId: number;
 
   test.afterAll(async () => {
@@ -103,13 +212,11 @@ test.describe("e2e smoke", () => {
     // schema core" against the service-role client, see the gotcha in ../SKILL.md.
     const systemRows = dbQuery(`select id from core.systems where name = 'Graham'`);
     grahamSystemId = Number(systemRows[0]?.id);
-    const animalRows = dbQuery(`select animal.id, animal.tank_id, tank.system_id
-      from core.animals animal
-      join core.tanks tank on tank.id = animal.tank_id
-      where animal.name = 'SSL25'`);
-    ssl25AnimalId = Number(animalRows[0]?.id);
-    ssl25TankId = Number(animalRows[0]?.tank_id);
-    ssl25SystemId = Number(animalRows[0]?.system_id);
+    const star = findGrahamStar();
+    starAnimalId = star.id;
+    starTankId = star.tankId;
+    starSystemId = star.systemId;
+    starName = star.name;
     const catalogRows = dbQuery(
       `select id from core.chemical_addition_catalog where name = 'DI-Trace'`,
     );
@@ -243,14 +350,14 @@ test.describe("e2e smoke", () => {
     expect(localDateOf(String(check.checked_at))).toBe(todayDateString());
   });
 
-  test("feeding log for SSL25 lands in feeding_logs", async ({ page }) => {
+  test("feeding log for a Graham star lands in feeding_logs", async ({ page }) => {
     await login(page);
     await page.goto("/protected/daily-operations?type=feeding");
     await expect(page.getByLabel("Food name")).toHaveCount(0);
     await logSingleFeeding(page, {
-      systemId: ssl25SystemId,
-      tankId: ssl25TankId,
-      animalId: ssl25AnimalId,
+      systemId: starSystemId,
+      tankId: starTankId,
+      animalId: starAnimalId,
       food: "Krill",
       amount: "2.5",
       unit: "pieces",
@@ -271,7 +378,7 @@ test.describe("e2e smoke", () => {
       select id from core.food_catalog where name = 'Krill' and is_active
     `);
     expect(catalogRows).toHaveLength(1);
-    expect(Number(feeding.animal_id)).toBe(ssl25AnimalId);
+    expect(Number(feeding.animal_id)).toBe(starAnimalId);
     expect(Number(feeding.food_catalog_id)).toBe(Number(catalogRows[0].id));
     expect(feeding.food_name).toBe("Krill");
     expect(feeding.catalog_default_unit).toBe("pieces");
@@ -293,7 +400,7 @@ test.describe("e2e smoke", () => {
     );
     await expect(page.getByText("Consumption follow-up")).toBeVisible();
     await expect(
-      page.getByText("SSL25", { exact: true }).first().locator(".."),
+      page.getByText(starName, { exact: true }).first().locator(".."),
     ).toBeVisible();
 
     await page.goto("/protected/daily-operations?type=daily-check&check=PM");
@@ -303,7 +410,7 @@ test.describe("e2e smoke", () => {
       .selectOption(String(grahamSystemId));
     await expect(page.getByText("Consumption follow-up")).toBeVisible();
     const newestSsl25PendingFeeding = page
-      .getByText("SSL25", { exact: true })
+      .getByText(starName, { exact: true })
       .first()
       .locator("..");
     await expect(newestSsl25PendingFeeding).toBeVisible();
@@ -439,18 +546,18 @@ test.describe("e2e smoke", () => {
     expect(localDateOf(String(addition.added_at))).toBe(todayDateString());
   });
 
-  test("health observation blocks submit without a photo for lesion", async ({
+  test("health observation blocks submit with a severity outside 1-5", async ({
     page,
   }) => {
     await login(page);
     await gotoHydrated(page, "/protected/daily-operations?type=health-observation");
-    await page.getByLabel("Animal", { exact: true }).selectOption(String(ssl25AnimalId));
-    await page.getByRole("button", { name: "Medium" }).click();
+    await page.getByLabel("Animal", { exact: true }).selectOption(String(starAnimalId));
+    await page.locator("#health-observation-severity").fill("6");
     await page.getByLabel("Lesion").check();
     await page.getByLabel("Notes").fill(`${RUN_TAG} health obs blocked`);
     await page.getByRole("button", { name: "Save observation" }).click();
     // Client-side zod validation should block the insert and keep us on the form.
-    await expect(page.getByText(/photo is required/i)).toBeVisible();
+    await expect(page.getByText(/whole number from 1 to 5/i)).toBeVisible();
     await expect(page).toHaveURL(
       /\/protected\/daily-operations\?type=health-observation/,
     );
@@ -467,8 +574,8 @@ test.describe("e2e smoke", () => {
   }) => {
     await login(page);
     await gotoHydrated(page, "/protected/daily-operations?type=health-observation");
-    await page.getByLabel("Animal", { exact: true }).selectOption(String(ssl25AnimalId));
-    await page.getByRole("button", { name: "Medium" }).click();
+    await page.getByLabel("Animal", { exact: true }).selectOption(String(starAnimalId));
+    await page.locator("#health-observation-severity").fill("3");
     await page.getByLabel("Lesion").check();
     await page.getByLabel("Arm curling").check();
     await page
@@ -485,8 +592,8 @@ test.describe("e2e smoke", () => {
     `);
     expect(observations).toHaveLength(1);
     const observation = observations[0];
-    expect(Number(observation.animal_id)).toBe(ssl25AnimalId);
-    expect(observation.severity).toBe("medium");
+    expect(Number(observation.animal_id)).toBe(starAnimalId);
+    expect(Number(observation.severity)).toBe(3);
     expect(observation.has_photo).toBe(true);
     expect(observation.issues).toEqual(["lesion", "arm_curling"]);
     expect(localDateOf(String(observation.observed_at))).toBe(todayDateString());
@@ -508,6 +615,14 @@ test.describe("e2e smoke", () => {
         .list(`health_observations/${observation.id}`);
       expect(storageFiles?.length ?? 0).toBeGreaterThan(0);
     }
+
+    await gotoHydrated(page, "/protected/iseau");
+    const patientCard = page.locator(`a[href="/protected/iseau?star=${starAnimalId}"]`);
+    await expect(patientCard).toBeVisible();
+    await patientCard.click();
+    await expect(page.getByRole("heading", { name: starName, exact: true })).toBeVisible();
+    await page.getByRole("button", { name: `Health observations for ${starName}:` }).click();
+    await expect(page.getByRole("dialog")).toContainText(`${RUN_TAG} health obs with photo`);
   });
 
   test("one maintenance submission creates one row with the selected task_type", async ({
@@ -604,7 +719,7 @@ test.describe("e2e smoke", () => {
     await page.goto("/protected/daily-operations?type=feeding");
     await expectDefaultDateAndTime(page);
     await page.getByLabel("Time").fill(PICKED_TIME);
-    await selectBatchScope(page, { systemId: ssl25SystemId, tankId: ssl25TankId, animalId: ssl25AnimalId });
+    await selectBatchScope(page, { systemId: starSystemId, tankId: starTankId, animalId: starAnimalId });
     await page.getByRole("radio", { name: "Krill", exact: true }).check();
     await page.getByLabel("Amount per animal (optional)", { exact: true }).fill("2");
     await page.getByLabel("Notes", { exact: true }).fill(`${RUN_TAG} feeding picked time`);
@@ -679,8 +794,8 @@ test.describe("e2e smoke", () => {
     await gotoHydrated(page, "/protected/daily-operations?type=health-observation");
     await expectDefaultDateAndTime(page);
     await page.getByLabel("Time").fill(PICKED_TIME);
-    await page.getByLabel("Animal", { exact: true }).selectOption(String(ssl25AnimalId));
-    await page.getByRole("button", { name: "Low" }).click();
+    await page.getByLabel("Animal", { exact: true }).selectOption(String(starAnimalId));
+    await page.locator("#health-observation-severity").fill("2");
     await page.getByLabel("Notes").fill(`${RUN_TAG} health obs picked time`);
     await page.getByRole("button", { name: "Save observation" }).click();
     await expect(page).toHaveURL(/\/protected\/home/);
@@ -691,8 +806,8 @@ test.describe("e2e smoke", () => {
       where notes = '${RUN_TAG} health obs picked time'
     `);
     expect(rows).toHaveLength(1);
-    expect(Number(rows[0].animal_id)).toBe(ssl25AnimalId);
-    expect(rows[0].severity).toBe("low");
+    expect(Number(rows[0].animal_id)).toBe(starAnimalId);
+    expect(Number(rows[0].severity)).toBe(2);
     expect(rows[0].issues).toEqual([]);
     expect(localDateOf(String(rows[0].observed_at))).toBe(todayDateString());
     expect(localTimeOf(String(rows[0].observed_at))).toBe(PICKED_TIME);
@@ -733,9 +848,9 @@ test.describe("food catalog quick picks", () => {
   const notesPrefix = `${RUN_TAG} catalog`;
   const feedingNotes = `${notesPrefix} feeding`;
   let catalogId: number;
-  let ssl25AnimalId: number;
-  let ssl25TankId: number;
-  let ssl25SystemId: number;
+  let starAnimalId: number;
+  let starTankId: number;
+  let starSystemId: number;
   let krillCatalogId: number;
   let brineShrimpCatalogId: number;
 
@@ -743,18 +858,15 @@ test.describe("food catalog quick picks", () => {
     page.getByText("Feeding", { exact: true }).locator("../..");
 
   test.beforeAll(() => {
-    const animal = dbQuery(
-      "select animal.id, animal.tank_id, tank.system_id from core.animals animal " +
-        "join core.tanks tank on tank.id = animal.tank_id where animal.name = 'SSL25'",
-    )[0];
-    ssl25AnimalId = Number(animal?.id);
-    ssl25TankId = Number(animal?.tank_id);
-    ssl25SystemId = Number(animal?.system_id);
+    const animal = findGrahamStar();
+    starAnimalId = animal.id;
+    starTankId = animal.tankId;
+    starSystemId = animal.systemId;
     const foods = dbQuery(`select id, name from core.food_catalog
       where name in ('Krill', 'Brine shrimp') and is_active`);
     krillCatalogId = Number(foods.find((row) => row.name === "Krill")?.id);
     brineShrimpCatalogId = Number(foods.find((row) => row.name === "Brine shrimp")?.id);
-    expect(ssl25AnimalId).toBeGreaterThan(0);
+    expect(starAnimalId).toBeGreaterThan(0);
     expect(krillCatalogId).toBeGreaterThan(0);
     expect(brineShrimpCatalogId).toBeGreaterThan(0);
   });
@@ -803,7 +915,7 @@ test.describe("food catalog quick picks", () => {
   test("selected food name and default unit come from the catalog", async ({ page }) => {
     await login(page);
     await page.goto("/protected/daily-operations?type=feeding");
-    await selectBatchScope(page, { systemId: ssl25SystemId, tankId: ssl25TankId, animalId: ssl25AnimalId });
+    await selectBatchScope(page, { systemId: starSystemId, tankId: starTankId, animalId: starAnimalId });
     await page.getByRole("radio", { name: "Brine shrimp", exact: true }).check();
     await page.getByLabel("Amount per animal (optional)", { exact: true }).fill("3");
     await page.getByLabel("Notes", { exact: true }).fill(`${notesPrefix} catalog selected`);
@@ -817,7 +929,7 @@ test.describe("food catalog quick picks", () => {
       join core.food_catalog as catalog on catalog.id = feeding.food_catalog_id
       where feeding.notes = ${sqlLiteral(`${notesPrefix} catalog selected`)}`)).toEqual([
       {
-        animal_id: ssl25AnimalId,
+        animal_id: starAnimalId,
         food_catalog_id: brineShrimpCatalogId,
         food_name: "Brine shrimp",
         catalog_default_unit: "pieces",
@@ -829,7 +941,7 @@ test.describe("food catalog quick picks", () => {
   test("amount is optional and the database rejects nonpositive amounts", async ({ page }) => {
     await login(page);
     await page.goto("/protected/daily-operations?type=feeding");
-    await selectBatchScope(page, { systemId: ssl25SystemId, tankId: ssl25TankId, animalId: ssl25AnimalId });
+    await selectBatchScope(page, { systemId: starSystemId, tankId: starTankId, animalId: starAnimalId });
     await page.getByRole("radio", { name: "Krill", exact: true }).check();
     await expect(page.getByLabel("Amount per animal (optional)", { exact: true })).toHaveValue("");
     const amountControl = page.getByLabel("Amount per animal (optional)").locator("..");
@@ -853,8 +965,8 @@ test.describe("food catalog quick picks", () => {
 
     const technician = await signInRoleClient(TECH_EMAIL, TECH_PASSWORD);
     const { error: zeroAmount } = await technician.from("feeding_logs").insert({
-      tank_id: ssl25TankId,
-      animal_id: ssl25AnimalId,
+      tank_id: starTankId,
+      animal_id: starAnimalId,
       food_catalog_id: krillCatalogId,
       amount_value: 0,
       notes: `${notesPrefix} db zero`,
@@ -890,7 +1002,7 @@ test.describe("food catalog quick picks", () => {
       .toEqual([{ name: renamedName, default_unit: "L" }]);
 
     await page.goto("/protected/daily-operations?type=feeding");
-    await selectBatchScope(page, { systemId: ssl25SystemId, tankId: ssl25TankId, animalId: ssl25AnimalId });
+    await selectBatchScope(page, { systemId: starSystemId, tankId: starTankId, animalId: starAnimalId });
     await page.waitForLoadState("networkidle");
     await page.getByRole("radio", { name: renamedName, exact: true }).check();
     await expect(page.getByLabel("Food name")).toHaveCount(0);
@@ -942,16 +1054,16 @@ test.describe("food catalog quick picks", () => {
 
     const technician = await signInRoleClient(TECH_EMAIL, TECH_PASSWORD);
     const { error: retiredPick } = await technician.from("feeding_logs").insert({
-      tank_id: ssl25TankId,
-      animal_id: ssl25AnimalId,
+      tank_id: starTankId,
+      animal_id: starAnimalId,
       food_catalog_id: catalogId,
       notes: `${notesPrefix} retired pick`,
     });
     expect(retiredPick?.code).toBe("23514");
     expect(retiredPick?.message).toBe("Select an active food quick pick.");
     const { error: missingCatalog } = await technician.from("feeding_logs").insert({
-      tank_id: ssl25TankId,
-      animal_id: ssl25AnimalId,
+      tank_id: starTankId,
+      animal_id: starAnimalId,
       notes: `${notesPrefix} missing catalog`,
     });
     expect(missingCatalog?.code).toBe("23514");

@@ -257,7 +257,7 @@ export async function fetchAllSystemsDetailData(): Promise<{
         return {
           id: r.id,
           observedAt: r.observed_at,
-          severity: r.severity as "low" | "medium" | "high",
+          severity: r.severity as number,
           notes: r.notes,
           hasPhoto: r.has_photo,
           tankName: tank?.name ?? "Unknown tank",

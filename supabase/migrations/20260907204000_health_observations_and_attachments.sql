@@ -27,7 +27,7 @@ create table core.health_observations (
             (case when 'other' = any (issues) then 1 else 0 end)
       end
     ),
-  severity text not null check (severity in ('low', 'medium', 'high')),
+  severity smallint not null check (severity between 1 and 5),
   notes text,
   recorded_by int not null default core.current_profile_id() references core.profiles (id),
   data_source text not null default 'live'

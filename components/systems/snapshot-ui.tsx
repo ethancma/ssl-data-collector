@@ -1,15 +1,15 @@
 import { AlertTriangle, Check, Clock } from "lucide-react";
 import type { MouseEvent } from "react";
 
-import { SEVERITY } from "@/components/iseau/shared";
+import { SEVERITY_TONE } from "@/components/iseau/severity-tone";
 import { cn } from "@/lib/utils";
 import { formatReading, type CheckState, type SnapshotStatus, type SystemSnapshot, type WaterReadingSummary } from "@/lib/systems/snapshot";
 
 // Status reuses the ISeaU severity hues so teal/amber/coral mean the same thing app-wide.
 const STATUS = {
-  ok: { label: "On track", dot: SEVERITY.low.bg },
-  watch: { label: "Worth a look", dot: SEVERITY.medium.bg },
-  attention: { label: "Needs attention", dot: SEVERITY.high.bg },
+  ok: { label: "On track", dot: SEVERITY_TONE.ok.bg },
+  watch: { label: "Worth a look", dot: SEVERITY_TONE.watch.bg },
+  attention: { label: "Needs attention", dot: SEVERITY_TONE.attention.bg },
 } satisfies Record<SnapshotStatus, { label: string; dot: string }>;
 
 const OUT_OF_RANGE_TEXT = "text-amber-600 dark:text-amber-400";

@@ -1,9 +1,12 @@
-# SSL Data Collection Tool — Lab Operations Plan
+# SSL Data Collection Tool — Lab Requirements
 
 > Covers the lab itself: the 8 systems, testing/feeding cadence, Apex probes, the
 > people who'll use the tool, and the historical data migration. For the technical
-> platform (stack, schema, roles, roadmap), see
+> platform (stack, schema, roles), see
 > [platform-architecture.md](platform-architecture.md).
+>
+> This is a domain requirements reference, not a delivery plan. Requirements described
+> here may be unimplemented; consult the code and migrations for current behavior.
 
 ## 1. Project Goal
 
@@ -75,11 +78,8 @@ timestamped and attributable like the other logs.
   whenever dosed.
 - **Health observations** — logged whenever a sighting/issue occurs (arm drops, spine
   drops, lesions, arm curling, flattening, other), against the individual animal.
-   Severity currently uses provisional Low/Medium/High labels; exact criteria remain TBD
-   (see §8). A photo is
-  always mandatory for arm drops, spine drops, and lesions; for other issue types,
-  whether a photo is required depends on the severity level once that scale is
-  defined.
+  Severity is a whole-number score from 1 (healthy) to 5 (dead), the same scale as the
+  historical star score sheets. Photos are always optional.
 - **Maintenance** — recurring filter changes and sump flushes, on an interval that's
   configurable **per system** (not one shared interval per task type across all 8
   systems), with due/overdue tracking. Overdue-maintenance email digests go to
@@ -124,16 +124,16 @@ Both paths keep event time (when the test/feeding actually happened) separate fr
 entry time (when it was typed into the platform), so trend charts reflect real
 history rather than migration timing.
 
-Current repository status: a destination-ready Graham bundle has been prepared for 270
-water-quality and 242 CBalance records. Probiotics were excluded because the source does
-not identify a treated star. The broader source inventory and reusable import/backfill
-tools remain open.
+For Graham import files, counts, and destination-ID checks, use the
+[bundle instructions](../supabase/seeds/20260920_graham/README.md). Probiotics without a
+named treated star must not be imported as either Star treatments or System chemical
+additions.
 
 **Before migration starts**, inventory exactly which systems/date ranges exist in
 Sheets vs. paper vs. not recorded at all, so effort isn't spent building import
 tooling for data that doesn't actually exist.
 
-## 6. People, Roles & Rollout
+## 6. People And Roles
 
 - **Lab techs** — day-to-day data entry (AM/PM checks, feeding, water quality, health
   observations), Technician role.
@@ -141,22 +141,12 @@ tooling for data that doesn't actually exist.
    distinguishes volunteer entries. Volunteers may update only entries they recorded and
    cannot delete; Admins and Technicians handle corrections to other users' records.
 - **PI/researchers** — read-only Viewer access for trend charts and exports.
-- **Admin(s)** — lab manager/lead tech; approves new sign-ins, manages
+- **Admin(s)** — lab manager/lead tech; invites users and manages access,
   systems/tanks/species reference data, runs historical imports, receives
   overdue-maintenance alerts.
 
-**Rollout plan:**
-1. Seed real systems/tanks/species data for all 8 systems.
-2. Pilot with a small subset (e.g., one or two systems) for a week to catch workflow
-   friction before full rollout.
-3. Run the historical import (Sheets) and schedule/assign paper backfill entry.
-4. Train techs/volunteers hands-on at the tank stations, not just in a meeting —
-   forms should be usable after a two-minute walkthrough given the mixed experience
-   levels.
-5. Post a QR code/deep link at each system's station so a phone/tablet opens directly
-   to that system's daily forms, cutting navigation time for high-frequency users —
-   confirmed as part of rollout, not just optional.
-6. Full rollout across all systems; retire paper/Sheets logging entirely.
+Forms should be usable tank-side on phones/tablets after a two-minute walkthrough.
+A QR code/deep link at each station should open that system's daily forms directly.
 
 ## 7. Trends & Monitoring — Primary Use Case
 
@@ -181,9 +171,8 @@ or grant at this time.
 2. **Water quality target values** — Admins or Technicians will configure optional
    lab-wide ranges with per-system overrides in the application. Initial numeric values
    still need to be entered; no ranges are seeded by default.
-3. **Health observation severity scale** — define the exact 3-level scale (labels and
-   criteria), and confirm which severity level(s) make a photo mandatory for issue
-   types beyond arm drop/spine drop/lesion (which always require one).
+3. **Health observation severity scale** — resolved: a 1-5 score (1 = healthy,
+   5 = dead); photos are always optional.
 4. **Animal name reuse** — decide whether a nickname is ever reused after an animal
    dies or is transferred out, or retired permanently.
 5. **Volunteer role permissions** — resolved for operational records: lab-wide read/create,

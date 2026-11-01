@@ -23,16 +23,22 @@ export const HEALTH_ISSUE_LABELS: Record<HealthIssueType, string> = {
   other: "Other",
 };
 
-// These always require a photo regardless of severity (lab-operations-plan.md §3).
-export const PHOTO_ALWAYS_REQUIRED_ISSUES: readonly HealthIssueType[] = [
-  "arm_drop",
-  "spine_drop",
-  "lesion",
-];
-
-// 3-level scale confirmed with staff; exact labels/criteria are still an open question.
-export const SEVERITY_LEVELS = ["low", "medium", "high"] as const;
-export type SeverityLevel = (typeof SEVERITY_LEVELS)[number];
+// Whole-number health score: 1 = healthy, 5 = dead. A star with no observation is a 1.
+export const SEVERITY_MIN = 1;
+export const SEVERITY_MAX = 5;
+// Dashboard thresholds: 2 = watch, 3 and above = attention.
+const SEVERITY_WATCH = 2;
+const SEVERITY_ATTENTION = 3;
+export type SeverityStatus = "ok" | "watch" | "attention";
+export function severityStatus(score: number): SeverityStatus {
+  if (score >= SEVERITY_ATTENTION) return "attention";
+  return score >= SEVERITY_WATCH ? "watch" : "ok";
+}
+export const SEVERITY_BADGE_VARIANT = {
+  ok: "secondary",
+  watch: "default",
+  attention: "destructive",
+} as const satisfies Record<SeverityStatus, string>;
 
 export const CHECK_TYPES = ["AM", "PM"] as const;
 

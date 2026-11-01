@@ -24,10 +24,12 @@ import {
 } from "@/lib/pacific-date-time";
 import { SELECT_CLASS } from "@/components/forms/form-classes";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   HEALTH_ISSUE_TYPES,
-  SEVERITY_LEVELS,
+  SEVERITY_MAX,
+  SEVERITY_MIN,
   type HealthIssueType,
 } from "@/lib/config/reference-data";
 import { createClient } from "@/lib/supabase/client";
@@ -49,12 +51,6 @@ const ISSUE_LABELS: Record<HealthIssueType, string> = {
   other: "Other",
 };
 
-const SEVERITY_LABELS: Record<(typeof SEVERITY_LEVELS)[number], string> = {
-  low: "Low",
-  medium: "Medium",
-  high: "High",
-};
-
 export function HealthObservationForm({
   animals,
 }: {
@@ -67,7 +63,6 @@ export function HealthObservationForm({
     register,
     handleSubmit,
     control,
-    watch,
     setError,
     setValue,
     formState: { errors, isSubmitting },
@@ -78,14 +73,12 @@ export function HealthObservationForm({
       time: getPacificTimeString(),
       animalId: "",
       tankId: "",
-      severity: undefined,
+      severity: "",
       issues: [],
       photoFile: undefined,
       notes: "",
     },
   });
-
-  const severity = watch("severity");
 
   const onAnimalChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const animal = animals.find((a) => String(a.id) === e.target.value);
@@ -164,7 +157,7 @@ export function HealthObservationForm({
         <CardDescription>Log an issue observed on an animal.</CardDescription>
       </CardHeader>
       <CardContent>
-        <HydratedForm onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-6">
+        <HydratedForm noValidate onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-6">
           <input id="health-observation-tank" type="hidden" {...register("tankId")} />
 
           <DateTimeFields
@@ -195,22 +188,20 @@ export function HealthObservationForm({
           </div>
 
           <div className="grid gap-2">
-            <Label>Severity</Label>
-            <div className="flex gap-2">
-              {SEVERITY_LEVELS.map((level) => (
-                <Button
-                  key={level}
-                  type="button"
-                  variant={severity === level ? "default" : "outline"}
-                  className="flex-1"
-                  onClick={() =>
-                    setValue("severity", level, { shouldValidate: true })
-                  }
-                >
-                  {SEVERITY_LABELS[level]}
-                </Button>
-              ))}
-            </div>
+            <Label htmlFor="health-observation-severity">
+              Severity ({SEVERITY_MIN} = healthy, {SEVERITY_MAX} = dead)
+            </Label>
+            <Input
+              id="health-observation-severity"
+              type="number"
+              inputMode="numeric"
+              min={SEVERITY_MIN}
+              max={SEVERITY_MAX}
+              step={1}
+              aria-describedby={errors.severity ? "health-observation-severity-error" : undefined}
+              aria-invalid={Boolean(errors.severity)}
+              {...register("severity")}
+            />
             <FieldError
               id="health-observation-severity-error"
               message={errors.severity?.message}
@@ -249,7 +240,7 @@ export function HealthObservationForm({
           </div>
 
           <div className="grid gap-2">
-            <Label htmlFor="health-observation-photo">Photo</Label>
+            <Label htmlFor="health-observation-photo">Photo (optional)</Label>
             <input
               id="health-observation-photo"
               type="file"
