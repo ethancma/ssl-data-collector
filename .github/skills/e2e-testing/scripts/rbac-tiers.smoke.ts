@@ -7,6 +7,7 @@ import { test, expect } from "@playwright/test";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   cleanupStep,
+  db,
   dbQuery,
   findGrahamStar,
   collectBrowserFailures,
@@ -797,33 +798,57 @@ test.describe("P0 operational security: Storage object policies (DB-level)", () 
   const volunteerPath = `${TAG}/volunteer-owned.txt`;
   const adminPath = `${TAG}/admin-owned.txt`;
   const unrelatedBucket = `${TAG}-unrelated`;
+  const unrelatedFixtureSource = `${TAG}/unrelated-bucket-fixture.txt`;
   const unrelatedFixturePath = "admin-fixture.txt";
   const unrelatedVolunteerPath = "volunteer-denied.txt";
 
-  test.beforeAll(() => {
-    dbQuery(`insert into storage.buckets (id, name, public)
-      values (${sqlLiteral(unrelatedBucket)}, ${sqlLiteral(unrelatedBucket)}, false)`);
-    const fixtureRows = dbQuery(`insert into storage.objects (bucket_id, name, owner_id)
-      select ${sqlLiteral(unrelatedBucket)}, ${sqlLiteral(unrelatedFixturePath)},
-        profile.auth_user_id::text
-      from core.profiles as profile
-      where profile.email = ${sqlLiteral(ADMIN_EMAIL)}
-      returning id`);
-    expect(fixtureRows).toHaveLength(1);
+  test.beforeAll(async () => {
+    if (!db) throw new Error("A service-role client is required for Storage fixtures.");
+    const adminClient = await signInRoleClient(ADMIN_EMAIL, ADMIN_PASSWORD);
+    const { data: { user: adminUser }, error: userError } = await adminClient.auth.getUser();
+    expect(userError).toBeNull();
+    expect(adminUser).toBeTruthy();
+    const { error: bucketError } = await db.storage.createBucket(unrelatedBucket, { public: false });
+    expect(bucketError).toBeNull();
+    const { error: uploadError } = await adminClient.storage
+      .from("attachments")
+      .upload(unrelatedFixtureSource, new Blob(["RBAC storage fixture"]), { contentType: "text/plain" });
+    expect(uploadError).toBeNull();
+    const { error: moveError } = await db.storage.from("attachments")
+      .move(unrelatedFixtureSource, unrelatedFixturePath, { destinationBucket: unrelatedBucket });
+    expect(moveError).toBeNull();
+    const objectRows = dbQuery(`select owner_id from storage.objects
+      where bucket_id = ${sqlLiteral(unrelatedBucket)} and name = ${sqlLiteral(unrelatedFixturePath)}`);
+    expect(objectRows).toHaveLength(1);
+    expect(objectRows[0]?.owner_id).toBe(adminUser!.id);
+    const { data: fixture, error: downloadError } = await db.storage
+      .from(unrelatedBucket)
+      .download(unrelatedFixturePath);
+    expect(downloadError).toBeNull();
+    expect(await fixture!.text()).toBe("RBAC storage fixture");
   });
 
   test.afterAll(async () => {
     await cleanupStep("remove RBAC attachment uploads", async () => {
       const adminClient = await signInRoleClient(ADMIN_EMAIL, ADMIN_PASSWORD);
-      const { error } = await adminClient.storage.from("attachments").remove([volunteerPath, adminPath]);
+      const { error } = await adminClient.storage.from("attachments")
+        .remove([volunteerPath, adminPath, unrelatedFixtureSource]);
       if (error) throw error;
     });
-    await cleanupStep("delete RBAC test-bucket objects", () => dbQuery(
-      `delete from storage.objects where bucket_id = ${sqlLiteral(unrelatedBucket)}`,
-    ));
-    await cleanupStep("delete RBAC test bucket", () => dbQuery(
-      `delete from storage.buckets where id = ${sqlLiteral(unrelatedBucket)}`,
-    ));
+    await cleanupStep("delete RBAC test-bucket objects", async () => {
+      if (!db) throw new Error("A service-role client is required for Storage cleanup.");
+      const { error } = await db.storage.from(unrelatedBucket).remove([unrelatedFixturePath]);
+      if (error) throw error;
+    });
+    await cleanupStep("delete RBAC test bucket", async () => {
+      if (!db) throw new Error("A service-role client is required for Storage cleanup.");
+      const { error } = await db.storage.deleteBucket(unrelatedBucket);
+      if (error) throw error;
+    });
+    expect(dbQuery(`select id from storage.objects
+      where (bucket_id = 'attachments' and name in (${sqlLiteral(volunteerPath)}, ${sqlLiteral(adminPath)}, ${sqlLiteral(unrelatedFixtureSource)}))
+         or bucket_id = ${sqlLiteral(unrelatedBucket)}`)).toHaveLength(0);
+    expect(dbQuery(`select id from storage.buckets where id = ${sqlLiteral(unrelatedBucket)}`)).toHaveLength(0);
   });
 
   test("Volunteer can update an object they own in the attachments bucket", async () => {

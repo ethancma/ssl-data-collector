@@ -3,7 +3,7 @@ import { defineConfig } from "@playwright/test";
 
 nextEnv.loadEnvConfig(process.cwd());
 
-// Reuses an already-running dev server (:3000, or the worktree's PORT) — never starts/stops it (see AGENTS.md).
+// Reuses the explicitly chosen server; preflight validates it before writes (see AGENTS.md).
 export default defineConfig({
   testDir: "./.github/skills/e2e-testing/scripts",
   // Default testMatch only picks up *.spec.ts/*.test.ts; the section scripts are
@@ -16,7 +16,7 @@ export default defineConfig({
   workers: 1,
   reporter: [["list"]],
   use: {
-    baseURL: process.env.E2E_BASE_URL ?? `http://localhost:${process.env.PORT ?? 3000}`,
+    baseURL: process.env.E2E_BASE_URL,
     headless: true,
     trace: "retain-on-failure",
   },

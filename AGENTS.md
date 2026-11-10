@@ -4,6 +4,7 @@ Next.js + Supabase app where lab techs and volunteers log daily husbandry data. 
 when the task needs them: schema/roles in [docs/platform-architecture.md](docs/platform-architecture.md),
 open questions and BLOCKED values in [docs/implementation-checklist.md](docs/implementation-checklist.md),
 testing tiers in [docs/testing-strategy.md](docs/testing-strategy.md).
+Start exploration at the canonical [README file map](README.md#file-map); do not maintain a second map.
 
 ## Rules
 
@@ -25,6 +26,22 @@ Hooks in `.github/hooks/` enforce these and block hosted-Supabase writes and `.e
 - Two hosted Supabase projects exist: Production (`npm run dev`) and Dev
   (`npm run dev:supabase-dev`). E2E runs on Local or Dev only, never Production; see "Pick the target" in the e2e-testing skill.
 - For pure logic in `lib/`, extend the matching test in `tests/unit/`.
+- Before a PR: also run `npm run check:dead-code` and `git diff --check`; use
+  [prepare-pr](.github/prompts/prepare-pr.prompt.md) for branch coverage and exact evidence.
+- Before E2E writes, run `npm run test:e2e:preflight` with an explicit `E2E_BASE_URL`.
+  It checks Local/Dev configuration, the listener checkout, and fixtures without writing data.
+
+## Parallel sessions and handoffs
+
+- One implementation session owns a worktree. In a shared checkout, agree on disjoint
+  file ownership before editing; never stage or commit another session's changes.
+- Worktrees still share local Supabase. The E2E lock serializes tests and standalone cleanup,
+  not manual seed/reset commands. Coordinate those commands; reset is explicit opt-in.
+- Record a compact handoff in session state: task/acceptance criteria, worktree/branch/HEAD,
+  owned files, app and database target and server PID, decisions/blockers, exact checks/results,
+  and remaining work. Do not record secrets or copy sensitive source data.
+- Before consolidating/removing a worktree, inspect staged, unstaged, and untracked files.
+  A new worktree contains committed files only; do not silently discard or omit local work.
 
 ## Keep changes small and in-pattern
 
@@ -41,11 +58,15 @@ Hooks in `.github/hooks/` enforce these and block hosted-Supabase writes and `.e
   - E2E: the matching `*.smoke.ts` and `helpers.ts` in `.github/skills/e2e-testing/scripts/`.
 - Systems, species, catalogs, and target ranges live in the database. Don't hardcode them, and
   don't invent BLOCKED values.
+- For mock-to-real data or shared domain-value changes, load
+  [feature-data-wiring](.github/skills/feature-data-wiring/SKILL.md).
 
 ## Search
 
 Search with exact identifiers (component, route, label, table). After two misses, use the
-map above or ask. Hand open-ended research to a subagent.
+README map or ask. Hand open-ended research to a subagent.
+For previous work, query session history first; if the index has no conversations, use the
+session listing/context tools. Treat transcript decisions as context, not new authorization.
 
 <!-- BEGIN:nextjs-agent-rules -->
 

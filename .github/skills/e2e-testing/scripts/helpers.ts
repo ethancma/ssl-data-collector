@@ -3,21 +3,17 @@
  * Not matched by playwright.config.ts's testMatch (no spec/test/smoke suffix) —
  * imported by the *.smoke.ts files in this directory, never run directly.
  *
- * Assumes: dev server already running at E2E_BASE_URL (default http://localhost:$PORT or
- * :3000; never started/stopped by this script — see AGENTS.md).
+ * Assumes: dev server already running at the explicit E2E_BASE_URL; never
+ * started/stopped by this script — see AGENTS.md.
  *
  * DB verification uses a service-role Supabase client (bypasses RLS) rather than
  * trusting the UI alone. Committed dev/test account defaults target the hosted test
  * accounts and may be overridden via env:
- *   SUPABASE_URL                  (defaults to the app's hosted project URL)
- *   SUPABASE_SECRET_KEY           (required only for service-role Supabase-js
- *                                  assertions; linked dbQuery still works without it)
+ *   SUPABASE_URL                  (must match the app's Local/Dev project URL)
+ *   SUPABASE_SECRET_KEY           (required for Auth/Storage assertions)
  *   E2E_TEST_TECH_EMAIL / E2E_TEST_TECH_PASSWORD — seeded technician test account
  *   (see ../references/test-accounts.md)
  */
-import { execFileSync } from "node:child_process";
-import { mkdtempSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
 import path from "node:path";
 import {
   MessageChannel,
@@ -28,28 +24,16 @@ import {
 import { expect, type Page, type Request } from "@playwright/test";
 import nextEnv from "@next/env";
 import { createClient } from "@supabase/supabase-js";
+import { validateE2eTarget } from "./preflight.mjs";
 
 nextEnv.loadEnvConfig(process.cwd());
 
-const SUPABASE_URL =
-  process.env.SUPABASE_URL ?? "https://bqylxmsifagnztxhixyl.supabase.co";
+const target = validateE2eTarget(process.env);
+const SUPABASE_URL = target.apiOrigin;
 const SECRET_KEY = process.env.SUPABASE_SECRET_KEY;
 // Direct Postgres URL for the local stack (`npm run wt -- setup`) or Dev (.env.supabase-dev.local).
 const E2E_DB_URL = process.env.E2E_DB_URL;
-// E2E writes and deletes rows, so it runs only against local or the Dev project, never Production.
-const PRODUCTION_PROJECT_REF = "bqylxmsifagnztxhixyl";
-if (
-  !E2E_DB_URL ||
-  [SUPABASE_URL, E2E_DB_URL, process.env.NEXT_PUBLIC_SUPABASE_URL].some((value) =>
-    value?.includes(PRODUCTION_PROJECT_REF),
-  )
-) {
-  throw new Error(
-    "E2E targets Production. Load .env.supabase-dev.local (or a worktree's local env) first.",
-  );
-}
-export const BASE_URL =
-  process.env.E2E_BASE_URL ?? `http://localhost:${process.env.PORT ?? 3000}`;
+export const BASE_URL = target.appOrigin;
 export const TECH_EMAIL = process.env.E2E_TEST_TECH_EMAIL ?? "test-tech@ssl.dev";
 export const TECH_PASSWORD = process.env.E2E_TEST_TECH_PASSWORD ?? "password";
 export const ADMIN_EMAIL = process.env.E2E_TEST_ADMIN_EMAIL ?? "test-admin@ssl.dev";
@@ -63,13 +47,6 @@ export const VIEWER_PASSWORD = process.env.E2E_TEST_VIEWER_PASSWORD ?? "Password
 const PUBLISHABLE_KEY =
   process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ??
   "sb_publishable_KTInkuFFvOLUgENAzAul1w_o0MfJmX3";
-
-if (!SECRET_KEY) {
-  console.warn(
-    "SUPABASE_SECRET_KEY not set — service-role Supabase-js assertions " +
-      "will be skipped; linked dbQuery assertions remain available.",
-  );
-}
 
 // Unique tag stamped into every row a run creates, so DB assertions can find exactly
 // the row just written instead of guessing "most recent". Shared across section files
@@ -284,32 +261,13 @@ export async function expectDefaultDateAndTime(page: Page) {
   expect(Math.min(difference, 24 * 60 - difference)).toBeLessThanOrEqual(5);
 }
 
-// Runs verification SQL directly against the linked hosted project via the Supabase CLI
-// (connects as the `postgres` role). Required for any query against schema `core` — the
+// Runs verification SQL against the validated Local/Dev database. Required for schema `core` — the
 // service-role supabase-js client above has no USAGE grant on schema `core` on the hosted
 // project (only `authenticated` does — see
 // supabase/migrations/20260907200000_core_foundation.sql) and 403s with "permission denied
 // for schema core". Always use this helper for core-schema assertions, never `db.from(...)`.
 export function dbQuery(sql: string): Record<string, unknown>[] {
-  if (E2E_DB_URL) return dbQueryDirect(sql);
-  const file = path.join(mkdtempSync(path.join(tmpdir(), "e2e-sql-")), "query.sql");
-  writeFileSync(file, sql);
-  let out = "";
-  for (let attempt = 1; ; attempt++) {
-    try {
-      out = execFileSync(
-        "supabase",
-        ["db", "query", "-f", file, "--linked", "-o", "json"],
-        { encoding: "utf8" },
-      );
-      break;
-    } catch (error) {
-      // The login-role handshake fails before any SQL runs, so a retry is safe.
-      if (attempt >= 3 || !String(error).includes("TransportError")) throw error;
-      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 2_000);
-    }
-  }
-  return (JSON.parse(out).rows as Record<string, unknown>[]) ?? [];
+  return dbQueryDirect(sql);
 }
 
 let dbWorker: { port: MessagePort; signal: Int32Array } | null = null;

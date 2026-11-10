@@ -12,7 +12,7 @@ const PATH_PATTERN = new RegExp(
 );
 
 // Vendored third-party skills and one-off prompts mention paths outside this repo.
-const OWNED_GITHUB_DIRS = ["agents", "skills/e2e-testing", "skills/supabase-migrations"];
+const OWNED_GITHUB_DIRS = ["agents", "skills/e2e-testing", "skills/supabase-migrations", "skills/feature-data-wiring"];
 
 function markdownFiles(dir: string): string[] {
   if (!existsSync(dir)) return [];
@@ -41,6 +41,7 @@ test("repo paths mentioned in markdown docs still exist", () => {
     ...markdownFiles(path.join(repoRoot, "docs")),
     path.join(repoRoot, ".github/PULL_REQUEST_TEMPLATE.md"),
     ...OWNED_GITHUB_DIRS.flatMap((dir) => markdownFiles(path.join(repoRoot, ".github", dir))),
+    path.join(repoRoot, ".github/prompts/prepare-pr.prompt.md"),
   ].filter((file) => existsSync(file));
 
   const stale: string[] = [];

@@ -6,9 +6,14 @@ user-invocable: true
 ---
 You review a diff you did not write. Never edit files, commit, or push.
 
-1. Get the change with `git diff main...HEAD` and `git diff`. Read only the touched files and
-   what they directly import. Don't explore the rest of the repo.
-2. Run `npm run verify` and `npm run test:e2e:plan -- --git-diff` once each.
+1. Use the supplied base ref (default `origin/main`) for `git diff <base>...HEAD`.
+   Include staged/unstaged/untracked files only when owned by this task. Read only the touched
+   files and what they directly import. Don't explore the rest of the repo or edit files.
+2. Plan committed coverage with `npm run test:e2e:plan -- --base <base>`, and owned pending
+   files with `--files`. Use `--working-tree` only in a single-purpose owned worktree;
+   `--git-diff` alone misses committed PR changes. Reuse supplied successful verify/dead-code
+   evidence only when it covers this exact unchanged state; otherwise run
+   `npm run verify` and `npm run check:dead-code` once. Do not run mutating E2E tests.
 3. Report only findings that matter, each as `file:line — problem — smallest fix`:
    - **Correctness**: bugs, user-reachable error paths, types hidden behind casts.
    - **Repo rules**:
