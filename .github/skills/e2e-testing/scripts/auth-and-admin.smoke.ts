@@ -67,6 +67,46 @@ async function acceptInvite(page: Page, link: string, password = invitePassword)
 
 test.use({ trace: "off" });
 
+test.describe("not found page", () => {
+  test("shows a 404 for unmatched routes", async ({ page, request }) => {
+    const publicResponse = await request.get(
+      `${BASE_URL}/this-route-does-not-exist`,
+      { maxRedirects: 0 },
+    );
+    expect(publicResponse.status()).toBe(404);
+    await expect(publicResponse.text()).resolves.toContain(
+      "This page doesn’t exist.",
+    );
+
+    await loginAs(page, ADMIN_EMAIL, ADMIN_PASSWORD);
+    const protectedResponse = await page.goto(
+      "/protected/this-route-does-not-exist",
+    );
+    expect(protectedResponse?.status()).toBe(404);
+    await expect(
+      page.getByRole("heading", { name: "This page doesn’t exist." }),
+    ).toBeVisible();
+  });
+});
+
+test.describe("entry redirects", () => {
+  test("sends signed-in entry requests directly home", async ({ page, request }) => {
+    const publicResponse = await request.get(`${BASE_URL}/`, { maxRedirects: 0 });
+    expect(publicResponse.status()).toBe(200);
+
+    await loginAs(page, ADMIN_EMAIL, ADMIN_PASSWORD);
+    await expect(page.getByRole("heading", { name: "Home", exact: true })).toBeVisible();
+
+    for (const path of ["/", "/protected"]) {
+      const response = await page.context().request.get(`${BASE_URL}${path}`, {
+        maxRedirects: 0,
+      });
+      expect(response.status()).toBe(307);
+      expect(response.headers().location).toBe("/protected/home");
+    }
+  });
+});
+
 test.describe("proxy role claim refresh policy", () => {
   test("uses only active valid profile roles for JWT claims", () => {
     for (const role of ["admin", "technician", "volunteer", "viewer"] as const) {

@@ -470,7 +470,9 @@ test.describe("viewer remains read-only (operational log RBAC tiers, unchanged)"
     await expect(page.getByRole("link", { name: "Daily Operations" })).toHaveCount(0);
 
     await page.goto("/protected/daily-operations");
-    await expect(page.getByRole("heading", { name: "404" })).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "This page doesn’t exist." }),
+    ).toBeVisible();
   });
 
   test("viewer sees the Today dashboard (read access intact) but no Admin link", async ({
@@ -1342,7 +1344,9 @@ test.describe("P1 target and quick-pick management UI by role", () => {
       if (role.targets) {
         await expect(page.getByRole("heading", { name: "Target ranges" })).toBeVisible();
       } else {
-        await expect(page.getByRole("heading", { name: "404" })).toBeVisible();
+        await expect(
+          page.getByRole("heading", { name: "This page doesn’t exist." }),
+        ).toBeVisible();
       }
 
       if (role.catalogs) {
@@ -1353,7 +1357,9 @@ test.describe("P1 target and quick-pick management UI by role", () => {
         ).toBeVisible();
       } else {
         await page.goto("/protected/settings/quick-picks");
-        await expect(page.getByRole("heading", { name: "404" })).toBeVisible();
+        await expect(
+          page.getByRole("heading", { name: "This page doesn’t exist." }),
+        ).toBeVisible();
         await expect(page.getByText(/not authorized/i)).toHaveCount(0);
       }
 
