@@ -234,12 +234,13 @@ test.describe("Star treatments: role visibility and no-access behavior", () => {
     const browserFailures = collectBrowserFailures(page);
     await loginAs(page, VIEWER_EMAIL, VIEWER_PASSWORD);
     await page.goto("/protected/daily-operations");
-    await expect(page.getByRole("heading", { name: "404" })).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "This page doesn’t exist." }),
+    ).toBeVisible();
     await expect(page.getByRole("link", { name: "Star treatment" })).toHaveCount(0);
     await page.goto("/protected/star-treatments");
-    await expect(page.getByRole("heading", { name: "404" })).toBeVisible();
     await expect(
-      page.getByRole("heading", { name: "This page could not be found." }),
+      page.getByRole("heading", { name: "This page doesn’t exist." }),
     ).toBeVisible();
     const expectedNotFound = [
       /^response: 404 GET https?:\/\/[^/]+\/protected\/(daily-operations|star-treatments)/,
