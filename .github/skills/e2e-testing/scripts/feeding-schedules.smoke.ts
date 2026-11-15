@@ -153,7 +153,9 @@ test.describe("feeding schedules", () => {
   test("Volunteer and Viewer read schedules but cannot change them", async ({ page }) => {
     await loginAs(page, VOLUNTEER_EMAIL, VOLUNTEER_PASSWORD);
     await page.goto("/protected/settings/feeding-schedules");
-    await expect(page.getByRole("heading", { name: "404" })).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "This page doesn’t exist." }),
+    ).toBeVisible();
 
     for (const [email, password] of [
       [VOLUNTEER_EMAIL, VOLUNTEER_PASSWORD],

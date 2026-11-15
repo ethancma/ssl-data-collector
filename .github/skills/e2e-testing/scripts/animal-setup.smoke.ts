@@ -179,7 +179,9 @@ test.describe("animal setup", () => {
   test("a volunteer gets a 404 and cannot change animals or tanks", async ({ page }) => {
     await loginAs(page, VOLUNTEER_EMAIL, VOLUNTEER_PASSWORD);
     await page.goto("/protected/settings/animal-setup");
-    await expect(page.getByRole("heading", { name: "404" })).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "This page doesn’t exist." }),
+    ).toBeVisible();
 
     const client = await signInRoleClient(VOLUNTEER_EMAIL, VOLUNTEER_PASSWORD);
     const { error: tankError } = await client

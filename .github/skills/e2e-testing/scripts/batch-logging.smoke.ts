@@ -326,7 +326,9 @@ test.describe("Batch UI smoke and access", () => {
   test("Viewer cannot access daily operations", async ({ page }) => {
     await loginAs(page, VIEWER_EMAIL, VIEWER_PASSWORD);
     const response = await page.goto(`/protected/daily-operations?type=feeding&system=${refs.systemId}`);
-    await expect(page.getByRole("heading", { name: "404" })).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "This page doesn’t exist." }),
+    ).toBeVisible();
     expect(response?.status()).toBe(404);
     await expect(page.getByRole("button", { name: /Save .*feedings/ })).toHaveCount(0);
   });
