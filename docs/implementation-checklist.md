@@ -28,8 +28,8 @@ Do not invent values marked **BLOCKED**. Lab context and staff questions live in
 
 ## Health Photos And Follow-Ups
 
-Photo uploads are temporarily disabled in the application. Keep the processing,
-ownership, retry, and recovery requirements below for a future release.
+Photo uploads are disabled and out of scope for the initial production release.
+Keep the processing, ownership, retry, and recovery requirements below for a future release.
 
 Photo uploads are not atomic with observation creation: upload failure can leave
 an observation without its attachment. A reliable implementation must support retry and

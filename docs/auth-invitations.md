@@ -72,10 +72,11 @@ See the routes in `app/api/admin/`, `app/invite/`, and `app/auth/`, plus
    redirect URI.
 2. Configure app name *Sunflower Star Laboratory*, basic email/profile/openid scopes,
    ownership/consent settings, and a privacy-policy link.
-3. Configure the Google provider in each Supabase project. Store the Google client secret
-   in Supabase, not the app. Keep **Allow new users to sign up** disabled.
-4. Set Supabase Site URL and exact callback/reset allowlists for each environment.
-   Do not use arbitrary wildcard preview callbacks.
+3. Configure the Google provider in the production Supabase project; Dev leaves it
+   disabled for the initial release. Store the Google client secret in Supabase, not
+   the app. Keep **Allow new users to sign up** disabled.
+4. Set each Supabase Site URL and exact `/auth/callback` allowlist entry as described
+   in the Workers runbook. Do not use arbitrary wildcard preview callbacks.
 5. Configure the matching app runtime secret and canonical origin using the
    [Workers runbook](workers-deployment.md). Staging and production use separate projects.
 
@@ -96,3 +97,7 @@ rejection, removal/re-invite, single-use active-user recovery, stale tokens, all
 roles, and existing-account continuity. Verify Auth users, profiles, invitations, RLS,
 redirects, cache headers, and two-session isolation directly in staging with explicit
 approval for hosted test writes; local tests do not establish hosted provider correctness.
+With Google disabled in Dev, a human verifies production Google sign-in after deployment
+with an intended invited account before broader rollout. Other hosted Google-specific
+edge cases remain unverified without a nonproduction project with Google enabled.
+Do not run automated E2E against production.

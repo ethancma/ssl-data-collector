@@ -23,9 +23,9 @@ Unresolved requirements and staff decisions that constrain implementation are re
 ## Stack
 Next.js + TypeScript + Supabase (Postgres, Auth, Storage, RLS). Standard Next.js
 remains supported; a pinned vinext/Vite build targets Cloudflare Workers.
-See [the Workers deployment runbook](docs/workers-deployment.md) for local
-verification, isolated staging, manual releases, and rollback. Production launch
-still requires hosted validation and human approval.
+See [the Workers deployment runbook](docs/workers-deployment.md) for the CI/CD
+diagram, branch strategy, local verification, isolated staging, manual releases,
+and rollback. Production launch still requires hosted validation and human approval.
 
 ## File map
 

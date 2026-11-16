@@ -250,8 +250,9 @@ application, not the database. Staging requires a separate Supabase project.
 Private R2 is intended for encrypted backups, not primary photo storage.
 The target is Workers Free + Supabase Free with no automatic paid upgrade; confirm
 current limits and measure hosted CPU/usage before launch. A custom domain is optional.
-Hosted configuration, photo reliability, and proven recovery are production gates in the
-[Workers runbook](workers-deployment.md), not capabilities implied by merging app code.
+Hosted configuration is a production gate in the [Workers runbook](workers-deployment.md),
+not a capability implied by merging app code. The initial release ships without photo
+uploads or automated backups; photo reliability and proven recovery gate those later.
 
 ## 7. Decisions Log
 
@@ -259,8 +260,8 @@ Hosted configuration, photo reliability, and proven recovery are production gate
   long-term correlation studies outweigh Firestore's simpler Google-native auth
   integration; Supabase supports Google OAuth too.
 - Managed Supabase chosen over self-hosted Postgres+VPS: lower maintenance burden for
-  a solo maintainer at a small nonprofit. Free-tier use still requires an independently
-  verified backup/restore implementation.
+  a solo maintainer at a small nonprofit. An independently verified backup/restore
+  implementation remains future work; the initial release has no backup.
 - Next.js chosen over Python-native frontends (Streamlit/Dash/Reflex/NiceGUI): this app
   is primarily role-gated, multi-page daily CRUD forms, which Next.js + Supabase
   Auth/RLS handles more robustly; maintainer is comfortable in both stacks.
