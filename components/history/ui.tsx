@@ -109,8 +109,12 @@ function ExportButton({ h }: { h: HistoryState }) {
 
 export function FilterBar({ h }: { h: HistoryState }) {
   const { params, update } = h;
-  const [moreOpen, setMoreOpen] = useState(false);
   const secondaryCount = Number(params.recorder !== null) + Number(params.source !== null) + Number(params.outOfRange);
+  const [requestedMoreOpen, setRequestedMoreOpen] = useState<boolean | null>(null);
+  const moreOpen = requestedMoreOpen ?? secondaryCount > 0;
+  useEffect(() => {
+    if (secondaryCount === 0) setRequestedMoreOpen(null);
+  }, [secondaryCount]);
   const moreFiltersLabel = `${moreOpen ? "Fewer" : "More"} filters${secondaryCount ? ` · ${secondaryCount}` : ""}`;
   return <div className="filter-toolbar space-y-3">
     <div className={cn("filter-grid", moreOpen && "is-open")}>
@@ -121,7 +125,7 @@ export function FilterBar({ h }: { h: HistoryState }) {
       <CompactSelect label="System" value={params.system === null ? "all" : String(params.system)}
         onChange={(value) => update({ system: value === "all" ? null : value })}
         options={[{ value: "all", label: "All systems" }, ...h.systems.map((system) => ({ value: String(system.id), label: system.name }))]} />
-      <button type="button" aria-expanded={moreOpen} aria-controls="history-recorder-filter history-source-filter history-range-filter" onClick={() => setMoreOpen((open) => !open)}
+      <button type="button" aria-expanded={moreOpen} aria-controls="history-recorder-filter history-source-filter history-range-filter" onClick={() => setRequestedMoreOpen(!moreOpen)}
         className={cn(FILTER_BOX_CLASS, "filter-grid__more items-center justify-center gap-2 px-3 font-medium", focusClass)}>
         <SlidersHorizontal aria-hidden="true" className="h-4 w-4 shrink-0" />
         <span className="truncate">{moreFiltersLabel}</span>

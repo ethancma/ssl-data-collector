@@ -128,11 +128,13 @@ test.describe("History page as a technician", () => {
     await moreFilters.click();
     await outOfRange.click();
     await expect(page).toHaveURL(/oor=1/);
+    await expect(moreFilters).toHaveAttribute("aria-expanded", "true");
     await expect(outOfRange).toBeChecked();
     await expect(moreFilters).toContainText("1");
     await outOfRange.click();
     await expect(page).not.toHaveURL(/oor=1/);
-    await expect(outOfRange).not.toBeChecked();
+    await expect(moreFilters).toHaveAttribute("aria-expanded", "false");
+    await expect(outOfRange).toBeHidden();
     const dimensions = await page.evaluate(() => ({
       clientWidth: document.documentElement.clientWidth,
       scrollWidth: document.documentElement.scrollWidth,
