@@ -179,8 +179,8 @@ growing an existing one indefinitely:
   Today dashboard, and each form's date/time-box behavior.
 - [auth-and-admin.smoke.ts](./scripts/auth-and-admin.smoke.ts) — sign-up → pending →
   admin-approval flow, plus the `/protected/admin` approve/deny UI.
-- [sidebar-ui.smoke.ts](./scripts/sidebar-ui.smoke.ts) — sidebar Home button + theme toggle
-  (UI-only, Tier 1).
+- [sidebar-ui.smoke.ts](./scripts/sidebar-ui.smoke.ts) — sidebar Home navigation, responsive
+  mobile menu, and Appearance settings (UI-only, Tier 1).
 - [rbac-tiers.smoke.ts](./scripts/rbac-tiers.smoke.ts) — per-role (admin/technician/
   volunteer/viewer) behavior for operational logs, plus the DB-level SELECT/UPDATE/DELETE
   matrix across every affected table.

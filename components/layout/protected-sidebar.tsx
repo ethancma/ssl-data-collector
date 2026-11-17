@@ -2,25 +2,21 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Fragment, useEffect, useState } from "react";
-import { useTheme } from "next-themes";
+import { Fragment, useEffect, useRef, useState } from "react";
 import {
   CalendarDays,
   ClipboardList,
   FlaskConical,
+  Gauge,
   HeartPulse,
   History,
-  Home,
   LogOut,
-  Monitor,
-  Moon,
   PanelLeftClose,
   PanelLeftOpen,
   PawPrint,
   Settings,
   ShieldCheck,
   SlidersHorizontal,
-  Sun,
   Waves,
   type LucideIcon,
 } from "lucide-react";
@@ -32,61 +28,30 @@ const focusRingClassName =
   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring";
 
 const iconButtonClassName = cn(
-  "flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground",
+  "flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground sm:h-9 sm:w-9 [@media(hover:none)_and_(pointer:coarse)]:!h-11 [@media(hover:none)_and_(pointer:coarse)]:!w-11",
   focusRingClassName,
 );
-
-// Wider pill used for the expanded sidebar's Home/theme action row.
-const actionPillClassName = "w-12";
 
 const activeClassName =
   "bg-primary/10 text-primary hover:bg-primary/15 hover:text-primary";
 
-const THEME_CYCLE = ["light", "dark", "system"] as const;
+// Matches Tailwind's `sm` breakpoint, where the sidebar expands inline.
+const DESKTOP_QUERY = "(min-width: 640px)";
 
-function ThemeToggleButton({ className }: { className?: string }) {
-  const { theme, setTheme } = useTheme();
-  const [mounted, setMounted] = useState(false);
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
-
-  if (!mounted) {
-    return <span className={cn(iconButtonClassName, className)} aria-hidden="true" />;
-  }
-
-  const current = THEME_CYCLE.includes(theme as (typeof THEME_CYCLE)[number])
-    ? (theme as (typeof THEME_CYCLE)[number])
-    : "system";
-  const next = THEME_CYCLE[(THEME_CYCLE.indexOf(current) + 1) % THEME_CYCLE.length];
-  const label = `Switch to ${next} mode`;
-  const Icon = current === "light" ? Sun : current === "dark" ? Moon : Monitor;
-
+function SidebarToggleButton({ expanded, onToggle }: { expanded: boolean; onToggle: () => void }) {
+  const label = expanded ? "Collapse sidebar" : "Expand sidebar";
+  const Icon = expanded ? PanelLeftClose : PanelLeftOpen;
   return (
     <button
       type="button"
-      onClick={() => setTheme(next)}
+      onClick={onToggle}
       title={label}
       aria-label={label}
-      className={cn(iconButtonClassName, className)}
+      aria-expanded={expanded}
+      className={iconButtonClassName}
     >
       <Icon size={18} strokeWidth={2} />
     </button>
-  );
-}
-
-function HomeButton({ active, className }: { active: boolean; className?: string }) {
-  return (
-    <Link
-      href="/protected/home"
-      title="Home"
-      aria-label="Home"
-      aria-current={active ? "page" : undefined}
-      className={cn(iconButtonClassName, className, active && activeClassName)}
-    >
-      <Home size={18} strokeWidth={2} />
-    </Link>
   );
 }
 
@@ -133,6 +98,7 @@ type SidebarViewProps = {
   sections: NavSection[];
   isActive: (item: NavItem) => boolean;
   isHomeActive: boolean;
+  overlayOpen: boolean;
   userEmail?: string | null;
   userRole?: string | null;
   initial: string;
@@ -150,31 +116,27 @@ function ExpandedSidebar({
 }: SidebarViewProps) {
   return (
     <div className="flex h-full w-60 flex-col">
-      <div className="flex h-14 shrink-0 items-center gap-2 px-3">
+      {/* px-3.5 puts the Waves mark and toggle on the same column as the collapsed rail, so they don't jump. */}
+      <div className="flex shrink-0 flex-col gap-1 px-3.5 pb-2 pt-3">
         <Link
           href="/protected/home"
+          title="Home"
+          aria-label="Home"
+          aria-current={isHomeActive ? "page" : undefined}
           className={cn(
-            "flex min-w-0 flex-1 items-center gap-2 rounded-lg px-1.5 py-1",
+            "flex min-w-0 items-center gap-2 rounded-lg pr-2",
             focusRingClassName,
+            isHomeActive && activeClassName,
           )}
         >
-          <Waves size={20} strokeWidth={2} className="shrink-0 text-primary" />
+          <span className="flex h-11 w-11 shrink-0 items-center justify-center sm:h-9 sm:w-9">
+            <Waves size={20} strokeWidth={2} className="text-primary" />
+          </span>
           <span className="truncate text-sm font-semibold">SSL Data Collection</span>
         </Link>
-        <button
-          type="button"
-          onClick={onToggleCollapsed}
-          title="Collapse sidebar"
-          aria-label="Collapse sidebar"
-          className={iconButtonClassName}
-        >
-          <PanelLeftClose size={18} strokeWidth={2} />
-        </button>
-      </div>
-
-      <div className="flex shrink-0 items-center justify-evenly px-3 pb-3">
-        <HomeButton active={isHomeActive} className={actionPillClassName} />
-        <ThemeToggleButton className={actionPillClassName} />
+        <div className="flex items-center">
+          <SidebarToggleButton expanded onToggle={onToggleCollapsed} />
+        </div>
       </div>
       <div className="mx-4 shrink-0 border-t border-border" />
 
@@ -199,7 +161,7 @@ function ExpandedSidebar({
                         href={item.href}
                         aria-current={active ? "page" : undefined}
                         className={cn(
-                          "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground",
+                          "flex min-h-11 items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground sm:min-h-0 [@media(hover:none)_and_(pointer:coarse)]:!min-h-11",
                           focusRingClassName,
                           active && activeClassName,
                         )}
@@ -237,6 +199,7 @@ function CollapsedSidebar({
   sections,
   isActive,
   isHomeActive,
+  overlayOpen,
   userEmail,
   initial,
   onToggleCollapsed,
@@ -244,37 +207,24 @@ function CollapsedSidebar({
   const divider = <div className="h-px w-8 shrink-0 bg-border" aria-hidden="true" />;
 
   return (
-    <div className="flex h-full w-16 flex-col items-center">
-      <div className="flex shrink-0 flex-col items-center gap-1 pb-2 pt-3">
+    <div className="flex h-full w-full shrink-0 items-center justify-between px-2 sm:w-16 sm:flex-col sm:items-center sm:justify-start sm:px-0">
+      <div className="flex w-full items-center justify-between sm:w-auto sm:flex-col sm:items-center sm:gap-1 sm:pb-2 sm:pt-3">
         <Link
           href="/protected/home"
-          title="SSL Data Collection"
-          aria-label="SSL Data Collection"
-          className={iconButtonClassName}
+          title="Home"
+          aria-label="Home"
+          aria-current={isHomeActive ? "page" : undefined}
+          className={cn(iconButtonClassName, isHomeActive && activeClassName)}
         >
           <Waves size={20} strokeWidth={2} className="text-primary" />
         </Link>
-        {/* Below sm the sidebar is always collapsed, so expanding would do nothing. */}
-        <button
-          type="button"
-          onClick={onToggleCollapsed}
-          title="Expand sidebar"
-          aria-label="Expand sidebar"
-          className={cn(iconButtonClassName, "hidden sm:flex")}
-        >
-          <PanelLeftOpen size={18} strokeWidth={2} />
-        </button>
+        <SidebarToggleButton expanded={overlayOpen} onToggle={onToggleCollapsed} />
       </div>
-      {divider}
-      <div className="flex shrink-0 flex-col items-center gap-1 py-2">
-        <HomeButton active={isHomeActive} />
-        <ThemeToggleButton />
-      </div>
-      {divider}
+      <div className="hidden sm:block">{divider}</div>
 
       <nav
         aria-label="Main"
-        className="flex min-h-0 w-full flex-1 flex-col items-center gap-1 overflow-y-auto overflow-x-hidden overscroll-contain py-2"
+        className="hidden min-h-0 w-full flex-1 flex-col items-center gap-1 overflow-y-auto overflow-x-hidden overscroll-contain py-2 sm:flex"
       >
         {sections.map((section, index) => (
           <Fragment key={section.label}>
@@ -301,7 +251,7 @@ function CollapsedSidebar({
         ))}
       </nav>
 
-      <div className="flex shrink-0 flex-col items-center gap-2 pb-3 pt-2">
+      <div className="hidden shrink-0 flex-col items-center gap-2 pb-3 pt-2 sm:flex">
         <SidebarLogoutButton />
         <Avatar initial={initial} email={userEmail} />
       </div>
@@ -328,6 +278,42 @@ export function ProtectedSidebar({
 }) {
   const pathname = usePathname();
   const isHomeActive = pathname === "/protected/home";
+  // Below sm there is no room to push the page aside, so expanding opens a modal overlay
+  // instead. It is per-visit state and does not change the saved desktop preference.
+  const [overlayOpen, setOverlayOpen] = useState(false);
+  const overlayRef = useRef<HTMLDialogElement>(null);
+  const openerRef = useRef<Element | null>(null);
+
+  useEffect(() => setOverlayOpen(false), [pathname]);
+
+  useEffect(() => {
+    const desktop = window.matchMedia(DESKTOP_QUERY);
+    const close = () => {
+      if (desktop.matches) setOverlayOpen(false);
+    };
+    desktop.addEventListener("change", close);
+    return () => desktop.removeEventListener("change", close);
+  }, []);
+
+  useEffect(() => {
+    const dialog = overlayRef.current;
+    if (!dialog) return;
+    if (overlayOpen && !dialog.open) {
+      openerRef.current = document.activeElement;
+      dialog.showModal();
+    } else if (!overlayOpen && dialog.open) {
+      dialog.close();
+    }
+    if (!overlayOpen && openerRef.current instanceof HTMLElement) {
+      openerRef.current.focus();
+      openerRef.current = null;
+    }
+  }, [overlayOpen]);
+
+  const toggleSidebar = () => {
+    if (window.matchMedia(DESKTOP_QUERY).matches) onToggleCollapsed();
+    else setOverlayOpen((open) => !open);
+  };
 
   const sections: NavSection[] = [
     {
@@ -343,7 +329,7 @@ export function ProtectedSidebar({
             ]
           : []),
         { href: "/protected/iseau", label: "ISeaU", icon: HeartPulse },
-        { href: "/protected/systems", label: "Systems", icon: Waves },
+        { href: "/protected/systems", label: "Systems", icon: Gauge },
         { href: "/protected/history", label: "History", icon: History },
       ],
     },
@@ -394,10 +380,11 @@ export function ProtectedSidebar({
     sections,
     isActive,
     isHomeActive,
+    overlayOpen,
     userEmail,
     userRole,
     initial,
-    onToggleCollapsed,
+    onToggleCollapsed: toggleSidebar,
   };
 
   return (
@@ -410,6 +397,24 @@ export function ProtectedSidebar({
       <div className={cn("flex min-h-0 flex-1", !collapsed && "sm:hidden")}>
         <CollapsedSidebar {...viewProps} />
       </div>
+      <dialog
+        ref={overlayRef}
+        aria-label="Navigation"
+        onClose={() => setOverlayOpen(false)}
+        onKeyDown={(event) => {
+          // Not every browser fires the native cancel for Escape, so close explicitly.
+          if (event.key === "Escape") {
+            event.preventDefault();
+            setOverlayOpen(false);
+          }
+        }}
+        onClick={(event) => {
+          if (event.target === event.currentTarget) setOverlayOpen(false);
+        }}
+        className="fixed inset-y-0 left-0 m-0 h-dvh max-h-none w-60 max-w-[85vw] overflow-hidden border-r border-border bg-background p-0 text-foreground shadow-2xl backdrop:bg-black/40 open:flex motion-safe:open:duration-200 motion-safe:open:animate-in motion-safe:open:slide-in-from-left sm:hidden"
+      >
+        {overlayOpen ? <ExpandedSidebar {...viewProps} /> : null}
+      </dialog>
     </>
   );
 }

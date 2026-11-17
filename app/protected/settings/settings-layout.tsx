@@ -1,5 +1,7 @@
 "use client";
 
+import { useTheme } from "next-themes";
+
 import { Badge } from "@/components/ui/badge";
 import {
   Card,
@@ -62,5 +64,48 @@ export function SettingsLayout({ profile }: { profile: SettingsProfile }) {
         </Card>
       </div>
     </div>
+  );
+}
+
+const APPEARANCE_OPTIONS = [
+  { value: "light", label: "Light" },
+  { value: "dark", label: "Dark" },
+  { value: "system", label: "System" },
+] as const;
+
+export function AppearanceSettings() {
+  const { theme, setTheme } = useTheme();
+
+  return (
+    <Card className="w-full max-w-4xl">
+      <CardHeader>
+        <CardTitle className="text-xl">Appearance</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <fieldset aria-describedby="appearance-help" className="space-y-3">
+          <legend className="text-sm font-medium">Color theme</legend>
+          <p id="appearance-help" className="text-sm text-muted-foreground">
+            System follows your device setting. Your choice is saved on this device.
+          </p>
+          <div className="inline-flex max-w-full flex-wrap gap-1 rounded-full bg-muted p-1">
+            {APPEARANCE_OPTIONS.map((option) => (
+              <label key={option.value} className="cursor-pointer">
+                <input
+                  type="radio"
+                  name="color-theme"
+                  value={option.value}
+                  checked={theme === option.value}
+                  onChange={() => setTheme(option.value)}
+                  className="peer sr-only"
+                />
+                <span className="inline-flex min-h-11 min-w-16 items-center justify-center rounded-full border border-transparent px-4 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground peer-checked:border-border peer-checked:bg-background peer-checked:text-foreground peer-focus-visible:outline-none peer-focus-visible:ring-2 peer-focus-visible:ring-ring peer-focus-visible:ring-offset-2 peer-focus-visible:ring-offset-background motion-reduce:transition-none">
+                  {option.label}
+                </span>
+              </label>
+            ))}
+          </div>
+        </fieldset>
+      </CardContent>
+    </Card>
   );
 }
