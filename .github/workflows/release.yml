@@ -9,6 +9,11 @@ on:
         default: staging
         type: choice
         options: [staging, production]
+      staging_accepted:
+        description: Production only - I tested this exact commit on staging and accept it
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -18,7 +23,43 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  staging-gate:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      deployments: read
+    steps:
+      - name: Require an accepted, current staging deployment of this commit
+        if: inputs.target == 'production'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          STAGING_ACCEPTED: ${{ inputs.staging_accepted }}
+        run: |
+          set -euo pipefail
+          if [ "$STAGING_ACCEPTED" != "true" ]; then
+            echo "::error::Tick 'staging_accepted' after testing this commit on staging."
+            exit 1
+          fi
+          latest=$(gh api "repos/$GITHUB_REPOSITORY/deployments?environment=staging&per_page=1" --jq '.[0] // empty | "\(.id) \(.sha)"')
+          if [ -z "$latest" ]; then
+            echo "::error::No staging deployment exists. Release this commit to staging first."
+            exit 1
+          fi
+          read -r deployment_id deployed_sha <<< "$latest"
+          if [ "$deployed_sha" != "$GITHUB_SHA" ]; then
+            echo "::error::Staging runs ${deployed_sha:0:7}, not ${GITHUB_SHA:0:7}. Release and accept this commit on staging first."
+            exit 1
+          fi
+          state=$(gh api "repos/$GITHUB_REPOSITORY/deployments/$deployment_id/statuses?per_page=1" --jq '.[0].state // empty')
+          if [ "$state" != "success" ]; then
+            echo "::error::The staging deployment of ${GITHUB_SHA:0:7} is '${state:-unknown}', not 'success'."
+            exit 1
+          fi
+          echo "Staging runs ${GITHUB_SHA:0:7} successfully and was accepted by ${GITHUB_ACTOR}."
+
   checks:
+    needs: staging-gate
     if: github.ref == 'refs/heads/main'
     uses: ./.github/workflows/ci.yml
     with:

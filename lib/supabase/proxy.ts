@@ -5,6 +5,7 @@ import {
   type ProfileRole,
 } from "@/lib/config/reference-data";
 import { getSiteOrigin } from "@/lib/site-origin";
+import { localSupabaseTargetError } from "@/lib/supabase/target";
 import { hasEnvVars } from "../utils";
 
 const NO_STORE = "private, no-store, max-age=0";
@@ -60,6 +61,18 @@ function redirectWithCookies(url: URL, response: NextResponse) {
 }
 
 export async function updateSession(request: NextRequest) {
+  const targetError = localSupabaseTargetError(process.env.NEXT_PUBLIC_SUPABASE_URL, {
+    host: request.headers.get("host"),
+    siteOrigin: process.env.NEXT_PUBLIC_SITE_URL,
+    nodeEnv: process.env.NODE_ENV,
+  });
+  if (targetError) {
+    return new NextResponse(targetError, {
+      status: 503,
+      headers: { "Cache-Control": NO_STORE, "Content-Type": "text/plain; charset=utf-8" },
+    });
+  }
+
   let supabaseResponse = NextResponse.next({
     request,
   });

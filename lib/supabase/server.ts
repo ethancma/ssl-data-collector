@@ -1,5 +1,16 @@
 import { createServerClient } from "@supabase/ssr";
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
+
+import { assertSafeSupabaseTarget } from "@/lib/supabase/target";
+
+export async function assertSafeServerSupabaseTarget() {
+  const requestHeaders = await headers();
+  assertSafeSupabaseTarget(process.env.NEXT_PUBLIC_SUPABASE_URL, {
+    host: requestHeaders.get("host"),
+    siteOrigin: process.env.NEXT_PUBLIC_SITE_URL,
+    nodeEnv: process.env.NODE_ENV,
+  });
+}
 
 /**
  * Especially important if using Fluid compute: Don't put this client in a
@@ -7,6 +18,7 @@ import { cookies } from "next/headers";
  * it.
  */
 export async function createClient() {
+  await assertSafeServerSupabaseTarget();
   const cookieStore = await cookies();
 
   return createServerClient(

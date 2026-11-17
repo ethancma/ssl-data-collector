@@ -17,7 +17,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   if (!isOpenInvitation(invitation)) return NextResponse.json({ error: "This invitation is invalid, expired, revoked, or already accepted." }, { status: 410 });
 
   try {
-    const admin = createServiceRoleClient().auth.admin;
+    const admin = (await createServiceRoleClient()).auth.admin;
     const existing = await findAuthUserByEmail(invitation.email);
     if (existing && !canResumeUser(existing)) return NextResponse.json({ error: "An account for this email already exists. Sign in or ask an Admin for help." }, { status: 409 });
     const user = existing ?? (await admin.createUser({ email: invitation.email, email_confirm: true })).data.user;

@@ -4,6 +4,8 @@ The GitHub Actions backup job is not production-ready until the setup and restor
 gates below are complete. It reads the production database and private attachment
 bucket, creates an encrypted archive, and writes that archive to private Cloudflare
 R2. It does not configure hosted credentials or run a backup during code review.
+The initial release is proceeding without backups or tested recovery; see the
+[Workers runbook](workers-deployment.md) for the accepted risk and release plan.
 
 ## Provisioning
 
@@ -11,8 +13,9 @@ Create a GitHub Actions environment named `production-backups`, restricted to
 `main`. Do not require manual approval for this environment: scheduled jobs cannot
 complete while waiting for an environment reviewer. Restrict its secrets to the
 minimum required operations. Set the repository Actions variable
-`PRODUCTION_BACKUPS_ENABLED` to `true` only after all provisioning and restore
-acceptance gates pass; otherwise scheduled and manually dispatched jobs are skipped.
+`PRODUCTION_BACKUPS_ENABLED` to `true` only after provisioning is complete and a human
+is ready to run acceptance. This enables both scheduled and manually dispatched jobs;
+otherwise both are skipped. Do not rely on backups until restore acceptance passes.
 
 Set these environment variables:
 
@@ -66,8 +69,9 @@ the oldest weekly recovery point.
 
 ## First-run and restore acceptance
 
-Do not treat a successful upload as proof of recoverability. Before production
-approval:
+Do not treat a successful upload as proof of recoverability. Before relying on this
+backup workflow, enable its jobs and complete the following checks. If acceptance fails,
+set `PRODUCTION_BACKUPS_ENABLED` to `false` and investigate:
 
 1. Dispatch a manual backup from `main` only after all environment variables and
    secrets are provisioned. Confirm the run reports success and the object exists in
@@ -97,6 +101,6 @@ limits or a substitute for monitoring.
 
 This workflow is an initial implementation, not evidence that recovery is ready.
 It has not been run against the hosted project, the managed-schema restore ordering
-has not been proven, and a backup/restore drill has not been completed. Do not enable
-the schedule or approve production until those gates pass. R2 object retention is
+has not been proven, and a backup/restore drill has not been completed. Do not rely
+on it for recovery until those gates pass. R2 object retention is
 not a retention lock; compromised R2 credentials can still delete backups.

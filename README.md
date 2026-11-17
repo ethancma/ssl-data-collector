@@ -23,9 +23,9 @@ Unresolved requirements and staff decisions that constrain implementation are re
 ## Stack
 Next.js + TypeScript + Supabase (Postgres, Auth, Storage, RLS). Standard Next.js
 remains supported; a pinned vinext/Vite build targets Cloudflare Workers.
-See [the Workers deployment runbook](docs/workers-deployment.md) for local
-verification, isolated staging, manual releases, and rollback. Production launch
-still requires hosted validation and human approval.
+See [the Workers deployment runbook](docs/workers-deployment.md) for the CI/CD
+diagram, branch strategy, local verification, isolated staging, manual releases,
+and rollback. Production launch still requires hosted validation and human approval.
 
 ## File map
 
@@ -108,5 +108,19 @@ For details on any of the above, see the linked file in [docs/](docs/) rather th
 README — this file stays a high-level map.
 
 ## Getting started
-1. Copy `.env.example` to `.env.local` and fill in your Supabase project URL/publishable key.
+1. Copy `.env.example` to `.env.local` and set `NEXT_PUBLIC_SUPABASE_URL` to the Dev
+   Supabase API (`https://hcaopgzlvuyuyjcjxuvy.supabase.co`) or the local Docker API
+   (`http://127.0.0.1:54321`), with its matching publishable key. For local port 3000,
+   set `NEXT_PUBLIC_SITE_URL` to `http://localhost:3000`.
 2. `npm install` (if not already installed), then `npm run dev` — runs on port 3000.
+   Alternatively, `npm run dev:supabase-dev` loads the human-maintained
+   `.env.supabase-dev.local` overrides.
+
+The [hosted Dev app](https://ssl-data-collector-staging.ssl-lab.workers.dev) uses its own
+public app URL as `NEXT_PUBLIC_SITE_URL`; it is not the Supabase API URL.
+The local app blocks connections to Production and other unapproved Supabase projects.
+If it reports a blocked target, update your local configuration, restart your own server,
+and reload the page; production-mode previews also need rebuilding after public variables
+change. Never restart someone else's server. The guard prevents accidental app connections,
+not direct access to Supabase or access from a previously loaded app; database permissions
+remain the security boundary. See [local verification](docs/workers-deployment.md#local-verification).
