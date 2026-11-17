@@ -90,6 +90,7 @@ export function WaterTrendsCard({
   const goToPage = (next: number) => setPage(((next % TREND_PAGE_COUNT) + TREND_PAGE_COUNT) % TREND_PAGE_COUNT);
 
   const handleChartKeyDown = (e: React.KeyboardEvent) => {
+    if (e.target !== e.currentTarget) return;
     if (e.key === "ArrowLeft") {
       e.preventDefault();
       goToPage(page - 1);

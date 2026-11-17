@@ -111,6 +111,7 @@ export function FilterBar({ h }: { h: HistoryState }) {
   const { params, update } = h;
   const [moreOpen, setMoreOpen] = useState(false);
   const secondaryCount = Number(params.recorder !== null) + Number(params.source !== null) + Number(params.outOfRange);
+  const moreFiltersLabel = `${moreOpen ? "Fewer" : "More"} filters${secondaryCount ? ` · ${secondaryCount}` : ""}`;
   return <div className="filter-toolbar space-y-3">
     <div className={cn("filter-grid", moreOpen && "is-open")}>
       <DatasetCombobox value={params.dataset} canViewStar={h.canViewStar} onChange={(value) => update({ dataset: value, sort: null, dir: null, oor: null })} />
@@ -123,7 +124,7 @@ export function FilterBar({ h }: { h: HistoryState }) {
       <button type="button" aria-expanded={moreOpen} aria-controls="history-recorder-filter history-source-filter history-range-filter" onClick={() => setMoreOpen((open) => !open)}
         className={cn(FILTER_BOX_CLASS, "filter-grid__more items-center justify-center gap-2 px-3 font-medium", focusClass)}>
         <SlidersHorizontal aria-hidden="true" className="h-4 w-4 shrink-0" />
-        <span className="truncate">{moreOpen ? "Fewer filters" : `More filters${secondaryCount ? ` · ${secondaryCount}` : ""}`}</span>
+        <span className="truncate">{moreFiltersLabel}</span>
       </button>
       <HydratedForm role="search" className="filter-grid__wide filter-grid__search relative flex items-center" onSubmit={(event) => {
         event.preventDefault();

@@ -126,9 +126,13 @@ test.describe("History page as a technician", () => {
     const outOfRange = page.getByRole("checkbox", { name: "Out of range only" });
     await expect(outOfRange).toBeHidden();
     await moreFilters.click();
-    await outOfRange.check();
+    await outOfRange.click();
+    await expect(page).toHaveURL(/oor=1/);
+    await expect(outOfRange).toBeChecked();
     await expect(moreFilters).toContainText("1");
-    await outOfRange.uncheck();
+    await outOfRange.click();
+    await expect(page).not.toHaveURL(/oor=1/);
+    await expect(outOfRange).not.toBeChecked();
     const dimensions = await page.evaluate(() => ({
       clientWidth: document.documentElement.clientWidth,
       scrollWidth: document.documentElement.scrollWidth,

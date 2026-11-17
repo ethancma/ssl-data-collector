@@ -281,7 +281,7 @@ test.describe("systems page water quality trends card", () => {
       // "Compare" may not literally be rendered as text depending on implementation;
       // rely on the aria-label + select controls below as the real assertion.
     });
-    await expect(page.locator("select")).toHaveCount(2);
+    await expect(axisSelects(page)).toHaveCount(2);
 
     await prevButton.click();
     await expect(chart).toHaveAttribute("aria-label", /page 1 of 2/);
