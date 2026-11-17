@@ -28,7 +28,7 @@ export function SystemsPageClient({ dataBySlug }: { dataBySlug: Record<string, S
   const pathname = usePathname();
   const params = useSearchParams();
   const top = useRef<HTMLDivElement>(null);
-  const mounted = useRef(false);
+  const shownKey = useRef<string | null>(null);
 
   const systems = useMemo(
     () => Object.values(dataBySlug).sort((a, b) =>
@@ -70,10 +70,11 @@ export function SystemsPageClient({ dataBySlug }: { dataBySlug: Record<string, S
   // to the new heading (the clicked link is gone).
   useEffect(() => {
     top.current?.closest("main")?.scrollTo({ top: 0 });
-    if (!mounted.current) {
-      mounted.current = true;
-      return;
-    }
+    // Compare keys, not a mounted flag: Strict Mode re-runs this effect on load.
+    const key = `${view}:${selected?.slug ?? ""}`;
+    const previous = shownKey.current;
+    shownKey.current = key;
+    if (previous === null || previous === key) return;
     const heading = top.current?.querySelector("h1");
     heading?.setAttribute("tabindex", "-1");
     heading?.focus({ preventScroll: true });

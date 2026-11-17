@@ -16,7 +16,9 @@ import {
 } from "@/lib/iseau/data";
 import { cn } from "@/lib/utils";
 import { WATER_QUALITY_PARAMS } from "@/lib/config/reference-data";
-import { EmptyNote, Segmented, SeverityLabel, Sheet, dateLabel, focusClass } from "./shared";
+import { SeverityLabel, dateLabel } from "./shared";
+import { EmptyNote, focusClass } from "@/components/ui/app-layout";
+import { CompactSelect, Sheet } from "@/components/ui/app-primitives";
 import { severityTone } from "./severity-tone";
 
 export type SectionId = "health" | "water" | "temperature" | "treatments" | "feeding";
@@ -121,8 +123,8 @@ function WaterBody({ star, range, data: appData }: Props) {
     ? `Target ${target.min ?? "—"} to ${target.max ?? "—"}${config.unit ? ` ${config.unit}` : ""}`
     : "No target configured";
   return <div className="space-y-6">
-    <Segmented label="Water parameter" value={parameter} onChange={setParameter} options={WATER_QUALITY_PARAMS.map((param) => ({ value: param.key, label: param.label }))} />
-    <div><p className="text-5xl font-semibold tabular-nums tracking-tight">{formatValue(parameter, latestValue)}</p>
+    <div className="filter-toolbar"><div className="filter-grid"><CompactSelect label="Water parameter" value={parameter} onChange={setParameter} options={WATER_QUALITY_PARAMS.map((param) => ({ value: param.key, label: param.label }))} /></div></div>
+    <div><p className="text-3xl font-semibold tabular-nums tracking-tight md:text-4xl">{formatValue(parameter, latestValue)}</p>
       <p className="mt-1 text-sm text-muted-foreground">{config.label} in {latest.system} on {dateLabel(latest.at)}{note ? `, ${note} configured target` : target ? ", within configured bounds" : ", no target configured"}. {targetDescription}.</p></div>
     <LineChart label={config.label} unit={config.unit ?? ""} start={data.start} end={data.end} band={chartBand}
       series={{ label: config.label, points: readings.map((entry) => ({ t: entry.at, v: entry.values[parameter]! })) }} />
@@ -145,7 +147,7 @@ function TemperatureBody({ star, range, data: appData }: Props) {
   const latest = data.temperatures.at(-1);
   if (!latest) return <EmptyNote>No system temperature readings in this range.</EmptyNote>;
   return <div className="space-y-6">
-    <div><p className="text-5xl font-semibold tabular-nums tracking-tight">{latest.celsius.toFixed(1)} °C</p>
+    <div><p className="text-3xl font-semibold tabular-nums tracking-tight md:text-4xl">{latest.celsius.toFixed(1)} °C</p>
       <p className="mt-1 text-sm text-muted-foreground">{latest.system}, last AM check {dateLabel(latest.at)}. Recorded by {latest.by}.</p></div>
     <LineChart label="System temperature" unit="°C" start={data.start} end={data.end} marks={data.health.map((entry) => ({ t: entry.at, severity: entry.severity }))}
       series={{ label: "Temperature", points: data.temperatures.map((entry) => ({ t: entry.at, v: entry.celsius })) }} />
@@ -185,7 +187,7 @@ function FeedingBody({ star, range, data: appData }: Props) {
   if (!data.feedings.length) return <EmptyNote>No feedings in this range.</EmptyNote>;
   const full = data.feedings.filter((entry) => entry.status === "full").length;
   return <div className="space-y-6">
-    <div><p className="text-5xl font-semibold tabular-nums tracking-tight">{full} of {data.feedings.length}</p><p className="mt-1 text-sm text-muted-foreground">feedings with full consumption.</p></div>
+    <div><p className="text-3xl font-semibold tabular-nums tracking-tight md:text-4xl">{full} of {data.feedings.length}</p><p className="mt-1 text-sm text-muted-foreground">feedings with full consumption.</p></div>
     <FeedingStrip star={star} range={range} data={appData} />
     <ol className="divide-y divide-border">{data.feedings.map((entry) => <li key={entry.id} className="grid gap-1 py-4 sm:grid-cols-[9rem_1fr]">
       <time dateTime={new Date(entry.at).toISOString()} className="text-sm font-medium">{dateLabel(entry.at)}</time>
@@ -298,7 +300,7 @@ export function SectionBox({ id, star, range, data, onOpen, className }: Props &
   const { title, Icon } = SECTIONS.find((section) => section.id === id)!;
   const summary = sectionSummary(id, star, range, data);
   return <button type="button" onClick={onOpen} aria-haspopup="dialog" aria-label={`${title} for ${star.name}: ${summary.value}, ${summary.caption}. Open history.`}
-    className={cn("flex h-full min-h-64 w-full flex-col justify-between gap-6 rounded-3xl bg-muted p-6 text-left transition-colors hover:bg-accent", focusClass, className)}>
+    className={cn("touch-target flex h-full min-h-56 w-full flex-col justify-between gap-4 rounded-2xl bg-muted p-4 text-left transition-colors hover:bg-accent md:p-5", focusClass, className)}>
     <span className="flex items-center gap-2 text-base font-semibold"><Icon aria-hidden="true" className="h-4 w-4 text-muted-foreground" />{title}</span>
     <span className="block"><span className="block text-4xl font-semibold tabular-nums tracking-tight">{summary.value}</span><span className="mt-1 block text-sm text-muted-foreground">{summary.caption}</span></span>
     <span className="block"><SectionPreview id={id} data={data} star={star} range={range} /></span>

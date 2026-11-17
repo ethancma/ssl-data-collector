@@ -42,11 +42,11 @@ export function ProtectedShell({
   };
 
   return (
-    <div className="flex h-dvh overflow-hidden">
+    <div className="flex h-dvh flex-col overflow-hidden sm:flex-row">
       <aside
         className={cn(
-          "flex h-full shrink-0 flex-col overflow-hidden border-r border-border transition-[width] duration-200 ease-in-out",
-          collapsed ? "w-16" : "w-16 sm:w-60",
+          "flex h-14 w-full shrink-0 flex-col overflow-hidden border-b border-border transition-[width] duration-200 ease-in-out sm:h-full sm:border-b-0 sm:border-r",
+          collapsed ? "sm:w-16" : "sm:w-60",
         )}
       >
         <ProtectedSidebar
@@ -59,7 +59,7 @@ export function ProtectedShell({
           onToggleCollapsed={toggleCollapsed}
         />
       </aside>
-      <main className="min-w-0 flex-1 overflow-y-auto overflow-x-auto p-5 [scrollbar-gutter:stable] sm:p-8">
+      <main className="min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden p-4 [scrollbar-gutter:stable] sm:p-8">
         {children}
       </main>
     </div>

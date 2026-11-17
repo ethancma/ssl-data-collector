@@ -7,11 +7,11 @@ const MAX_PAGE = 10_000;
 const MAX_SEARCH_LENGTH = 100;
 
 export const RANGE_OPTIONS = [
-  { value: "7", label: "7 d" },
-  { value: "30", label: "30 d" },
-  { value: "90", label: "90 d" },
-  { value: "365", label: "1 y" },
-  { value: "custom", label: "Custom" },
+  { value: "7", label: "Last 7 days" },
+  { value: "30", label: "Last 30 days" },
+  { value: "90", label: "Last 90 days" },
+  { value: "365", label: "Last year" },
+  { value: "custom", label: "Custom range" },
 ] as const;
 export type HistoryRange = (typeof RANGE_OPTIONS)[number]["value"];
 

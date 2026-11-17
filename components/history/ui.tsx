@@ -1,10 +1,11 @@
 "use client";
 
 import { HydratedForm } from "@/components/forms/hydrated-form";
-import { ArrowDown, ArrowUp, ChevronDown, ChevronLeft, ChevronRight, ChevronsUpDown, Download, Search, X } from "lucide-react";
+import { ArrowDown, ArrowUp, ChevronDown, ChevronLeft, ChevronRight, ChevronsUpDown, Download, Search, SlidersHorizontal, X } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 
-import { EmptyNote, PageHeader, Segmented, Sheet, Tile, focusClass } from "@/components/iseau/shared";
+import { CompactSelect, FILTER_BOX_CLASS, FilterToggle, Sheet } from "@/components/ui/app-primitives";
+import { EmptyNote, PageHeader, Tile, focusClass } from "@/components/ui/app-layout";
 import { Button } from "@/components/ui/button";
 import {
   DATASET_LABELS, DATA_SOURCES, HISTORY_DATASETS, SOURCE_LABELS, detailFields, formatHistoryTime,
@@ -16,7 +17,6 @@ import { cn } from "@/lib/utils";
 import type { HistoryState } from "./use-history";
 
 const OUT_OF_RANGE_TEXT = "font-medium text-amber-600 dark:text-amber-400";
-const pillClass = "h-9 rounded-full bg-muted px-4 text-sm";
 const CARD_SKIPPED = new Set(["occurred_at", "data_source", "notes"]);
 const rowKey = (row: HistoryRow) => `${row.dataset}-${row.id}`;
 
@@ -34,52 +34,12 @@ type Choice<T extends string> = { value: T; label: string };
 function OptionList<T extends string>({ id, options, active, value, empty, onChoose, onHover }: {
   id: string; options: Choice<T>[]; active: number; value: T; empty?: string; onChoose: (option: Choice<T>) => void; onHover: (index: number) => void;
 }) {
-  return <ul id={`${id}-list`} role="listbox" className="absolute left-0 top-full z-20 mt-1 max-h-72 w-max min-w-full overflow-auto rounded-2xl bg-popover p-1 text-popover-foreground shadow-lg ring-1 ring-border">
+  return <ul id={`${id}-list`} role="listbox" className="absolute left-0 top-full z-20 mt-1 max-h-72 w-max min-w-full max-w-[calc(100vw-2rem)] overflow-auto rounded-2xl bg-popover p-1 text-popover-foreground shadow-lg ring-1 ring-border">
     {options.length === 0 && <li role="presentation" className="px-3 py-2 text-sm text-muted-foreground">{empty}</li>}
     {options.map((option, index) => <li key={option.value} id={`${id}-${index}`} role="option" aria-selected={option.value === value}
-      onMouseDown={(event) => { event.preventDefault(); onChoose(option); }} onMouseEnter={() => onHover(index)}
-      className={cn("cursor-pointer whitespace-nowrap rounded-xl px-3 py-2 text-sm", index === active && "bg-accent", option.value === value && "font-semibold")}>{option.label}</li>)}
+      onMouseDown={(event) => event.preventDefault()} onClick={() => onChoose(option)} onMouseEnter={() => onHover(index)}
+      className={cn("touch-target cursor-pointer whitespace-normal break-words rounded-xl px-3 py-2 text-sm", index === active && "bg-accent", option.value === value && "font-semibold")}>{option.label}</li>)}
   </ul>;
-}
-
-function FilterSelect({ label, value, options, onChange }: { label: string; value: string; options: Choice<string>[]; onChange: (value: string) => void }) {
-  const id = useId();
-  const ref = useRef<HTMLDivElement>(null);
-  const [open, setOpen] = useState(false);
-  const [active, setActive] = useState(0);
-  const selectedIndex = Math.max(0, options.findIndex((option) => option.value === value));
-  const show = () => { setActive(selectedIndex); setOpen(true); };
-  const choose = (option: Choice<string>) => { onChange(option.value); setOpen(false); };
-  // Safari does not focus a button on click, so blur alone would leave the menu open.
-  useEffect(() => {
-    if (!open) return;
-    const onDown = (event: PointerEvent) => { if (!ref.current?.contains(event.target as Node)) setOpen(false); };
-    document.addEventListener("pointerdown", onDown);
-    return () => document.removeEventListener("pointerdown", onDown);
-  }, [open]);
-  return <div ref={ref} className="relative">
-    <button type="button" role="combobox" aria-label={label} aria-expanded={open} aria-haspopup="listbox" aria-controls={`${id}-list`}
-      aria-activedescendant={open ? `${id}-${active}` : undefined} className={cn(pillClass, "inline-flex items-center gap-2 pr-3", focusClass)}
-      onClick={(event) => { event.currentTarget.focus(); if (open) setOpen(false); else show(); }}
-      onBlur={() => setOpen(false)}
-      onKeyDown={(event) => {
-        if (event.key === "ArrowDown" || event.key === "ArrowUp") {
-          event.preventDefault();
-          if (!open) show();
-          else setActive((current) => Math.max(0, Math.min(options.length - 1, current + (event.key === "ArrowDown" ? 1 : -1))));
-        } else if (event.key === "Enter" || event.key === " ") {
-          event.preventDefault();
-          if (open) choose(options[active]);
-          else show();
-        } else if (event.key === "Escape" && open) {
-          event.preventDefault();
-          setOpen(false);
-        }
-      }}>
-      <span>{options[selectedIndex]?.label}</span><ChevronDown aria-hidden="true" className="h-4 w-4 shrink-0 text-muted-foreground" />
-    </button>
-    {open && <OptionList id={id} options={options} active={active} value={value} onChoose={choose} onHover={setActive} />}
-  </div>;
 }
 
 // Type to filter; the first match is highlighted, so Enter or Tab fills it in.
@@ -90,6 +50,7 @@ function DatasetCombobox({ value, canViewStar, onChange }: { value: HistoryDatas
   ];
   const selected = options.find((option) => option.value === value) ?? options[0];
   const id = useId();
+  const listRef = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState<string | null>(null);
   const [active, setActive] = useState(0);
@@ -97,11 +58,14 @@ function DatasetCombobox({ value, canViewStar, onChange }: { value: HistoryDatas
   const matches = options.filter((option) => option.label.toLowerCase().includes(needle));
   const close = () => { setOpen(false); setQuery(null); };
   const choose = (option: (typeof options)[number]) => { onChange(option.value); close(); };
-  return <div className="relative">
+  useEffect(() => {
+    if (open) document.getElementById(`${id}-${active}`)?.scrollIntoView({ block: "nearest" });
+  }, [active, id, open]);
+  return <div className="relative min-w-0">
     <label htmlFor={id} className="sr-only">Dataset</label>
-    <input id={id} role="combobox" aria-expanded={open} aria-controls={`${id}-list`} aria-autocomplete="list" autoComplete="off"
+    <input id={id} role="combobox" aria-expanded={open} aria-haspopup="listbox" aria-controls={`${id}-list`} aria-autocomplete="list" autoComplete="off"
       aria-activedescendant={open && matches[active] ? `${id}-${active}` : undefined}
-      value={query ?? selected.label} className={cn(pillClass, "w-56 pr-9", focusClass)}
+      value={query ?? selected.label} className={cn(FILTER_BOX_CLASS, "pl-3 pr-9", focusClass)}
       onFocus={(event) => { setOpen(true); event.target.select(); }}
       onBlur={close}
       onChange={(event) => { setQuery(event.target.value); setActive(0); setOpen(true); }}
@@ -113,6 +77,12 @@ function DatasetCombobox({ value, canViewStar, onChange }: { value: HistoryDatas
         } else if (event.key === "Enter" && open && matches[active]) {
           event.preventDefault();
           choose(matches[active]);
+        } else if (event.key === "Home" && open) {
+          event.preventDefault();
+          setActive(0);
+        } else if (event.key === "End" && open) {
+          event.preventDefault();
+          setActive(Math.max(0, matches.length - 1));
         } else if (event.key === "Tab" && query !== null && matches[active]) {
           choose(matches[active]);
         } else if (event.key === "Escape" && open) {
@@ -120,64 +90,79 @@ function DatasetCombobox({ value, canViewStar, onChange }: { value: HistoryDatas
           close();
         }
       }} />
-    <ChevronDown aria-hidden="true" className="pointer-events-none absolute right-3 top-2.5 h-4 w-4 text-muted-foreground" />
-    {open && <OptionList id={id} options={matches} active={active} value={value} empty="No matching dataset" onChoose={choose} onHover={setActive} />}
+    <ChevronDown aria-hidden="true" className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+    {open && <div ref={listRef}><OptionList id={id} options={matches} active={active} value={value} empty="No matching dataset" onChoose={choose} onHover={setActive} /></div>}
   </div>;
 }
 
 function ExportButton({ h }: { h: HistoryState }) {
   if (h.exporting) {
-    return <div role="status" className="inline-flex items-center gap-3 text-sm">
-      <span className="tabular-nums">Exporting {h.exporting.done.toLocaleString()} of {h.exporting.total.toLocaleString()} rows</span>
-      <Button type="button" variant="outline" size="sm" onClick={h.cancelExport}>Cancel</Button>
+    return <div role="status" className="filter-grid__action flex h-9 min-w-0 items-center justify-between gap-2 text-sm">
+      <span className="truncate tabular-nums">Exporting {h.exporting.done.toLocaleString()} of {h.exporting.total.toLocaleString()}</span>
+      <Button type="button" variant="outline" size="sm" className="touch-target rounded-full" onClick={h.cancelExport}>Cancel</Button>
     </div>;
   }
-  return <div className="flex flex-col items-end gap-1">
-    <Button type="button" variant="outline" disabled={h.total === 0} onClick={() => void h.exportCsv()}>
-      <Download aria-hidden="true" />Export {h.total.toLocaleString()} {h.total === 1 ? "row" : "rows"}
-    </Button>
-    {h.exportError && <p role="alert" className="text-sm text-red-500">Export failed: {h.exportError}</p>}
-  </div>;
+  return <Button type="button" variant="outline" disabled={h.total === 0} onClick={() => void h.exportCsv()} className="filter-grid__action touch-target h-9 min-w-0 rounded-full">
+    <Download aria-hidden="true" /><span className="truncate">Export {h.total.toLocaleString()} {h.total === 1 ? "row" : "rows"}</span>
+  </Button>;
 }
 
 export function FilterBar({ h }: { h: HistoryState }) {
   const { params, update } = h;
-  const toggle = (pressed: boolean) => cn("inline-flex h-9 items-center rounded-full px-4 text-sm font-medium transition-colors", focusClass,
-    pressed ? "bg-foreground text-background" : "bg-muted text-muted-foreground hover:text-foreground");
-  return <div className="space-y-3">
-    <div className="flex flex-wrap items-center gap-3">
+  const secondaryCount = Number(params.recorder !== null) + Number(params.source !== null) + Number(params.outOfRange);
+  const [requestedMoreOpen, setRequestedMoreOpen] = useState<boolean | null>(null);
+  const moreOpen = requestedMoreOpen ?? secondaryCount > 0;
+  useEffect(() => {
+    if (secondaryCount === 0) setRequestedMoreOpen(null);
+  }, [secondaryCount]);
+  const moreFiltersLabel = `${moreOpen ? "Fewer" : "More"} filters${secondaryCount ? ` · ${secondaryCount}` : ""}`;
+  return <div className="filter-toolbar space-y-3">
+    <div className={cn("filter-grid", moreOpen && "is-open")}>
       <DatasetCombobox value={params.dataset} canViewStar={h.canViewStar} onChange={(value) => update({ dataset: value, sort: null, dir: null, oor: null })} />
-      <Segmented<HistoryRange> label="Date range" value={params.range} onChange={(value) => update(value === "custom" ? { range: value, from: params.from, to: params.to } : { range: value, from: null, to: null })} options={[...RANGE_OPTIONS]} />
-      {params.range === "custom" && (["from", "to"] as const).map((key) => <label key={key} className="inline-flex items-center gap-2 text-sm text-muted-foreground">
-        <span className="capitalize">{key}</span>
-        <input type="date" value={params[key]} onChange={(event) => event.target.value && update({ [key]: event.target.value })} className={cn(pillClass, "text-foreground", focusClass)} />
-      </label>)}
-      <FilterSelect label="System" value={params.system === null ? "all" : String(params.system)} onChange={(value) => update({ system: value })}
+      <CompactSelect<HistoryRange> label="Date range" value={params.range} onChange={(value) => update(value === "custom" ? { range: value, from: params.from, to: params.to } : { range: value, from: null, to: null })} options={[...RANGE_OPTIONS]} />
+      {params.range === "custom" && (["from", "to"] as const).map((key) => <input key={key} type="date" aria-label={key === "from" ? "From date" : "To date"} value={params[key]}
+        onChange={(event) => event.target.value && update({ [key]: event.target.value })} className={cn(FILTER_BOX_CLASS, "px-3", focusClass)} />)}
+      <CompactSelect label="System" value={params.system === null ? "all" : String(params.system)}
+        onChange={(value) => update({ system: value === "all" ? null : value })}
         options={[{ value: "all", label: "All systems" }, ...h.systems.map((system) => ({ value: String(system.id), label: system.name }))]} />
-      <FilterSelect label="Recorded by" value={params.recorder === null ? "all" : String(params.recorder)} onChange={(value) => update({ recorder: value })}
-        options={[{ value: "all", label: "Anyone" }, ...h.recorders.map((recorder) => ({ value: String(recorder.id), label: recorder.name }))]} />
-      <FilterSelect label="Data source" value={params.source ?? "all"} onChange={(value) => update({ source: value })}
-        options={[{ value: "all", label: "Any source" }, ...DATA_SOURCES.map((value) => ({ value, label: SOURCE_LABELS[value] }))]} />
-      <HydratedForm role="search" className="relative inline-flex items-center" onSubmit={(event) => {
+      <button type="button" aria-expanded={moreOpen} aria-controls="history-recorder-filter history-source-filter history-range-filter" onClick={() => setRequestedMoreOpen(!moreOpen)}
+        className={cn(FILTER_BOX_CLASS, "filter-grid__more items-center justify-center gap-2 px-3 font-medium", focusClass)}>
+        <SlidersHorizontal aria-hidden="true" className="h-4 w-4 shrink-0" />
+        <span className="truncate">{moreFiltersLabel}</span>
+      </button>
+      <HydratedForm role="search" className="filter-grid__wide filter-grid__search relative flex items-center" onSubmit={(event) => {
         event.preventDefault();
         update({ q: String(new FormData(event.currentTarget).get("q") ?? "").trim() });
       }}>
         <label className="sr-only" htmlFor="history-search">Search notes, system, tank, animal, or recorder (press Enter)</label>
-        <Search aria-hidden="true" className="pointer-events-none absolute left-3.5 h-4 w-4 text-muted-foreground" />
+        <Search aria-hidden="true" className="pointer-events-none absolute left-3 h-4 w-4 text-muted-foreground" />
         <input key={params.q} id="history-search" name="q" type="search" defaultValue={params.q} placeholder="Search, then Enter" maxLength={100}
-          className={cn(pillClass, "w-52 pl-10 placeholder:text-muted-foreground", focusClass)} />
+          className={cn(FILTER_BOX_CLASS, "pl-9 pr-3 placeholder:text-muted-foreground", focusClass)} />
       </HydratedForm>
-      <button type="button" aria-pressed={params.outOfRange} onClick={() => update({ oor: params.outOfRange ? null : "1" })} className={toggle(params.outOfRange)}>Out of range only</button>
-      <div className="ml-auto"><ExportButton h={h} /></div>
+      <div id="history-recorder-filter" className="filter-grid__secondary">
+        <CompactSelect label="Recorded by" value={params.recorder === null ? "all" : String(params.recorder)}
+          onChange={(value) => update({ recorder: value === "all" ? null : value })}
+          options={[{ value: "all", label: "Anyone" }, ...h.recorders.map((recorder) => ({ value: String(recorder.id), label: recorder.name }))]} />
+      </div>
+      <div id="history-source-filter" className="filter-grid__secondary">
+        <CompactSelect label="Data source" value={params.source ?? "all"}
+          onChange={(value) => update({ source: DATA_SOURCES.find((source) => source === value) ?? null })}
+          options={[{ value: "all", label: "Any source" }, ...DATA_SOURCES.map((value) => ({ value, label: SOURCE_LABELS[value] }))]} />
+      </div>
+      <div id="history-range-filter" className="filter-grid__secondary">
+        <FilterToggle label="Out of range only" checked={params.outOfRange} onChange={(checked) => update({ oor: checked ? "1" : null })} />
+      </div>
+      <ExportButton h={h} />
     </div>
-    {h.chips.length > 0 && <ul aria-label="Active filters" className="flex flex-wrap items-center gap-2">
-      {h.chips.map((chip) => <li key={chip.id}>
-        <button type="button" onClick={chip.clear} aria-label={`Remove filter ${chip.label}`} className={cn("inline-flex items-center gap-1.5 rounded-full bg-muted py-1 pl-3 pr-2 text-sm", focusClass)}>
-          {chip.label}<X aria-hidden="true" className="h-3.5 w-3.5" />
-        </button>
-      </li>)}
-      <li><button type="button" onClick={h.clearAll} className={cn("rounded-full px-2 py-1 text-sm text-muted-foreground underline-offset-4 hover:underline", focusClass)}>Clear all</button></li>
-    </ul>}
+    {h.exportError && <p role="alert" className="text-sm text-red-500">Export failed: {h.exportError}</p>}
+    {h.chips.length > 0 && <ul aria-label="Active filters" className="flex min-w-0 flex-wrap items-center gap-2">
+        {h.chips.map((chip) => <li key={chip.id}>
+          <button type="button" onClick={chip.clear} aria-label={`Remove filter ${chip.label}`} className={cn("touch-target inline-flex h-8 items-center gap-1.5 rounded-full bg-muted pl-3 pr-2 text-sm", focusClass)}>
+            {chip.label}<X aria-hidden="true" className="h-3.5 w-3.5" />
+          </button>
+        </li>)}
+        <li><button type="button" onClick={h.clearAll} className={cn("touch-target h-8 rounded-full px-2 text-sm text-muted-foreground underline-offset-4 hover:underline", focusClass)}>Clear all</button></li>
+      </ul>}
   </div>;
 }
 
@@ -226,7 +211,8 @@ export function HistoryTable({ h }: { h: HistoryState }) {
   }
   return <Tile className="space-y-4 p-4 sm:p-6">
     {h.loading ? <RowsSkeleton /> : h.rows.length === 0 ? <EmptyNote>No entries match these filters. Try a wider date range or clear a filter.</EmptyNote> : <>
-      <div className="hidden overflow-x-auto sm:block">
+      <div className="history-results-container">
+      <div className="history-results-table overflow-x-auto">
         <table className="w-full border-separate border-spacing-0 text-sm">
           <thead>
             <tr>
@@ -261,7 +247,8 @@ export function HistoryTable({ h }: { h: HistoryState }) {
           </tbody>
         </table>
       </div>
-      <ul className="space-y-2 sm:hidden">{h.rows.map((row) => <li key={rowKey(row)}><EntryCard row={row} h={h} columns={columns} /></li>)}</ul>
+      <ul className="history-results-cards space-y-2">{h.rows.map((row) => <li key={rowKey(row)}><EntryCard row={row} h={h} columns={columns} /></li>)}</ul>
+      </div>
     </>}
     <Pager h={h} />
   </Tile>;
@@ -308,6 +295,8 @@ export function RowDetail({ h }: { h: HistoryState }) {
   if (!row) return null;
   const fields = detailFields(row);
   return <Sheet title={`${DATASET_LABELS[row.dataset]} · ${formatHistoryTime(row.occurred_at)}`} onClose={() => h.setOpenKey(null)}>
+    {h.openRowStatus === "loading" && <p role="status" className="mb-4 text-sm text-muted-foreground">Loading details…</p>}
+    {h.openRowStatus === "error" && <p role="alert" className="mb-4 text-sm text-red-500">Details could not be loaded. Filter by this dataset to see them.</p>}
     <dl className="grid gap-x-8 gap-y-4 sm:grid-cols-2">
       {fields.map((field) => <div key={field.label}>
         <dt className="text-sm text-muted-foreground">{field.label}</dt>

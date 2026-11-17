@@ -1,9 +1,8 @@
 "use client";
 
-import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 
-import { Button } from "@/components/ui/button";
+import { CompactSelect } from "@/components/ui/app-primitives";
 import { CHECK_TYPES } from "@/lib/config/reference-data";
 
 import { LOG_TYPES, renderLogForm, type LogTypeId, type SharedFormData } from "./log-types";
@@ -11,6 +10,7 @@ import { LOG_TYPES, renderLogForm, type LogTypeId, type SharedFormData } from ".
 const BATCH_LOG_TYPES: ReadonlySet<LogTypeId> = new Set(["feeding", "star-treatment"]);
 
 export function DailyOperationsHub(data: SharedFormData) {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const requestedType = searchParams.get("type");
   const availableLogTypes = LOG_TYPES.filter(
@@ -36,31 +36,22 @@ export function DailyOperationsHub(data: SharedFormData) {
     return `/protected/daily-operations?${nextParams.toString()}`;
   };
 
+  const ActiveIcon = availableLogTypes.find((type) => type.id === active)?.icon;
+
   return (
     <div className="flex flex-col gap-5">
-      <nav
-        aria-label="Daily operation type"
-        className="inline-flex w-fit flex-wrap gap-1 rounded-lg border bg-muted p-1"
-      >
-        {availableLogTypes.map((t) => (
-          <Button
-            key={t.id}
-            asChild
-            size="sm"
-            variant={active === t.id ? "default" : "ghost"}
-            className="h-9 gap-1.5 rounded-md"
-          >
-            <Link
-              href={hrefForType(t.id)}
-              aria-current={active === t.id ? "page" : undefined}
-              scroll={false}
-            >
-              <t.icon className="size-4" aria-hidden="true" />
-              {t.label}
-            </Link>
-          </Button>
-        ))}
-      </nav>
+      <div className="filter-toolbar">
+        <div className="filter-grid">
+          <CompactSelect
+            label="Operation"
+            value={active}
+            icon={ActiveIcon && <ActiveIcon className="size-4" />}
+            options={availableLogTypes.map((type) => ({ value: type.id, label: type.label }))}
+            onChange={(value) => router.push(hrefForType(value), { scroll: false })}
+            className="filter-grid__wide"
+          />
+        </div>
+      </div>
       {renderLogForm(active, data, {
         systemId: searchParams.get("system") ?? undefined,
         checkType: CHECK_TYPES.find((type) => type === searchParams.get("check")),

@@ -105,8 +105,7 @@ test.describe("History page as a technician", () => {
     await expect(header).toHaveAttribute("aria-sort", "ascending");
     await expect(page.locator("tbody tr").first()).toContainText("10.1");
 
-    await page.getByRole("combobox", { name: "System" }).click();
-    await page.getByRole("option", { name: systemName, exact: true }).click();
+    await page.getByRole("combobox", { name: "System" }).selectOption({ label: systemName });
     await expect(page.getByRole("list", { name: "Active filters" }).getByText(systemName)).toBeVisible();
     await expect(page).toHaveURL(/system=\d+/);
     await page.getByRole("button", { name: "Clear all" }).click();
@@ -118,6 +117,29 @@ test.describe("History page as a technician", () => {
     await search.press("Enter");
     await expect(page).toHaveURL(/check(\+|%20)7/);
     await expect(showingText(page)).toHaveText(/of 1\b/);
+
+    await page.setViewportSize({ width: 390, height: 844 });
+    const moreFilters = page.getByRole("button", { name: /filters/i });
+    await expect(moreFilters).toBeVisible();
+    await page.getByRole("combobox", { name: "System" }).selectOption({ label: systemName });
+    await expect(page.getByRole("list", { name: "Active filters" }).getByText(systemName)).toBeVisible();
+    const outOfRange = page.getByRole("checkbox", { name: "Out of range only" });
+    await expect(outOfRange).toBeHidden();
+    await moreFilters.click();
+    await outOfRange.click();
+    await expect(page).toHaveURL(/oor=1/);
+    await expect(moreFilters).toHaveAttribute("aria-expanded", "true");
+    await expect(outOfRange).toBeChecked();
+    await expect(moreFilters).toContainText("1");
+    await outOfRange.click();
+    await expect(page).not.toHaveURL(/oor=1/);
+    await expect(moreFilters).toHaveAttribute("aria-expanded", "false");
+    await expect(outOfRange).toBeHidden();
+    const dimensions = await page.evaluate(() => ({
+      clientWidth: document.documentElement.clientWidth,
+      scrollWidth: document.documentElement.scrollWidth,
+    }));
+    expect(dimensions.scrollWidth).toBeLessThanOrEqual(dimensions.clientWidth + 1);
   });
 
   test("the out-of-range filter keeps only flagged water tests", async ({ page }) => {

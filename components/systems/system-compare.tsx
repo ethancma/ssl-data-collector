@@ -1,6 +1,6 @@
 import { ArrowLeft } from "lucide-react";
 
-import { PageHeader, focusClass } from "@/components/iseau/shared";
+import { PageHeader, focusClass } from "@/components/ui/app-layout";
 import type { SystemDetailData } from "@/components/systems/types";
 import { cn } from "@/lib/utils";
 
@@ -19,7 +19,7 @@ export function SystemCompare({ systems, onOpen, onBack }: {
       <ArrowLeft aria-hidden="true" className="h-4 w-4" />All systems
     </a>
     <PageHeader title="Every system, side by side." description="Read across a row to spot the odd one out. Amber values are outside their target range." />
-    <div className="overflow-x-auto rounded-3xl bg-muted p-6 sm:p-8">
+    <div className="overflow-x-auto rounded-2xl bg-muted p-4 md:p-6">
       <table className="w-full border-collapse">
         <thead>
           <tr>

@@ -5,7 +5,7 @@
 // gracefully: each series only draws through the points it actually has, no
 // interpolated/assumed values for missing days.
 
-import { useEffect, useRef, useState, type PointerEvent } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
 
 import { formatPacificDateTime } from "@/lib/pacific-date-time";
 
@@ -71,8 +71,9 @@ export function useChartWidth(minWidth = MIN_CHART_WIDTH) {
 function useHoverState() {
   const svgRef = useRef<SVGSVGElement>(null);
   const [hoverTime, setHoverTime] = useState<number | null>(null);
+  const [pinnedTime, setPinnedTime] = useState<number | null>(null);
   const { wrapRef, width } = useChartWidth();
-  return { svgRef, hoverTime, setHoverTime, wrapRef, width };
+  return { svgRef, hoverTime, setHoverTime, pinnedTime, setPinnedTime, wrapRef, width };
 }
 
 // Builds the pointer-move handler for a chart's overlay rect: converts the
@@ -91,9 +92,9 @@ function createPointerMoveHandler(
   const timeRange = maxT - minT || 1;
   return (event: PointerEvent<SVGRectElement>) => {
     const svg = svgRef.current;
-    if (!svg || times.length === 0) return;
+    if (!svg || times.length === 0) return null;
     const bounds = svg.getBoundingClientRect();
-    if (bounds.width === 0) return;
+    if (bounds.width === 0) return null;
     const relX = event.clientX - bounds.left;
     const clampedX = Math.min(Math.max(relX, padX), bounds.width - padX);
     const targetT = minT + ((clampedX - padX) / plotWidth) * timeRange;
@@ -102,7 +103,36 @@ function createPointerMoveHandler(
       times[0],
     );
     setHoverTime(nearest);
+    return nearest;
   };
+}
+
+function moveChartSelection(
+  event: KeyboardEvent<SVGRectElement>,
+  times: number[],
+  activeTime: number | null,
+  setPinnedTime: (time: number | null) => void,
+  setHoverTime: (time: number | null) => void,
+) {
+  const index = activeTime === null ? -1 : times.indexOf(activeTime);
+  if (event.key === "Escape") {
+    setPinnedTime(null);
+    setHoverTime(null);
+    return;
+  }
+  if (event.key === "Home") {
+    event.preventDefault();
+    setPinnedTime(times[0] ?? null);
+  } else if (event.key === "End") {
+    event.preventDefault();
+    setPinnedTime(times.at(-1) ?? null);
+  } else if (event.key === "ArrowLeft" || event.key === "ArrowDown") {
+    event.preventDefault();
+    setPinnedTime(times[Math.max(0, index < 0 ? times.length - 1 : index - 1)] ?? null);
+  } else if (event.key === "ArrowRight" || event.key === "ArrowUp") {
+    event.preventDefault();
+    setPinnedTime(times[Math.min(times.length - 1, index < 0 ? 0 : index + 1)] ?? null);
+  }
 }
 
 // Vertical guideline + date label shown at the hovered x-position. Rendered
@@ -187,12 +217,13 @@ export function MultiLineChart({
 }) {
   const withPoints = series.filter((s) => s.points.length > 0);
   const allPoints = withPoints.flatMap((s) => s.points);
-  const { svgRef, hoverTime, setHoverTime, wrapRef, width: chartWidth } = useHoverState();
+  const { svgRef, hoverTime, setHoverTime, pinnedTime, setPinnedTime, wrapRef, width: chartWidth } = useHoverState();
   if (allPoints.length === 0) {
     return <p className="text-sm text-muted-foreground">{emptyMessage}</p>;
   }
 
   const allTimes = allPoints.map((p) => new Date(p.at).getTime());
+  const times = Array.from(new Set(allTimes)).sort((a, b) => a - b);
   const minT = Math.min(...allTimes);
   const maxT = Math.max(...allTimes);
   const timeRange = maxT - minT || 1;
@@ -214,16 +245,26 @@ export function MultiLineChart({
   const firstLabel = formatChartDate(minT);
   const lastLabel = formatChartDate(maxT);
 
+  const activeTime = pinnedTime ?? hoverTime;
   const handlePointerMove = createPointerMoveHandler(
     svgRef,
     setHoverTime,
-    Array.from(new Set(allTimes)),
+    times,
     minT,
     maxT,
     padX,
     plotWidth,
   );
-  const handlePointerLeave = () => setHoverTime(null);
+  const handlePointerLeave = () => { if (pinnedTime === null) setHoverTime(null); };
+  const selectedValues = activeTime === null ? "" : withPoints.flatMap((s) => {
+    const point = s.points.find((item) => new Date(item.at).getTime() === activeTime);
+    return point ? [`${s.label}: ${point.value}`] : [];
+  }).join(", ");
+  const latestValues = withPoints.flatMap((s) => {
+    const point = s.points.reduce<typeof s.points[number] | null>((latest, item) =>
+      latest === null || new Date(item.at).getTime() > new Date(latest.at).getTime() ? item : latest, null);
+    return point ? [`${s.label}: ${point.value} (${formatChartDate(new Date(point.at).getTime())})`] : [];
+  });
 
   return (
     <div className="flex flex-col gap-2">
@@ -284,6 +325,13 @@ export function MultiLineChart({
           );
         })}
         <rect
+          tabIndex={0}
+          role="slider"
+          aria-label="Chart date. Use arrow keys to inspect readings."
+          aria-valuemin={0}
+          aria-valuemax={Math.max(0, times.length - 1)}
+          aria-valuenow={Math.max(0, times.indexOf(activeTime ?? times[0]))}
+          aria-valuetext={activeTime === null ? "No date selected" : `${formatChartDate(activeTime)}: ${selectedValues}`}
           x={0}
           y={0}
           width={chartWidth}
@@ -291,10 +339,19 @@ export function MultiLineChart({
           fill="transparent"
           onPointerMove={handlePointerMove}
           onPointerLeave={handlePointerLeave}
+          onPointerDown={(event) => {
+            if (event.pointerType === "touch") {
+              const time = handlePointerMove(event);
+              if (time !== null) setPinnedTime(time);
+            }
+          }}
+          onKeyDown={(event) => moveChartSelection(event, times, activeTime, setPinnedTime, setHoverTime)}
+          className="cursor-crosshair focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring forced-colors:focus-visible:outline-[Highlight]"
         />
-        <HoverIndicator hoverTime={hoverTime} x={x} height={height} padY={padY} chartWidth={chartWidth} />
+        <HoverIndicator hoverTime={activeTime} x={x} height={height} padY={padY} chartWidth={chartWidth} />
         </svg>
       </div>
+      {activeTime !== null && <p role="status" className="text-sm">{formatChartDate(activeTime)}: {selectedValues}</p>}
       <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
         <div className="flex flex-wrap gap-x-4 gap-y-1">
           {withPoints.map((s) => (
@@ -312,6 +369,9 @@ export function MultiLineChart({
           {firstLabel} – {lastLabel}
         </span>
       </div>
+      <ul aria-label="Latest chart readings" className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+        {latestValues.map((value) => <li key={value}>{value}</li>)}
+      </ul>
     </div>
   );
 }
@@ -332,12 +392,13 @@ export function DualAxisLineChart({
   emptyMessage?: string;
 }) {
   const allPoints = [...left.points, ...right.points];
-  const { svgRef, hoverTime, setHoverTime, wrapRef, width: chartWidth } = useHoverState();
+  const { svgRef, hoverTime, setHoverTime, pinnedTime, setPinnedTime, wrapRef, width: chartWidth } = useHoverState();
   if (allPoints.length === 0) {
     return <p className="text-sm text-muted-foreground">{emptyMessage}</p>;
   }
 
   const allTimes = allPoints.map((p) => new Date(p.at).getTime());
+  const times = Array.from(new Set(allTimes)).sort((a, b) => a - b);
   const minT = Math.min(...allTimes);
   const maxT = Math.max(...allTimes);
   const timeRange = maxT - minT || 1;
@@ -429,16 +490,26 @@ export function DualAxisLineChart({
   const firstLabel = formatChartDate(minT);
   const lastLabel = formatChartDate(maxT);
 
+  const activeTime = pinnedTime ?? hoverTime;
   const handlePointerMove = createPointerMoveHandler(
     svgRef,
     setHoverTime,
-    Array.from(new Set(allTimes)),
+    times,
     minT,
     maxT,
     padX,
     plotWidth,
   );
-  const handlePointerLeave = () => setHoverTime(null);
+  const handlePointerLeave = () => { if (pinnedTime === null) setHoverTime(null); };
+  const selectedValues = activeTime === null ? "" : [left, right].flatMap((series) => {
+    const point = series.points.find((item) => new Date(item.at).getTime() === activeTime);
+    return point ? [`${series.label}: ${point.value}`] : [];
+  }).join(", ");
+  const latestValues = [left, right].flatMap((series) => {
+    const point = series.points.reduce<typeof series.points[number] | null>((latest, item) =>
+      latest === null || new Date(item.at).getTime() > new Date(latest.at).getTime() ? item : latest, null);
+    return point ? [`${series.label}: ${point.value} (${formatChartDate(new Date(point.at).getTime())})`] : [];
+  });
 
   return (
     <div className="flex flex-col gap-2">
@@ -455,6 +526,13 @@ export function DualAxisLineChart({
           {renderLine(left, leftScale)}
           {renderLine(right, rightScale)}
           <rect
+            tabIndex={0}
+            role="slider"
+            aria-label="Chart date. Use arrow keys to inspect readings."
+            aria-valuemin={0}
+            aria-valuemax={Math.max(0, times.length - 1)}
+            aria-valuenow={Math.max(0, times.indexOf(activeTime ?? times[0]))}
+            aria-valuetext={activeTime === null ? "No date selected" : `${formatChartDate(activeTime)}: ${selectedValues}`}
             x={0}
             y={0}
             width={chartWidth}
@@ -462,16 +540,27 @@ export function DualAxisLineChart({
             fill="transparent"
             onPointerMove={handlePointerMove}
             onPointerLeave={handlePointerLeave}
+            onPointerDown={(event) => {
+              if (event.pointerType === "touch") {
+                const time = handlePointerMove(event);
+                if (time !== null) setPinnedTime(time);
+              }
+            }}
+            onKeyDown={(event) => moveChartSelection(event, times, activeTime, setPinnedTime, setHoverTime)}
+            className="cursor-crosshair focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring forced-colors:focus-visible:outline-[Highlight]"
           />
-          <HoverIndicator hoverTime={hoverTime} x={x} height={height} padY={padY} chartWidth={chartWidth} />
+          <HoverIndicator hoverTime={activeTime} x={x} height={height} padY={padY} chartWidth={chartWidth} />
         </svg>
       </div>
+      {activeTime !== null && <p role="status" className="text-sm">{formatChartDate(activeTime)}: {selectedValues}</p>}
       <div className="flex items-center justify-end text-xs text-muted-foreground">
         <span>
           {firstLabel} – {lastLabel}
         </span>
       </div>
+      <ul aria-label="Latest chart readings" className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+        {latestValues.map((value) => <li key={value}>{value}</li>)}
+      </ul>
     </div>
   );
 }
-

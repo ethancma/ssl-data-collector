@@ -255,7 +255,7 @@ export function BatchScopeFields({
   return (
     <fieldset className="min-w-0" disabled={disabled}>
       <legend className="sr-only">{text.legend}</legend>
-      <div className="grid gap-6">
+      <div className="grid gap-4 md:gap-5">
         <div className="grid gap-2">
           <Label htmlFor={`${idPrefix}-system`}>System</Label>
           <select
@@ -463,7 +463,7 @@ export function BatchSuccessCard({
             : `${result.created_count} ${nounPlural} logged.`}
         </CardDescription>
       </CardHeader>
-      <CardContent className="grid gap-6">
+      <CardContent className="grid gap-4 md:gap-5">
         <div className="grid gap-2">
           <p className="text-sm font-medium leading-none">Logged ({logged.length})</p>
           <ul className="grid gap-1 text-sm sm:grid-cols-2">
