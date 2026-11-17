@@ -28,7 +28,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   if (!isOpenInvitation(invitation)) return errorResponse("This invitation is invalid, expired, revoked, or already accepted.", 410);
 
   try {
-    const admin = createServiceRoleClient().auth.admin;
+    const privileged = await createServiceRoleClient();
+    const admin = privileged.auth.admin;
     const existing = await findAuthUserByEmail(invitation.email);
     let userId: string;
     if (existing) {
@@ -41,7 +42,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       if (error || !data.user) return errorResponse("Could not create the invited account. Retry later.", 503);
       userId = data.user.id;
     }
-    const { error: acceptError } = await createServiceRoleClient().rpc("accept_invitation", {
+    const { error: acceptError } = await privileged.rpc("accept_invitation", {
       p_token_hash: invitation.token_hash, p_auth_user_id: userId,
     });
     if (acceptError) return errorResponse("The invitation could not be completed. Your account is ready to retry; contact an Admin if this persists.", 409);

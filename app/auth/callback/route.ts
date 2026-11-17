@@ -45,7 +45,8 @@ export async function GET(request: NextRequest) {
     return redirect(errorPath("The Google account email does not match this invitation."));
   }
 
-  const { error: acceptError } = await createServiceRoleClient().rpc("accept_invitation", {
+  const privileged = await createServiceRoleClient();
+  const { error: acceptError } = await privileged.rpc("accept_invitation", {
     p_token_hash: invitation.token_hash,
     p_auth_user_id: user.id,
   });

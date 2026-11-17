@@ -52,7 +52,8 @@ export async function POST(
   if (target.status !== "active") return errorResponse("Reset links are only available for active users.", 409);
 
   try {
-    const { data, error } = await createServiceRoleClient().auth.admin.generateLink({
+    const privileged = await createServiceRoleClient();
+    const { data, error } = await privileged.auth.admin.generateLink({
       type: "recovery",
       email: target.email,
     });

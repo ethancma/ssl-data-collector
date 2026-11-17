@@ -57,7 +57,7 @@ function validateInviteInput(body: unknown) {
 
 async function createInvitation(origin: string, adminAuthUserId: string, email: string, role: ProfileRole) {
   const token = generateInvitationToken();
-  const privileged = createServiceRoleClient();
+  const privileged = await createServiceRoleClient();
   const { data: invitationId, error } = await privileged.rpc("create_invitation", {
     p_admin_auth_user_id: adminAuthUserId,
     p_email: email,
@@ -73,7 +73,7 @@ export async function GET() {
   if ("response" in admin) return admin.response;
 
   try {
-    const privileged = createServiceRoleClient();
+    const privileged = await createServiceRoleClient();
     const { data, error } = await privileged
       .from("invitations")
       .select("id, email, role, expires_at, created_at")
@@ -119,7 +119,8 @@ export async function POST(request: NextRequest) {
     if (target.status !== "denied") return errorResponse("Only denied users can have access restored.");
 
     try {
-      const { error } = await createServiceRoleClient().rpc("reactivate_profile", {
+      const privileged = await createServiceRoleClient();
+      const { error } = await privileged.rpc("reactivate_profile", {
         p_admin_auth_user_id: admin.user.id,
         p_profile_id: target.id,
         p_role: body.role,
@@ -181,7 +182,7 @@ export async function POST(request: NextRequest) {
   if (body.action === "regenerate") {
     if (!Number.isSafeInteger(body.id) || !body.id) return errorResponse("Invalid invitation.");
     try {
-      const privileged = createServiceRoleClient();
+      const privileged = await createServiceRoleClient();
       const { error: revokeError } = await privileged.rpc("revoke_invitation", {
         p_admin_auth_user_id: admin.user.id, p_invitation_id: body.id,
       });
@@ -207,7 +208,8 @@ export async function DELETE(request: NextRequest) {
   const id = Number(request.nextUrl.searchParams.get("id"));
   if (!Number.isSafeInteger(id) || !id) return errorResponse("Invalid invitation.");
   try {
-    const { error } = await createServiceRoleClient().rpc("revoke_invitation", {
+    const privileged = await createServiceRoleClient();
+    const { error } = await privileged.rpc("revoke_invitation", {
       p_admin_auth_user_id: admin.user.id, p_invitation_id: id,
     });
     if (error) return rpcErrorResponse(error);

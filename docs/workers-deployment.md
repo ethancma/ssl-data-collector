@@ -77,9 +77,9 @@ not part of the Worker deploy.
 
 Keep `main` plus short-lived feature/fix branches for this small team. Develop against
 local Supabase, open a PR, check CI, and have a human merge only release-ready changes.
-The main checkout's default `npm run dev` uses production configuration; it is not an
-isolated test environment. Use a locally configured worktree, or explicitly selected
-Dev configuration, for development and never run E2E against production.
+The local app refuses Production and other unapproved Supabase targets even if they
+appear in `.env.local`. Configure the local Docker stack or explicitly select Dev for
+development; never run E2E against production.
 The hosted staging app and any local app configured for Dev share that Dev database;
 coordinate test writes and fixtures during acceptance. A Git branch does not create
 an isolated database.
@@ -134,9 +134,23 @@ production; it does not support deploying an arbitrary older commit or tag.
 
 ## Local verification
 
-Use a worktree configured with local Supabase, not the main checkout's hosted
-`.env.local`. Never stop/restart the human's port-3000 server. The e2e global setup
+Use a worktree configured with local Supabase, or the designated Dev project for
+hosted integration checks. Never stop/restart the human's port-3000 server. The e2e global setup
 and teardown can reset/sweep their database; verify every target first.
+
+Local requests may connect only to the designated Dev Supabase origin or the loopback
+Docker API on port 54321. Other targets return an explicit error before a Supabase
+client connects. This also applies to local production builds and Worker previews;
+the browser, proxy, server, and privileged clients each enforce it. A deployed app can
+use its hosted database when `NODE_ENV` is production and the request host matches its
+configured canonical HTTPS `NEXT_PUBLIC_SITE_URL`. Noncanonical hosts are treated as
+unverified and may use only Dev or Local. Restart your own server and reload browser
+tabs after changing local configuration; rebuild production-mode previews because
+public variables are embedded at build time.
+
+This is an accidental-use guard, not a Supabase authorization boundary: direct requests,
+forged host information, and previously loaded application code are outside its scope.
+Production credentials and database permissions must still be protected separately.
 
 1. Set the shell's `NEXT_PUBLIC_SITE_URL` to the exact local server origin,
    e.g. `http://localhost:3102`. Supply local Supabase variables using the existing

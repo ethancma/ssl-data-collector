@@ -10,16 +10,18 @@ export type Invitation = {
   accepted_at: string | null;
 };
 
-export function getInvitationByToken(token: string) {
-  return createServiceRoleClient()
+export async function getInvitationByToken(token: string) {
+  const privileged = await createServiceRoleClient();
+  return privileged
     .from("invitations")
     .select("id, email, role, token_hash, expires_at, revoked_at, accepted_at")
     .eq("token_hash", hashInvitationToken(token))
     .maybeSingle<Invitation>();
 }
 
-export function getInvitationById(id: number) {
-  return createServiceRoleClient()
+export async function getInvitationById(id: number) {
+  const privileged = await createServiceRoleClient();
+  return privileged
     .from("invitations")
     .select("id, email, role, token_hash, expires_at, revoked_at, accepted_at")
     .eq("id", id)
@@ -44,7 +46,7 @@ export function isValidInvitationToken(value: unknown): value is string {
 }
 
 export async function findAuthUserByEmail(email: string) {
-  const admin = createServiceRoleClient().auth.admin;
+  const admin = (await createServiceRoleClient()).auth.admin;
   const { data, error } = await admin.listUsers({ page: 1, perPage: 1000 });
   if (error) throw error;
   return data.users.find((user) => user.email?.toLowerCase() === email) ?? null;

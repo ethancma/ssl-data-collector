@@ -2,6 +2,8 @@ import { createHash, randomBytes } from "node:crypto";
 
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 
+import { assertSafeServerSupabaseTarget } from "@/lib/supabase/server";
+
 export function generateInvitationToken(): string {
   return randomBytes(32).toString("base64url");
 }
@@ -14,7 +16,8 @@ export function buildInvitationUrl(origin: string, token: string): string {
   return `${origin.replace(/\/$/, "")}/invite/${token}`;
 }
 
-export function createServiceRoleClient() {
+export async function createServiceRoleClient() {
+  await assertSafeServerSupabaseTarget();
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.SUPABASE_SECRET_KEY;
   if (!url || !key) {

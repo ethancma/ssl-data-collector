@@ -69,7 +69,7 @@ weaken each section's UI and direct-Supabase assertions.
   likely file or directory. After a miss, inspect the route file or browser snapshot; do not
   retry variations of a broad regex.
 4. Run the narrowest existing check first:
-  `npx playwright test <section-file> -g "<exact test or describe title>"`.
+  `npm run test:e2e:full -- <section-file> -g "<exact test or describe title>"`.
   Run the whole section only after that check passes. Run multiple sections only when the
   change crosses those areas or the testing tier requires them.
 5. Extend a test only after the targeted run proves the behavior is uncovered. Reuse
@@ -81,7 +81,7 @@ weaken each section's UI and direct-Supabase assertions.
 |---|---|---|---|
 | Local | Docker stack shared by worktrees | Worktree: `npm run dev -- -p $PORT` | Default for e2e, migrations, and anything destructive |
 | Dev | `hcaopgzlvuyuyjcjxuvy` | Main checkout: `npm run dev:supabase-dev` | Hosted e2e (Auth, Storage, OAuth, redirects) with throwaway data |
-| Production | `bqylxmsifagnztxhixyl` (linked CLI project, real data) | Main checkout: `npm run dev` on `:3000` (the human's) | Read-only checks only; never e2e |
+| Production | `bqylxmsifagnztxhixyl` (linked CLI project, real data) | Hosted production app only; local app connections are blocked | Human read-only checks only; never e2e |
 
 - `npm run dev:supabase-dev` loads `.env.supabase-dev.local` (gitignored, human-maintained),
   which overrides `.env.local`. It also uses `:3000`, so only one of `dev` or
@@ -89,7 +89,9 @@ weaken each section's UI and direct-Supabase assertions.
 - Playwright loads only `.env.local`, so source the Dev file in the same shell first:
   `set -a; . ./.env.supabase-dev.local; set +a; unset E2E_RESET_DB`, then
   explicitly export `E2E_BASE_URL` matching that server's `NEXT_PUBLIC_SITE_URL`.
-  Run `npm run test:e2e:preflight`, then `npx playwright test ...`.
+  For a local port-3000 server both are `http://localhost:3000`; the staging Worker URL
+  is the site origin for the hosted app, not for localhost.
+  Run `npm run test:e2e:preflight`, then `npm run test:e2e:full -- ...`.
 - `npm run seed:dev` idempotently seeds Dev with tanks and animals shaped like Production's
   (it refuses any other project). Tests must find data by shape, as Production would have
   it (for example `findGrahamStar()`), never by a fixture name.
@@ -197,7 +199,7 @@ growing an existing one indefinitely:
   volunteer 404, and the `retired_on` / `shelf_position` constraints.
 
 Run a single section directly by file path instead of the whole suite, e.g.
-`npx playwright test .github/skills/e2e-testing/scripts/daily-logging-forms.smoke.ts`.
+`npm run test:e2e:full -- .github/skills/e2e-testing/scripts/daily-logging-forms.smoke.ts`.
 
 Selector examples:
 
@@ -232,7 +234,7 @@ npm run test:e2e:full
   section files that hold more than one top-level `describe` (e.g. rbac-tiers.smoke.ts) —
   splitting by file isolates across sections, not within one.
 - When isolating a single new suite while debugging, run
-  `npx playwright test -g "<describe name>"` (optionally combined with a file path) rather
+  `npm run test:e2e:full -- -g "<describe name>"` (optionally combined with a file path) rather
   than the whole file, especially if an unrelated pre-existing suite in the same file is
   known-flaky — see the gotcha above for why the whole file can otherwise report false
   negatives.
