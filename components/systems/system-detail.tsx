@@ -1,6 +1,6 @@
 import { ArrowLeft, ChevronLeft, ChevronRight } from "lucide-react";
 
-import { Tile, focusClass } from "@/components/iseau/shared";
+import { Tile, focusClass } from "@/components/ui/app-layout";
 import { HighlightsFeed } from "@/components/systems/highlights-feed";
 import { WaterActivityCard } from "@/components/systems/water-activity-card";
 import { WaterTrendsCard } from "@/components/systems/water-trends-card";
@@ -28,7 +28,7 @@ export function SystemDetail({ data, systems, range, onSelectRange, onOpen, onBa
       <div className="flex gap-2">
         {neighbours.map(({ label, system, Icon }) => system
           ? <a key={label} href={`?system=${system.slug}`} aria-label={`${label}: ${system.name}`} onClick={onPlainClick(() => onOpen(system.slug))}
-            className={cn("rounded-full bg-muted p-2.5 transition-colors hover:bg-accent", focusClass)}><Icon aria-hidden="true" className="h-4 w-4" /></a>
+            className={cn("touch-target rounded-full bg-muted p-2.5 transition-colors motion-reduce:transition-none [@media(hover:hover)]:hover:bg-accent", focusClass)}><Icon aria-hidden="true" className="h-4 w-4" /></a>
           : <span key={label} aria-hidden="true" className="rounded-full bg-muted p-2.5 opacity-40"><Icon className="h-4 w-4" /></span>)}
       </div>
     </div>
@@ -36,13 +36,13 @@ export function SystemDetail({ data, systems, range, onSelectRange, onOpen, onBa
     <Tile className="grid gap-8 lg:grid-cols-[1fr_auto] lg:items-end">
       <div className="space-y-4">
         <StatusLabel status={snapshot.status} />
-        <h1 className="break-words text-5xl font-semibold tracking-tight sm:text-7xl">{data.name}</h1>
-        <p className="max-w-xl text-xl leading-snug">{snapshot.headline}</p>
+        <h1 className="break-words text-3xl font-semibold tracking-tight outline-none md:text-4xl">{data.name}</h1>
+        <p className="max-w-xl text-lg leading-snug">{snapshot.headline}</p>
         {snapshot.concerns.length > 1 && <ul className="space-y-1 text-muted-foreground">{snapshot.concerns.slice(1).map((concern) => <li key={concern.text}>{concern.text}</li>)}</ul>}
         <div className="flex flex-wrap gap-2"><CheckChip type="AM" state={snapshot.am} /><CheckChip type="PM" state={snapshot.pm} /><FeedingChips snapshot={snapshot} /></div>
       </div>
       <div className="space-y-1">
-        <p className="text-5xl font-semibold tracking-tight tabular-nums">{temperatureText(snapshot)}</p>
+        <p className="text-3xl font-semibold tracking-tight tabular-nums md:text-4xl">{temperatureText(snapshot)}</p>
         <p className="text-sm text-muted-foreground">{waterTestedText(snapshot)}. {fedText(snapshot, data.hasAnimals)}.</p>
       </div>
     </Tile>

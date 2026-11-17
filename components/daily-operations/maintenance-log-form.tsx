@@ -109,7 +109,7 @@ export function MaintenanceLogForm({
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <HydratedForm onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-6">
+        <HydratedForm onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4 md:gap-5">
           <DateTimeFields
             idPrefix="maintenance"
             date={register("date")}

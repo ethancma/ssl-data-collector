@@ -181,7 +181,7 @@ async function openStarTreatmentForm(
 ) {
   await loginAs(page, email, password);
   await page.goto("/protected/daily-operations");
-  await page.getByRole("link", { name: "Star treatment" }).click();
+  await page.getByRole("combobox", { name: "Operation" }).selectOption("star-treatment");
   await expect(page).toHaveURL(/type=star-treatment/);
   // A select change fired before hydration is dropped, so retry until Tank enables.
   await expect(async () => {
@@ -219,7 +219,7 @@ test.describe("Star treatments: role visibility and no-access behavior", () => {
       const browserFailures = collectBrowserFailures(page);
       await loginAs(page, email, password);
       await page.goto("/protected/daily-operations");
-      await expect(page.getByRole("link", { name: "Star treatment" })).toBeVisible();
+      await expect(page.getByRole("combobox", { name: "Operation" }).locator('option[value="star-treatment"]')).toHaveCount(1);
       const response = await page.goto("/protected/star-treatments");
       expect(response?.status()).toBe(200);
       await expect(page.getByRole("heading", { name: "Star treatments" })).toBeVisible();
@@ -237,7 +237,7 @@ test.describe("Star treatments: role visibility and no-access behavior", () => {
     await expect(
       page.getByRole("heading", { name: "This page doesn’t exist." }),
     ).toBeVisible();
-    await expect(page.getByRole("link", { name: "Star treatment" })).toHaveCount(0);
+    await expect(page.locator('option[value="star-treatment"]')).toHaveCount(0);
     await page.goto("/protected/star-treatments");
     await expect(
       page.getByRole("heading", { name: "This page doesn’t exist." }),

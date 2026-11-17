@@ -1,9 +1,10 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { ChevronDown, ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 
-import { Tile } from "@/components/iseau/shared";
+import { Tile, focusClass } from "@/components/ui/app-layout";
+import { CompactSelect } from "@/components/ui/app-primitives";
 import { cn } from "@/lib/utils";
 import {
   ALL_WATER_QUALITY_PARAMS,
@@ -15,10 +16,7 @@ import {
 import { DualAxisLineChart, MultiLineChart } from "@/components/systems/charts";
 import { CHART_RANGE_DAYS, type ChartRangeDays, type SystemDetailData } from "@/components/systems/types";
 
-const PILL_CLASS =
-  "rounded-full border px-3 py-1 text-xs font-medium transition-colors";
-const PILL_ACTIVE = "border-primary bg-accent";
-const PILL_INACTIVE = "border-input hover:bg-accent/50";
+const PAGER_BUTTON_CLASS = "border-input [@media(hover:hover)]:hover:bg-accent/50";
 
 const TREND_PAGE_COUNT = 2;
 const DEFAULT_LEFT_PARAM: WaterQualityParam = "phosphate";
@@ -35,47 +33,26 @@ function pickDefaultParam(
   return available.find((p) => p !== avoid) ?? preferred;
 }
 
-// A native <select> styled to look like the existing pill convention, with a
-// chevron affixed beside it — the "Phosphate ▾" swap control for Page 2's
-// axes. The border/padding live on the wrapper so the select and chevron are
-// laid out as ordinary flex siblings (with a gap) rather than stacking the
-// chevron on top of the select via absolute positioning, which could overlap
-// the label text once the select's intrinsic width didn't leave enough room.
-function ChemicalSelectPill({
+// The compare axis picker: a shared filter dropdown whose dot matches its chart line.
+function ChemicalSelect({
+  label,
   value,
   options,
   onChange,
-  align,
 }: {
+  label: string;
   value: WaterQualityParam;
   options: WaterQualityParam[];
   onChange: (param: WaterQualityParam) => void;
-  align: "left" | "right";
 }) {
-  const color = WATER_QUALITY_COLORS[value];
   return (
-    <div
-      className={cn(
-        PILL_CLASS,
-        "inline-flex items-center gap-1 border bg-transparent",
-        align === "right" && "flex-row-reverse",
-      )}
-      style={{ borderColor: color }}
-    >
-      <select
-        value={value}
-        onChange={(e) => onChange(e.target.value as WaterQualityParam)}
-        style={{ color }}
-        className="appearance-none border-none bg-transparent p-0 pr-0 focus:outline-none"
-      >
-        {options.map((p) => (
-          <option key={p} value={p} className="text-foreground">
-            {WATER_QUALITY_LABELS[p]}
-          </option>
-        ))}
-      </select>
-      <ChevronDown className="pointer-events-none h-3 w-3 shrink-0" style={{ color }} />
-    </div>
+    <CompactSelect
+      label={label}
+      value={value}
+      onChange={onChange}
+      icon={<span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: WATER_QUALITY_COLORS[value] }} />}
+      options={options.map((param) => ({ value: param, label: WATER_QUALITY_LABELS[param] }))}
+    />
   );
 }
 // Water quality trend chart for one system: a carousel of an all-parameters
@@ -138,75 +115,79 @@ export function WaterTrendsCard({
 
   return (
     <Tile className="flex flex-col gap-4">
-      <div className="flex flex-col space-y-3">
-        <div className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center sm:gap-2">
-          <h2 className="text-2xl font-semibold tracking-tight">Water quality trends</h2>
-          <div className="flex w-full flex-wrap items-center justify-between gap-3 sm:w-auto sm:justify-start">
-            <div className="flex gap-1">
-              {CHART_RANGE_DAYS.map((d) => (
-                <button
-                  key={d}
-                  type="button"
-                  onClick={() => onSelectRange(d)}
-                  className={cn(PILL_CLASS, d === range ? PILL_ACTIVE : PILL_INACTIVE)}
-                >
-                  {d}d
-                </button>
-              ))}
-            </div>
-            <div className="flex items-center gap-1.5">
-              <button
-                type="button"
-                aria-label="Previous chart page"
-                onClick={() => goToPage(page - 1)}
-                className={cn("rounded-full border p-1.5", PILL_INACTIVE)}
-              >
-                <ChevronLeft className="h-3.5 w-3.5" />
-              </button>
-              <div className="flex items-center gap-1" role="tablist" aria-label="Chart page">
-                {Array.from({ length: TREND_PAGE_COUNT }).map((_, i) => (
-                  <span
-                    key={i}
-                    aria-hidden
-                    className={cn(
-                      "h-1.5 w-1.5 rounded-full transition-colors",
-                      i === page ? "bg-primary" : "bg-muted-foreground/30",
-                    )}
-                  />
-                ))}
-              </div>
-              <button
-                type="button"
-                aria-label="Next chart page"
-                onClick={() => goToPage(page + 1)}
-                className={cn("rounded-full border p-1.5", PILL_INACTIVE)}
-              >
-                <ChevronRight className="h-3.5 w-3.5" />
-              </button>
-            </div>
-          </div>
-        </div>
-        {page === 0 && (
-          <div className="flex flex-wrap gap-1">
-            <button
-              type="button"
-              onClick={() => setFocusedParam("all")}
-              className={cn(PILL_CLASS, focusedParam === "all" ? PILL_ACTIVE : PILL_INACTIVE)}
-            >
-              All
-            </button>
-            {availableParams.map((p) => (
-              <button
-                key={p}
-                type="button"
-                onClick={() => setFocusedParam((current) => (current === p ? "all" : p))}
-                className={cn(PILL_CLASS, focusedParam === p ? PILL_ACTIVE : PILL_INACTIVE)}
-              >
-                {WATER_QUALITY_LABELS[p]}
-              </button>
+      <div className="flex items-center justify-between gap-3">
+        <h2 className="text-2xl font-semibold tracking-tight">Water quality trends</h2>
+        <div className="flex shrink-0 items-center gap-1.5">
+          <button
+            type="button"
+            aria-label="Previous chart page"
+            onClick={() => goToPage(page - 1)}
+            className={cn("touch-target rounded-full border p-1.5", PAGER_BUTTON_CLASS, focusClass)}
+          >
+            <ChevronLeft className="h-3.5 w-3.5" />
+          </button>
+          <div className="flex items-center gap-1" aria-hidden="true">
+            {Array.from({ length: TREND_PAGE_COUNT }).map((_, i) => (
+              <span
+                key={i}
+                aria-hidden
+                className={cn(
+                  "h-1.5 w-1.5 rounded-full transition-colors",
+                  i === page ? "bg-primary" : "bg-muted-foreground/30",
+                )}
+              />
             ))}
           </div>
-        )}
+          <button
+            type="button"
+            aria-label="Next chart page"
+            onClick={() => goToPage(page + 1)}
+            className={cn("touch-target rounded-full border p-1.5", PAGER_BUTTON_CLASS, focusClass)}
+          >
+            <ChevronRight className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      </div>
+      <div className="filter-toolbar">
+        <div className="filter-grid">
+          <CompactSelect
+            className={page === 1 ? "filter-grid__lead" : undefined}
+            label="Chart time range"
+            value={String(range)}
+            onChange={(value) => {
+              const days = CHART_RANGE_DAYS.find((option) => String(option) === value);
+              if (days) onSelectRange(days);
+            }}
+            options={CHART_RANGE_DAYS.map((days) => ({ value: String(days), label: `Last ${days} days` }))}
+          />
+          {page === 0 && (
+            <CompactSelect
+              label="Water quality parameter"
+              value={focusedParam}
+              onChange={setFocusedParam}
+              options={[
+                { value: "all", label: "All parameters" },
+                ...availableParams.map((param) => ({ value: param, label: WATER_QUALITY_LABELS[param] })),
+              ]}
+            />
+          )}
+          {page === 1 && (
+            <>
+              <ChemicalSelect
+                label="Left axis parameter"
+                value={leftParam}
+                options={availableParams.filter((p) => p !== rightParam)}
+                onChange={setLeftParam}
+              />
+              <ChemicalSelect
+                label="Right axis parameter"
+                value={rightParam}
+                options={availableParams.filter((p) => p !== leftParam)}
+                onChange={setRightParam}
+              />
+            </>
+          )}
+        </div>
       </div>
       <div
         tabIndex={0}
@@ -218,26 +199,9 @@ export function WaterTrendsCard({
         {page === 0 ? (
           <MultiLineChart series={trendSeries} />
         ) : (
-          <div className="flex flex-col gap-2">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <ChemicalSelectPill
-                value={leftParam}
-                options={availableParams.filter((p) => p !== rightParam)}
-                onChange={setLeftParam}
-                align="left"
-              />
-              <ChemicalSelectPill
-                value={rightParam}
-                options={availableParams.filter((p) => p !== leftParam)}
-                onChange={setRightParam}
-                align="right"
-              />
-            </div>
-            <DualAxisLineChart left={leftSeries} right={rightSeries} />
-          </div>
+          <DualAxisLineChart left={leftSeries} right={rightSeries} />
         )}
       </div>
     </Tile>
   );
 }
-

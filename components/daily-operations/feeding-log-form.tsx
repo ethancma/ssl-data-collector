@@ -217,7 +217,7 @@ export function FeedingLogForm({
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <HydratedForm onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-6" noValidate>
+        <HydratedForm onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4 md:gap-5" noValidate>
           <DateTimeFields
             idPrefix="feeding"
             date={register("date")}

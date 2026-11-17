@@ -49,6 +49,9 @@ test.describe("sidebar navigation and appearance", () => {
     await login(page);
     await page.setViewportSize({ width: 390, height: 844 });
     await gotoHydrated(page, "/protected/daily-operations");
+    await expect(page.getByRole("combobox", { name: "Operation" })).toBeVisible();
+    await page.getByRole("combobox", { name: "Operation" }).selectOption("water-quality");
+    await expect(page).toHaveURL(/type=water-quality/);
 
     const aside = page.locator("aside");
     const asideBox = await aside.boundingBox();

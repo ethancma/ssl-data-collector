@@ -105,7 +105,7 @@ test.describe("ISeaU patient classification", () => {
       await expect(card(1)).toBeVisible();
       await expect(card(2)).toHaveCount(0);
       await expect(card(3)).toHaveCount(0);
-      await page.getByRole("button", { name: "Past patients", exact: true }).click();
+      await page.getByRole("combobox", { name: "Patient status" }).selectOption("past");
       await expect(card(2)).toBeVisible();
       await expect(card(0)).toHaveCount(0);
       await expect(card(1)).toHaveCount(0);
@@ -127,7 +127,7 @@ test.describe("ISeaU patient classification", () => {
     await expect(firstColumn.locator(`optgroup[label="Past patients"] option[value="${animalIds[2]}"]`)).toHaveCount(1);
     await expect(firstColumn.locator(`option[value="${animalIds[3]}"]`)).toHaveCount(0);
     await gotoHydrated(page, `/protected/iseau?star=${animalIds[1]}`);
-    await expect(page.getByRole("button", { name: "Current patients", exact: true })).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByRole("combobox", { name: "Patient status" })).toHaveValue("current");
     const downloading = page.waitForEvent("download");
     await page.getByRole("button", { name: `Export ${names[1]} as CSV`, exact: true }).click();
     const download = await downloading;
@@ -261,7 +261,7 @@ test.describe("e2e smoke", () => {
     ] as const;
 
     for (const [name, type] of tabs) {
-      await page.getByRole("link", { name, exact: true }).click();
+      await page.getByRole("combobox", { name: "Operation" }).selectOption({ label: name });
       await expect(page).toHaveURL(
         `${BASE_URL}/protected/daily-operations?type=${type}`,
       );

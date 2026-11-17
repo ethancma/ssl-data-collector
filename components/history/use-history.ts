@@ -1,7 +1,7 @@
 "use client";
 
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useRef, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 
 import { buildCsv } from "@/lib/history/csv";
 import { DATASET_VIEWS, SOURCE_LABELS, columnsFor, type HistoryRow } from "@/lib/history/datasets";
@@ -38,6 +38,19 @@ export function useHistory(data: HistoryData) {
   const searchParams = useSearchParams();
   const [pending, startTransition] = useTransition();
   const [openKey, setOpenKey] = useState<string | null>(null);
+  const listedRow = openKey ? data.rows.find((row) => `${row.dataset}-${row.id}` === openKey) : undefined;
+  // The "All datasets" view only carries shared columns, so load the full row from its own view.
+  const needsFullRow = Boolean(listedRow) && params.dataset === "all";
+  const [fullRow, setFullRow] = useState<{ key: string; row: HistoryRow | null } | null>(null);
+  useEffect(() => {
+    if (!listedRow || !needsFullRow) return;
+    const key = `${listedRow.dataset}-${listedRow.id}`;
+    let current = true;
+    void createClient().from(DATASET_VIEWS[listedRow.dataset]).select("*").eq("id", listedRow.id).maybeSingle()
+      .then(({ data: row, error }) => { if (current) setFullRow({ key, row: error ? null : (row as HistoryRow | null) }); });
+    return () => { current = false; };
+  }, [listedRow, needsFullRow]);
+  const loadedRow = fullRow && fullRow.key === openKey ? fullRow : null;
 
   function update(patch: Record<string, string | null>) {
     const next = new URLSearchParams(searchParams.toString());
@@ -100,7 +113,8 @@ export function useHistory(data: HistoryData) {
 
   return {
     ...data, update, clearAll, chips, columns, pages, headline, loading: pending,
-    openRow: openKey ? data.rows.find((row) => `${row.dataset}-${row.id}` === openKey) : undefined,
+    openRow: needsFullRow ? loadedRow?.row ?? listedRow : listedRow,
+    openRowStatus: !needsFullRow ? "ready" as const : !loadedRow ? "loading" as const : loadedRow.row ? "ready" as const : "error" as const,
     setOpenKey,
     exporting, exportError, exportCsv, cancelExport: () => { cancelled.current = true; },
   };

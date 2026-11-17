@@ -1,6 +1,6 @@
 import { Columns3 } from "lucide-react";
 
-import { PageHeader, focusClass } from "@/components/iseau/shared";
+import { PageHeader, focusClass } from "@/components/ui/app-layout";
 import { Button } from "@/components/ui/button";
 import type { SystemDetailData } from "@/components/systems/types";
 import { cn } from "@/lib/utils";
@@ -21,27 +21,27 @@ export function SystemLineup({ systems, onOpen, onCompare }: {
   systems: SystemDetailData[]; onOpen: (slug: string) => void; onCompare: () => void;
 }) {
   const { title, description } = summary(systems);
-  return <div className="space-y-8">
+  return <div className="space-y-6">
     <PageHeader title={title} description={description} />
     <div className="flex justify-end">
       <Button asChild variant="outline">
         <a href="?compare=1" onClick={onPlainClick(onCompare)}><Columns3 aria-hidden="true" />Compare systems</a>
       </Button>
     </div>
-    <ul className="grid auto-rows-fr gap-3" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(18rem, 1fr))" }}>
+    <ul className="grid auto-rows-fr gap-4" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 16rem), 1fr))" }}>
       {systems.map(({ slug, name, category, hasAnimals, snapshot }) => {
         const ph = snapshot.water.readings.find((reading) => reading.key === "ph");
         const ammonia = snapshot.water.readings.find((reading) => reading.key === "ammonia");
         return <li key={slug} className="min-w-0">
           <a href={`?system=${slug}`} onClick={onPlainClick(() => onOpen(slug))}
-            className={cn("flex h-full flex-col gap-4 rounded-3xl bg-muted p-6 transition-colors hover:bg-accent", focusClass)}>
+            className={cn("flex h-full flex-col gap-3 rounded-2xl bg-muted p-4 transition-colors motion-reduce:transition-none [@media(hover:hover)]:hover:bg-accent md:p-5", focusClass)}>
             <div className="space-y-1">
-              <span className="block truncate text-3xl font-semibold tracking-tight">{name}</span>
+              <span className="block truncate text-2xl font-semibold tracking-tight">{name}</span>
               <span className="block text-sm capitalize text-muted-foreground">{category.replace(/_/g, " ")}</span>
             </div>
             <div className="space-y-1">
               <StatusLabel status={snapshot.status} />
-              <p className="min-h-12 text-lg leading-snug">
+              <p className="min-h-10 text-base leading-snug">
                 {snapshot.headline}
                 {snapshot.concerns.length > 1 && <span className="text-muted-foreground"> and {snapshot.concerns.length - 1} more</span>}
               </p>

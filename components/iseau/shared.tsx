@@ -1,9 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { X } from "lucide-react";
-import { useEffect, useRef, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
+import { CompactSelect } from "@/components/ui/app-primitives";
+import { focusClass } from "@/components/ui/app-layout";
 import { formatPacificDateTime } from "@/lib/pacific-date-time";
 import { severityTone } from "./severity-tone";
 import {
@@ -19,8 +19,6 @@ import {
   type Star,
 } from "@/lib/iseau/data";
 import type { IseauState } from "./use-iseau";
-
-export const focusClass = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background";
 
 export function dateLabel(time: number, withTime = false) {
   return formatPacificDateTime(new Date(time), { month: "short", day: "numeric", ...(withTime ? { hour: "numeric", minute: "2-digit" } : {}) });
@@ -50,67 +48,28 @@ export function starSentence(star: Star, now: number) {
   }
 }
 
-export function Segmented<T extends string | number>({ label, value, options, onChange }: {
-  label: string; value: T; options: { value: T; label: string }[]; onChange: (value: T) => void;
-}) {
-  return <div role="group" aria-label={label} className="inline-flex max-w-full flex-wrap gap-1 rounded-full bg-muted p-1">
-    {options.map((option) => <button key={String(option.value)} type="button" aria-pressed={option.value === value} onClick={() => onChange(option.value)}
-      className={cn("rounded-full px-4 py-1.5 text-sm font-medium transition-colors", focusClass, option.value === value ? "bg-foreground text-background" : "text-muted-foreground hover:text-foreground")}>{option.label}</button>)}
-  </div>;
-}
 export function StatusSwitch({ state }: { state: IseauState }) {
-  return <Segmented label="Patient status" value={state.status} onChange={state.setStatus}
+  return <CompactSelect label="Patient status" value={state.status} onChange={state.setStatus}
     options={[{ value: "current", label: "Current patients" }, { value: "past", label: "Past patients" }]} />;
 }
 export function SystemSwitch({ state }: { state: IseauState }) {
-  return <Segmented label="System" value={state.system} onChange={state.setSystem}
-    options={[{ value: "all", label: "All systems" }, ...state.data.systems.map((system) => ({ value: system.id, label: `${system.name} (${starsFor(state.data, state.status, system.id).length})` }))]} />;
+  return <CompactSelect label="System" value={String(state.system)} onChange={(value) => state.setSystem(value === "all" ? "all" : Number(value))}
+    options={[{ value: "all", label: "All systems" }, ...state.data.systems.map((system) => ({ value: String(system.id), label: `${system.name} (${starsFor(state.data, state.status, system.id).length})` }))]} />;
 }
 export function RangeSwitch({ state }: { state: IseauState }) {
-  return <Segmented label="Time range" value={state.range} onChange={state.setRange} options={RANGES.map((days) => ({ value: days, label: `${days} days` }))} />;
-}
-
-export function Tile({ className, children }: { className?: string; children: ReactNode }) {
-  return <div className={cn("rounded-3xl bg-muted p-6 sm:p-8", className)}>{children}</div>;
-}
-export function EmptyNote({ children }: { children: ReactNode }) {
-  return <p role="status" className="py-6 text-sm text-muted-foreground">{children}</p>;
+  return <CompactSelect label="Time range" value={String(state.range)} onChange={(value) => { const days = RANGES.find((option) => String(option) === value); if (days) state.setRange(days); }}
+    options={RANGES.map((days) => ({ value: String(days), label: `Last ${days} days` }))} />;
 }
 
 export function StarCard({ star, href, data }: { star: Star; href: string; data: IseauData }) {
   const place = star.location;
   const temperature = lastTemperature(star, data);
   // Every line is a single truncated row, so all tiles keep the same height at any width.
-  return <Link href={href} className={cn("flex h-full w-full min-w-0 flex-col gap-1 rounded-3xl bg-muted p-5 text-left transition-colors hover:bg-accent", focusClass)}>
-    <span className="block truncate text-2xl font-semibold tracking-tight">{star.name}</span>
+  return <Link href={href} className={cn("flex h-full w-full min-w-0 flex-col gap-1 rounded-2xl bg-muted p-4 text-left transition-colors motion-reduce:transition-none [@media(hover:hover)]:hover:bg-accent", focusClass)}>
+    <span className="block truncate text-xl font-semibold tracking-tight">{star.name}</span>
     <span className="block truncate text-sm text-muted-foreground">{place.tank} in {place.system}</span>
     <span className="my-2 block truncate text-sm"><SeverityLabel severity={lastHealth(star).severity} /></span>
     <span className="block truncate text-sm text-muted-foreground">Last observed {relativeDay(lastHealth(star).at, data.now)}</span>
     <span className="block truncate text-sm text-muted-foreground">{temperature ? `AM check ${temperature.celsius.toFixed(1)} °C` : "No AM temperature data"}</span>
   </Link>;
-}
-
-// A native dialog gives focus trapping, Escape, and a backdrop without extra code.
-export function Sheet({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
-  const ref = useRef<HTMLDialogElement>(null);
-  useEffect(() => {
-    const opener = document.activeElement;
-    if (ref.current && !ref.current.open) ref.current.showModal();
-    return () => { if (opener instanceof HTMLElement) opener.focus(); };
-  }, []);
-  return <dialog ref={ref} aria-labelledby="iseau-sheet-title" onClose={onClose} onClick={(event) => { if (event.target === event.currentTarget) onClose(); }}
-    className="m-auto max-h-[92vh] w-[min(60rem,calc(100vw-1.5rem))] overflow-y-auto rounded-3xl bg-background p-0 text-foreground shadow-2xl backdrop:bg-black/50">
-    <div className="sticky top-0 z-10 flex items-center justify-between gap-4 bg-background/90 px-6 py-4 backdrop-blur sm:px-8">
-      <h2 id="iseau-sheet-title" className="text-2xl font-semibold tracking-tight">{title}</h2>
-      <button type="button" aria-label="Close" onClick={onClose} className={cn("rounded-full bg-muted p-2 hover:bg-accent", focusClass)}><X aria-hidden="true" className="h-4 w-4" /></button>
-    </div>
-    <div className="px-6 pb-8 sm:px-8">{children}</div>
-  </dialog>;
-}
-
-export function PageHeader({ title, description }: { title: string; description: string }) {
-  return <header className="max-w-3xl space-y-3">
-    <h1 className="text-4xl font-semibold tracking-tight sm:text-6xl">{title}</h1>
-    <p className="text-lg text-muted-foreground">{description}</p>
-  </header>;
 }

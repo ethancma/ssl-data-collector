@@ -76,26 +76,24 @@ async function assertCompareAxesAndLines(chart: Locator) {
   return { axisLabels, lineCount: await lines.count() };
 }
 
-async function assertSelectsAndChevronsDoNotOverlap(chart: Locator) {
-  const selects = chart.locator("select");
-  for (const [index, select] of (await selects.all()).entries()) {
-    const wrapper = select.locator("..");
-    const chevron = wrapper.locator("svg");
-    const [selectBox, chevronBox, wrapperBox] = await Promise.all([
+// The compare axis pickers sit in the card toolbar, beside the time range.
+function axisSelects(page: Page) {
+  return page.getByRole("combobox", { name: /axis parameter/ });
+}
+
+async function assertSelectsAndChevronsDoNotOverlap(selects: Locator) {
+  for (const select of await selects.all()) {
+    const chevron = select.locator("..").locator("svg").last();
+    const [selectBox, chevronBox, paddingRight] = await Promise.all([
       select.boundingBox(),
       chevron.boundingBox(),
-      wrapper.boundingBox(),
+      select.evaluate((el) => Number.parseFloat(getComputedStyle(el).paddingRight)),
     ]);
     expect(selectBox).not.toBeNull();
     expect(chevronBox).not.toBeNull();
-    expect(wrapperBox).not.toBeNull();
-    const leftElement = index === 0 ? selectBox! : chevronBox!;
-    const rightElement = index === 0 ? chevronBox! : selectBox!;
-    expect(rightElement.x - (leftElement.x + leftElement.width)).toBeGreaterThanOrEqual(3);
-    expect(leftElement.x).toBeGreaterThanOrEqual(wrapperBox!.x);
-    expect(rightElement.x + rightElement.width).toBeLessThanOrEqual(
-      wrapperBox!.x + wrapperBox!.width + 0.5,
-    );
+    // The chevron sits inside the select's reserved right padding, so text never runs under it.
+    expect(chevronBox!.x).toBeGreaterThanOrEqual(selectBox!.x + selectBox!.width - paddingRight);
+    expect(chevronBox!.x + chevronBox!.width).toBeLessThanOrEqual(selectBox!.x + selectBox!.width + 0.5);
   }
 }
 
@@ -202,14 +200,14 @@ test.describe("systems page water quality trends card", () => {
       ["Nitrate", "7.13"],
       ["Nitrite", "41"],
     ] as const) {
-      await page.getByRole("button", { name: parameter, exact: true }).click();
+      await page.getByRole("combobox", { name: "Water quality parameter" }).selectOption({ label: parameter });
       expect(await chart.locator("circle title").allTextContents()).toContain(
         `${parameter}: ${value}`,
       );
     }
 
     await page.getByRole("button", { name: "Next chart page" }).click();
-    const selects = chart.locator("select");
+    const selects = axisSelects(page);
     await expect(selects).toHaveCount(2);
     for (const select of await selects.all()) {
       const optionValues = await select.locator("option").evaluateAll((options) =>
@@ -232,17 +230,8 @@ test.describe("systems page water quality trends card", () => {
     await page.goto("/protected/systems?system=graham&range=60");
     await expect(page.getByText("Water quality trends")).toBeVisible();
 
-    const allPill = page.getByRole("button", { name: "All", exact: true });
-    await expect(allPill).toBeVisible();
-
-    // "All" pill should look active by default.
-    const allClassBefore = await allPill.getAttribute("class");
-    expect(allClassBefore).toContain("border-primary");
-    const allInitialStyle = await allPill.evaluate((el) => {
-      const cs = getComputedStyle(el);
-      return { borderColor: cs.borderColor, backgroundColor: cs.backgroundColor };
-    });
-    console.log("All pill computed style (initial, active by default):", allInitialStyle);
+    const parameterSelect = page.getByRole("combobox", { name: "Water quality parameter" });
+    await expect(parameterSelect).toHaveValue("all");
 
     const chart = page.locator('[role="group"][aria-label*="trend chart"]');
     const svgBefore = await chart.locator("svg").innerHTML();
@@ -257,11 +246,8 @@ test.describe("systems page water quality trends card", () => {
     await page.screenshot({ path: "test-results/systems-trends-all-desktop.png", fullPage: true });
 
     for (const chemicalName of ["pH", "Calcium"]) {
-      const chemicalPill = page.getByRole("button", { name: chemicalName, exact: true });
-      await expect(chemicalPill).toBeVisible();
-      await chemicalPill.click();
-      expect(await chemicalPill.getAttribute("class")).toContain("border-primary");
-      expect(await allPill.getAttribute("class")).not.toContain("border-primary");
+      await parameterSelect.selectOption({ label: chemicalName });
+      await expect(parameterSelect).not.toHaveValue("all");
       expect(await chart.locator("svg").innerHTML()).not.toEqual(svgBefore);
 
       const isolatedTicks = await assertPageOneSeries(chart, chemicalName);
@@ -284,6 +270,7 @@ test.describe("systems page water quality trends card", () => {
 
     const chart = page.locator('[role="group"][aria-label*="trend chart"]');
     await expect(chart).toHaveAttribute("aria-label", /page 1 of 2/);
+    await expect(chart.getByRole("list", { name: "Latest chart readings" })).toBeVisible();
 
     const nextButton = page.getByRole("button", { name: "Next chart page" });
     const prevButton = page.getByRole("button", { name: "Previous chart page" });
@@ -324,7 +311,7 @@ test.describe("systems page water quality trends card", () => {
     // card and were previously matching `page.locator("svg").last()` instead
     // of the actual chart.
     const chart = page.locator('[role="group"][aria-label*="trend chart"]');
-    const selects = chart.locator("select");
+    const selects = axisSelects(page);
     await expect(selects).toHaveCount(2);
     const leftSelect = selects.nth(0);
     const rightSelect = selects.nth(1);
@@ -334,7 +321,7 @@ test.describe("systems page water quality trends card", () => {
     console.log("Page 2 defaults - left:", leftDefault, "right:", rightDefault);
 
     console.log("Page 2 left/right axes and lines:", await assertCompareAxesAndLines(chart));
-    await assertSelectsAndChevronsDoNotOverlap(chart);
+    await assertSelectsAndChevronsDoNotOverlap(axisSelects(page));
 
     // Each select's options should never include the other side's current value.
     const leftOptionValues = await leftSelect.locator("option").evaluateAll((els) =>
@@ -372,7 +359,7 @@ test.describe("systems page water quality trends card", () => {
     const svgAfterBothChanges = await chart.locator("svg").last().innerHTML();
     expect(svgAfterBothChanges).not.toEqual(svgAfter);
     await assertCompareAxesAndLines(chart);
-    await assertSelectsAndChevronsDoNotOverlap(chart);
+    await assertSelectsAndChevronsDoNotOverlap(axisSelects(page));
 
     const leftOptionValuesAfter = await leftSelect.locator("option").evaluateAll((els) =>
       els.map((el) => (el as HTMLOptionElement).value),
@@ -406,6 +393,12 @@ test.describe("systems page water quality trends card", () => {
     }));
     expect(mobileMain.clientWidth).toBeGreaterThanOrEqual(300);
     expect(mobileMain.scrollWidth).toBeLessThanOrEqual(mobileMain.clientWidth + 1);
+    const dataPointControl = chart.locator('svg [role="slider"]');
+    await dataPointControl.focus();
+    await dataPointControl.press("ArrowLeft");
+    await expect(chart.locator('p[role="status"]')).toContainText(":");
+    await dataPointControl.press("Escape");
+    await expect(chart.locator('p[role="status"]')).toBeHidden();
     console.log("Mobile main pane:", mobileMain);
     await page.screenshot({
       path: "test-results/systems-trends-all-mobile.png",
@@ -413,7 +406,7 @@ test.describe("systems page water quality trends card", () => {
     });
 
     for (const chemicalName of ["pH", "Calcium"]) {
-      await page.getByRole("button", { name: chemicalName, exact: true }).click();
+      await page.getByRole("combobox", { name: "Water quality parameter" }).selectOption({ label: chemicalName });
       const isolatedTicks = await assertPageOneSeries(chart, chemicalName);
       expect(isolatedTicks).not.toEqual(allTicks);
       await assertNoHorizontalOverflow(page);
@@ -437,10 +430,10 @@ test.describe("systems page water quality trends card", () => {
 
     await nextButton.click();
     await expect(chart).toHaveAttribute("aria-label", /page 2 of 2/);
-    const selects = chart.locator("select");
+    const selects = axisSelects(page);
     await expect(selects).toHaveCount(2);
     await assertCompareAxesAndLines(chart);
-    await assertSelectsAndChevronsDoNotOverlap(chart);
+    await assertSelectsAndChevronsDoNotOverlap(axisSelects(page));
     await assertMobileChartScrollsLocally(chart);
     await assertNoHorizontalOverflow(page);
 
@@ -470,39 +463,33 @@ test.describe("systems page water quality trends card", () => {
     expect(newRightValue).toBeTruthy();
     await rightSelect.selectOption(newRightValue!);
     await assertCompareAxesAndLines(chart);
-    await assertSelectsAndChevronsDoNotOverlap(chart);
+    await assertSelectsAndChevronsDoNotOverlap(axisSelects(page));
     await assertNoHorizontalOverflow(page);
 
     console.log("Mobile viewport:", page.viewportSize());
     await page.screenshot({ path: "test-results/systems-trends-page2-mobile.png", fullPage: true });
   });
 
-  test("Regression: 14d/30d/60d range pills still work on both Trends and Compare pages", async ({
+  test("Regression: chart time range dropdown works on both Trends and Compare pages", async ({
     page,
   }) => {
     await login(page);
     await page.goto("/protected/systems?system=graham&range=60");
 
-    const rangePills = ["14d", "30d", "60d"];
-    for (const label of rangePills) {
-      const pill = page.getByRole("button", { name: label, exact: true });
-      await expect(pill).toBeVisible();
-      await pill.click();
-      const cls = await pill.getAttribute("class");
-      expect(cls).toContain("border-primary");
-      await expect(page).toHaveURL(new RegExp(`range=${label.replace("d", "")}`));
+    const rangeSelect = page.getByRole("combobox", { name: "Chart time range" });
+    for (const days of ["14", "30", "60"]) {
+      await rangeSelect.selectOption(days);
+      await expect(rangeSelect).toHaveValue(days);
+      await expect(page).toHaveURL(new RegExp(`range=${days}`));
     }
 
-    // Switch to Compare page and confirm range pills still apply there too.
+    // Switch to Compare page and confirm the range still applies there too.
     await page.getByRole("button", { name: "Next chart page" }).click();
-    for (const label of rangePills) {
-      const pill = page.getByRole("button", { name: label, exact: true });
-      await pill.click();
-      const cls = await pill.getAttribute("class");
-      expect(cls).toContain("border-primary");
-      await expect(page).toHaveURL(new RegExp(`range=${label.replace("d", "")}`));
+    for (const days of ["14", "30", "60"]) {
+      await rangeSelect.selectOption(days);
+      await expect(rangeSelect).toHaveValue(days);
+      await expect(page).toHaveURL(new RegExp(`range=${days}`));
     }
-
   });
 
   test("Lineup opens a system, back returns to the lineup, and Compare lists every system", async ({
@@ -517,7 +504,7 @@ test.describe("systems page water quality trends card", () => {
     await expect(page.getByRole("heading", { level: 1, name: "Graham" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Latest readings" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Water and activity" })).toBeVisible();
-    await page.getByRole("button", { name: "Activity chart: Ammonia" }).click();
+    await page.getByRole("combobox", { name: "Activity chart parameter" }).selectOption({ label: "Ammonia" });
     await expect(page.getByRole("group", { name: /^Ammonia over 30 days/ })).toBeVisible();
     await expect(page.getByText("Water quality trends")).toBeVisible();
 

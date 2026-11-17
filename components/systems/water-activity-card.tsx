@@ -2,14 +2,14 @@
 
 import { useState } from "react";
 
-import { Tile, focusClass } from "@/components/iseau/shared";
+import { Tile } from "@/components/ui/app-layout";
+import { CompactSelect } from "@/components/ui/app-primitives";
 import { ALL_WATER_QUALITY_PARAMS, WATER_QUALITY_LABELS } from "@/components/systems/chart-data";
 import { useChartWidth } from "@/components/systems/charts";
 import type { SystemDetailData } from "@/components/systems/types";
 import { WATER_QUALITY_PARAMS } from "@/lib/config/reference-data";
 import { ACTIVITY_WINDOW_DAYS, type ActivityKind } from "@/lib/systems/activity";
 import { getPacificDateTimeParts } from "@/lib/pacific-date-time";
-import { cn } from "@/lib/utils";
 
 const DAY = 86_400_000;
 const DAYS = ACTIVITY_WINDOW_DAYS;
@@ -102,9 +102,10 @@ export function WaterActivityCard({ data }: { data: SystemDetailData }) {
           Markers show what was done to the system.
         </p>
       </div>
-      <div role="group" aria-label="Activity chart parameter" className="flex flex-wrap gap-1 rounded-3xl bg-background/60 p-1">
-        {metrics.map((m) => <button key={m.key} type="button" aria-label={`Activity chart: ${m.label}`} aria-pressed={m.key === key} onClick={() => setChosen(m.key)}
-          className={cn("rounded-full px-3 py-1 text-xs font-medium transition-colors", focusClass, m.key === key ? "bg-foreground text-background" : "text-muted-foreground hover:text-foreground")}>{m.label}</button>)}
+      <div className="filter-toolbar">
+        <div className="filter-grid">
+          {metrics.length > 0 && <CompactSelect label="Activity chart parameter" value={key} onChange={setChosen} options={metrics.map((m) => ({ value: m.key, label: m.label }))} />}
+        </div>
       </div>
     </div>
     <div ref={wrapRef} className="overflow-x-auto">
