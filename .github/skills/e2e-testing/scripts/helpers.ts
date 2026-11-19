@@ -215,6 +215,25 @@ export function isAbortedRscPrefetch(request: Request): boolean {
   );
 }
 
+// Same-origin documents and RSC payloads (`_rsc` param / `RSC: 1` in both Next and vinext).
+// Each is a server render on the Worker, which is what the Workers CPU limit counts.
+export function trackServerRenders(page: Page): string[] {
+  const origin = new URL(BASE_URL).origin;
+  const renders: string[] = [];
+  page.on("request", (request) => {
+    const url = new URL(request.url());
+    if (url.origin !== origin) return;
+    if (
+      request.resourceType() === "document" ||
+      request.headers()["rsc"] === "1" ||
+      url.searchParams.has("_rsc")
+    ) {
+      renders.push(`${request.method()} ${url.pathname}${url.search}`);
+    }
+  });
+  return renders;
+}
+
 export function collectBrowserFailures(page: Page): string[] {
   const failures: string[] = [];
   page.on("console", (message) => {

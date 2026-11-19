@@ -18,6 +18,7 @@ import {
   login,
   loginAs,
   signInRoleClient,
+  trackServerRenders,
   TECH_EMAIL,
   TECH_PASSWORD,
   VOLUNTEER_EMAIL,
@@ -100,6 +101,7 @@ test.describe("ISeaU patient classification", () => {
       expect(observations.filter((row) => Number(row.severity) === 2)).toHaveLength(3);
       await loginAs(page, email, password);
       await gotoHydrated(page, "/protected/iseau");
+      const renders = trackServerRenders(page);
       const card = (index: number) => page.locator(`a[href="/protected/iseau?star=${animalIds[index]}"]`);
       await expect(card(0)).toBeVisible();
       await expect(card(1)).toBeVisible();
@@ -111,8 +113,15 @@ test.describe("ISeaU patient classification", () => {
       await expect(card(1)).toHaveCount(0);
       await expect(card(3)).toHaveCount(0);
       await card(2).click();
+      await expect(page).toHaveURL(new RegExp(`\\?star=${animalIds[2]}$`));
       await expect(page.getByRole("heading", { name: names[2], exact: true })).toBeVisible();
       await expect(page.getByText("No score of 2 or higher in the past 14 days.", { exact: true })).toBeVisible();
+      // Star views pick from data already loaded, so moving between them must not re-render on the server.
+      await page.getByRole("link", { name: "All stars" }).click();
+      await expect(card(2)).toBeVisible();
+      await page.goBack();
+      await expect(page.getByRole("heading", { name: names[2], exact: true })).toBeVisible();
+      expect(renders).toEqual([]);
     });
   }
 

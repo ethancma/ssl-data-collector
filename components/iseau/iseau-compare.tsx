@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { ArrowLeft, ChevronDown } from "lucide-react";
 import { useState } from "react";
 import {
@@ -18,7 +18,6 @@ import { useIseau } from "./use-iseau";
 import { SECTIONS, SectionBox, SectionSheet, type SectionId } from "./widgets";
 
 export default function IseauCompare({ data }: { data: IseauData }) {
-  const router = useRouter();
   const pathname = usePathname();
   const ids = compareIds(useSearchParams().get("stars"), data);
   const state = useIseau(null, data);
@@ -35,7 +34,8 @@ export default function IseauCompare({ data }: { data: IseauData }) {
   function pick(column: number, id: string) {
     const next = [...ids];
     next[column] = id;
-    router.replace(`${pathname}?stars=${next.join(",")}`, { scroll: false });
+    // Columns pick from data already loaded, so this skips a server render (see iseau-lineup).
+    window.history.replaceState(null, "", `${pathname}?stars=${next.join(",")}`);
   }
   return <div className="mx-auto w-full min-w-0 max-w-7xl space-y-6">
     <Link href="/protected/iseau" prefetch={false} className={cn("inline-flex items-center gap-2 rounded text-sm text-muted-foreground hover:text-foreground", focusClass)}><ArrowLeft aria-hidden="true" className="h-4 w-4" />Back to lineup</Link>
