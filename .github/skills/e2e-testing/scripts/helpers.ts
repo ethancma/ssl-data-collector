@@ -146,6 +146,23 @@ export async function selectBatchScope(
   await page.getByLabel("Animal", { exact: true }).selectOption(String(animalId));
 }
 
+// Daily check saves one row per system. Teardown deletes daily_checks by tagged notes, so tag
+// every row; callers then filter by system_id to assert on one system.
+export async function fillDailyCheckRound(
+  page: Page,
+  { notes, temperature = "12.5" }: { notes: string; temperature?: string },
+) {
+  const temperatures = page.getByLabel(/ temperature \(°C\)$/);
+  const count = await temperatures.count();
+  expect(count).toBeGreaterThan(0);
+  for (let index = 0; index < count; index += 1) {
+    await temperatures.nth(index).fill(temperature);
+    await page.getByLabel(/ notes$/).nth(index).fill(notes);
+    await page.getByRole("checkbox", { name: / water running$/ }).nth(index).check();
+  }
+  return count;
+}
+
 export async function logSingleFeeding(
   page: Page,
   {

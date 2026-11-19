@@ -132,7 +132,6 @@ export function renderLogForm(
       return (
         <DailyCheckForm
           systems={data.systems}
-          defaultSystemId={selected.systemId}
           defaultCheckType={selected.checkType}
           pendingFeedingLogs={data.pendingFeedingLogs}
           pendingFeedingLoadError={data.pendingFeedingLoadError}

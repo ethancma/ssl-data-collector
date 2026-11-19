@@ -40,7 +40,10 @@ star health and SSWD symptom onset over time.
   painted), microalgae — varies by species/life stage — plus a same-day follow-up on
   whether food was eaten.
 - **Daily AM/PM checks**: water running in all tubes/systems, star health (arm drops,
-  spine drops, lesions, arm curling, flattening, other), sump/system temperature.
+  spine drops, lesions, arm curling, flattening, other), sump/system temperature. One
+  round logs every system listed in `systems` on a single form and save, so new systems
+  appear without code changes. A temperature is required for each system; the water box starts
+  unchecked, and an unchecked box saves as `water_running = false`.
 - **Individual tracking**: sea stars/urchins/abalones get a unique **nickname**
   (e.g., "Sitara", "Titan"), unique lab-wide, not just a tank-scoped tag; multiple
   named animals can share one tub, and every feeding/consumption/health log is
