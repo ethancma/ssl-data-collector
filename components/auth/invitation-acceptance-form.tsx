@@ -8,7 +8,10 @@ import { useState } from "react";
 
 const PASSWORD_ERROR = "Use 12-128 characters with uppercase, lowercase, a number, and a symbol.";
 
-export function InvitationAcceptanceForm({ token }: { token: string }) {
+// preferGoogle: the invited email is a Gmail or Google Workspace address, so Google sign-in
+// is offered first and the password form waits behind "Use a password instead".
+export function InvitationAcceptanceForm({ token, preferGoogle = false }: { token: string; preferGoogle?: boolean }) {
+  const [showPassword, setShowPassword] = useState(!preferGoogle);
   const [password, setPassword] = useState("");
   const [confirmation, setConfirmation] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -62,23 +65,52 @@ export function InvitationAcceptanceForm({ token }: { token: string }) {
     }
   }
 
+  const googleButton = (
+    <Button type="button" variant={preferGoogle ? "default" : "outline"} className="w-full" disabled={isSubmitting} onClick={continueWithGoogle}>Continue with Google</Button>
+  );
+  const errorMessage = error && <p role="alert" className="text-sm text-destructive">{error}</p>;
+  const passwordForm = (
+    <HydratedForm onSubmit={submit} className="flex flex-col gap-4">
+      <div className="grid gap-2">
+        <Label htmlFor="invite-password">Password</Label>
+        <Input id="invite-password" type="password" autoComplete="new-password" required autoFocus={preferGoogle} value={password} onChange={(event) => setPassword(event.target.value)} />
+        <p className="text-xs text-muted-foreground">{PASSWORD_ERROR}</p>
+      </div>
+      <div className="grid gap-2">
+        <Label htmlFor="invite-password-confirmation">Confirm password</Label>
+        <Input id="invite-password-confirmation" type="password" autoComplete="new-password" required value={confirmation} onChange={(event) => setConfirmation(event.target.value)} />
+      </div>
+      {errorMessage}
+      <Button type="submit" variant={preferGoogle ? "outline" : "default"} className="w-full" disabled={isSubmitting}>{isSubmitting ? "Creating account..." : "Create account"}</Button>
+    </HydratedForm>
+  );
+  const divider = <div className="relative text-center text-xs text-muted-foreground before:absolute before:inset-x-0 before:top-1/2 before:border-t"><span className="relative bg-card px-2">or</span></div>;
+
+  if (preferGoogle) {
+    return (
+      <div className="space-y-5">
+        <p className="text-sm text-muted-foreground">This is a Google account. Continue with Google to sign in with it; you won&apos;t need a separate password.</p>
+        {googleButton}
+        {showPassword ? (
+          <>
+            {divider}
+            {passwordForm}
+          </>
+        ) : (
+          <>
+            {errorMessage}
+            <Button type="button" variant="link" className="h-auto w-full p-0 text-sm" disabled={isSubmitting} onClick={() => setShowPassword(true)}>Use a password instead</Button>
+          </>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-5">
-      <HydratedForm onSubmit={submit} className="flex flex-col gap-4">
-        <div className="grid gap-2">
-          <Label htmlFor="invite-password">Password</Label>
-          <Input id="invite-password" type="password" autoComplete="new-password" required value={password} onChange={(event) => setPassword(event.target.value)} />
-          <p className="text-xs text-muted-foreground">{PASSWORD_ERROR}</p>
-        </div>
-        <div className="grid gap-2">
-          <Label htmlFor="invite-password-confirmation">Confirm password</Label>
-          <Input id="invite-password-confirmation" type="password" autoComplete="new-password" required value={confirmation} onChange={(event) => setConfirmation(event.target.value)} />
-        </div>
-        {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
-        <Button type="submit" className="w-full" disabled={isSubmitting}>{isSubmitting ? "Creating account..." : "Create account"}</Button>
-      </HydratedForm>
-      <div className="relative text-center text-xs text-muted-foreground before:absolute before:inset-x-0 before:top-1/2 before:border-t"><span className="relative bg-card px-2">or</span></div>
-      <Button type="button" variant="outline" className="w-full" disabled={isSubmitting} onClick={continueWithGoogle}>Continue with Google</Button>
+      {passwordForm}
+      {divider}
+      {googleButton}
     </div>
   );
 }
