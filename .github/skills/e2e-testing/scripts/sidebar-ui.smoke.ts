@@ -3,7 +3,7 @@
  * docs/testing-strategy.md); theme choice is stored locally, not in Supabase.
  */
 import { test, expect } from "@playwright/test";
-import { gotoHydrated, login, TECH_PASSWORD } from "./helpers";
+import { gotoHydrated, login, TECH_PASSWORD, trackServerRenders } from "./helpers";
 
 test.describe("sidebar navigation and appearance", () => {
   test.describe.configure({ mode: "serial" });
@@ -43,6 +43,33 @@ test.describe("sidebar navigation and appearance", () => {
         (url) => /\/protected\/?$/.test(new URL(url).pathname) && !url.includes("/protected/home"),
       ),
     ).toEqual([]);
+  });
+
+  // Each server render counts against the Workers CPU limit; loading or hovering the
+  // sidebar must not prefetch, and re-clicking the current page must not re-render it.
+  test("sidebar links render on the server only when a new page is opened", async ({ page }) => {
+    await login(page);
+    const renders = trackServerRenders(page);
+    await gotoHydrated(page, "/protected/daily-operations");
+    const nav = page.getByRole("navigation", { name: "Main" });
+    const links = nav.getByRole("link");
+    for (let index = 0; index < (await links.count()); index += 1) {
+      await links.nth(index).hover();
+      await links.nth(index).focus();
+    }
+    await page.waitForTimeout(1000);
+    expect(renders).toEqual(["GET /protected/daily-operations"]);
+    renders.length = 0;
+
+    await nav.getByRole("link", { name: "Daily Operations" }).click();
+    await page.waitForTimeout(500);
+    expect(renders).toEqual([]);
+
+    await nav.getByRole("link", { name: "History" }).click();
+    await expect(page).toHaveURL(/\/protected\/history$/);
+    await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+    expect(renders.filter((render) => render.includes("/protected/history"))).toHaveLength(1);
+    expect(renders.filter((render) => !render.includes("/protected/history"))).toEqual([]);
   });
 
   test("phone layout uses a top bar and modal navigation", async ({ page }) => {
