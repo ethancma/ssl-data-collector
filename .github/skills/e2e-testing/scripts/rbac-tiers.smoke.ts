@@ -295,7 +295,7 @@ for (const role of [
       await loginAs(page, role.email, role.password);
       await gotoHydrated(page, "/protected/daily-operations?type=health-observation");
       await page.getByLabel("Animal", { exact: true }).selectOption(String(starAnimalId));
-      await page.locator("#health-observation-severity").fill("2");
+      await page.getByRole("radiogroup", { name: /severity/i }).getByRole("radio", { name: "2", exact: true }).locator("..").click();
       await page.getByLabel("Arm curling").check();
       await page.getByLabel("Flattening").check();
       await page.getByLabel("Notes").fill(`${TAG} health obs`);

@@ -22,9 +22,8 @@ import {
   getPacificTimeString,
   parsePacificInstant,
 } from "@/lib/pacific-date-time";
-import { SELECT_CLASS } from "@/components/forms/form-classes";
+import { QUICK_PICK_HEADING_CLASS, SELECT_CLASS } from "@/components/forms/form-classes";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   HEALTH_ISSUE_TYPES,
@@ -152,21 +151,32 @@ export function HealthObservationForm({
             />
           </div>
 
-          <div className="grid gap-2">
-            <Label htmlFor="health-observation-severity">
+          <div
+            role="radiogroup"
+            aria-labelledby="health-observation-severity-label"
+            aria-describedby={errors.severity ? "health-observation-severity-error" : undefined}
+            aria-invalid={Boolean(errors.severity)}
+            className="grid gap-2"
+          >
+            <p id="health-observation-severity-label" className={QUICK_PICK_HEADING_CLASS}>
               Severity ({SEVERITY_MIN} = healthy, {SEVERITY_MAX} = dead)
-            </Label>
-            <Input
-              id="health-observation-severity"
-              type="number"
-              inputMode="numeric"
-              min={SEVERITY_MIN}
-              max={SEVERITY_MAX}
-              step={1}
-              aria-describedby={errors.severity ? "health-observation-severity-error" : undefined}
-              aria-invalid={Boolean(errors.severity)}
-              {...register("severity")}
-            />
+            </p>
+            <div className="flex w-fit divide-x divide-input rounded-md border border-input shadow-sm">
+              {Array.from({ length: SEVERITY_MAX - SEVERITY_MIN + 1 }, (_, index) => SEVERITY_MIN + index).map((severity) => (
+                <label key={severity} className="cursor-pointer first:rounded-l-md last:rounded-r-md">
+                  <input
+                    type="radio"
+                    value={severity}
+                    className="peer sr-only"
+                    aria-describedby={errors.severity ? "health-observation-severity-error" : undefined}
+                    {...register("severity")}
+                  />
+                  <span className="flex h-11 w-11 items-center justify-center rounded-[inherit] text-sm font-medium transition-colors peer-checked:bg-primary peer-checked:text-primary-foreground peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-ring motion-reduce:transition-none">
+                    {severity}
+                  </span>
+                </label>
+              ))}
+            </div>
             <FieldError
               id="health-observation-severity-error"
               message={errors.severity?.message}

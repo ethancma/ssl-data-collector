@@ -583,18 +583,22 @@ test.describe("e2e smoke", () => {
     expect(localDateOf(String(addition.added_at))).toBe(todayDateString());
   });
 
-  test("health observation blocks submit with a severity outside 1-5", async ({
+  test("health observation requires a severity selection", async ({
     page,
   }) => {
     await login(page);
     await gotoHydrated(page, "/protected/daily-operations?type=health-observation");
     await page.getByLabel("Animal", { exact: true }).selectOption(String(starAnimalId));
-    await page.locator("#health-observation-severity").fill("6");
+    const severity = page.getByRole("radiogroup", { name: /severity/i });
+    await expect(severity.getByRole("radio")).toHaveCount(5);
+    for (const score of [1, 2, 3, 4, 5]) {
+      await expect(severity.getByRole("radio", { name: String(score), exact: true })).not.toBeChecked();
+    }
     await page.getByLabel("Lesion").check();
     await page.getByLabel("Notes").fill(`${RUN_TAG} health obs blocked`);
     await page.getByRole("button", { name: "Save observation" }).click();
     // Client-side zod validation should block the insert and keep us on the form.
-    await expect(page.getByText(/whole number from 1 to 5/i)).toBeVisible();
+    await expect(page.getByText("Enter a severity score")).toBeVisible();
     await expect(page).toHaveURL(
       /\/protected\/daily-operations\?type=health-observation/,
     );
@@ -616,7 +620,11 @@ test.describe("e2e smoke", () => {
     ).toBeVisible();
     await expect(page.locator('input[type="file"]')).toHaveCount(0);
     await page.getByLabel("Animal", { exact: true }).selectOption(String(starAnimalId));
-    await page.locator("#health-observation-severity").fill("3");
+    const severity = page.getByRole("radiogroup", { name: /severity/i });
+    await severity.getByRole("radio", { name: "1", exact: true }).locator("..").click();
+    await severity.getByRole("radio", { name: "3", exact: true }).locator("..").click();
+    await expect(severity.getByRole("radio", { name: "1", exact: true })).not.toBeChecked();
+    await expect(severity.getByRole("radio", { name: "3", exact: true })).toBeChecked();
     await page.getByLabel("Lesion").check();
     await page.getByLabel("Arm curling").check();
     await page.getByLabel("Notes").fill(`${RUN_TAG} health obs without photo`);
@@ -821,7 +829,7 @@ test.describe("e2e smoke", () => {
     await expectDefaultDateAndTime(page);
     await page.getByLabel("Time").fill(PICKED_TIME);
     await page.getByLabel("Animal", { exact: true }).selectOption(String(starAnimalId));
-    await page.locator("#health-observation-severity").fill("2");
+    await page.getByRole("radiogroup", { name: /severity/i }).getByRole("radio", { name: "2", exact: true }).locator("..").click();
     await page.getByLabel("Notes").fill(`${RUN_TAG} health obs picked time`);
     await page.getByRole("button", { name: "Save observation" }).click();
     await expect(page).toHaveURL(/\/protected\/home/);
