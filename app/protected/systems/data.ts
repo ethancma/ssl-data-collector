@@ -57,8 +57,8 @@ const TASK_LABELS: Record<MaintenanceTaskType, string> = {
 // star treatments (the Water and activity chart; the Key Highlights panel
 // uses the last 14 days), the last 14 days of health observations, the lab's
 // water-quality target ranges, and a status snapshot per system for the
-// lineup and compare views. Scoped with a single `system_id IN (...)` query
-// per table (instead of one round trip per system). Returns a map keyed by
+// lineup and compare views. One lab-wide query per table, all in a single
+// parallel round (instead of one round trip per system). Returns a map keyed by
 // system slug so the client can switch the selected system instantly
 // without re-fetching.
 export async function fetchAllSystemsDetailData(): Promise<{
@@ -73,25 +73,14 @@ export async function fetchAllSystemsDetailData(): Promise<{
   const since30d = new Date(now - ACTIVITY_WINDOW_DAYS * 24 * 60 * 60 * 1000).toISOString();
   const since60d = new Date(now - 60 * 24 * 60 * 60 * 1000).toISOString();
 
-  const { data: systemRows, error: systemsError } = await supabase
-    .from("systems")
-    .select("id, slug, name, category, layout_notes, has_animals")
-    .order("name", { ascending: true })
-    .order("id", { ascending: true });
-  if (systemsError) {
-    return { dataBySlug: {}, error: systemsError.message };
-  }
-  if (!systemRows || systemRows.length === 0) {
-    return { dataBySlug: {} };
-  }
-
-  const systemIds = systemRows.map((s) => s.id);
-
   // Widened to `string` (not a literal) so postgrest-js's select-string
   // parser doesn't try (and fail) to statically parse this runtime-built list.
   const waterQualityColumns: string = `id, system_id, tested_at, ph_source, ${WATER_QUALITY_PARAMETERS.join(", ")}`;
 
+  // One parallel round: every table is fetched for the whole lab and grouped per
+  // system below, so nothing waits on the systems list.
   const [
+    { data: systemRows, error: systemsError },
     { data: dailyChecksRaw, error: dailyChecksError },
     { data: waterQualityRaw, error: waterQualityError },
     { data: chemicalAdditionsRaw, error: chemicalAdditionsError },
@@ -102,11 +91,16 @@ export async function fetchAllSystemsDetailData(): Promise<{
     { data: treatmentsRaw, error: treatmentsError },
     { data: scheduleRaw, error: scheduleError },
     { data: tankRaw, error: tankError },
-  ] = await Promise.all([    selectAll((from, to) =>
+  ] = await Promise.all([
+    supabase
+      .from("systems")
+      .select("id, slug, name, category, layout_notes, has_animals")
+      .order("name", { ascending: true })
+      .order("id", { ascending: true }),
+    selectAll((from, to) =>
       supabase
         .from("daily_checks")
         .select("id, system_id, check_type, water_running, temperature, checked_at")
-        .in("system_id", systemIds)
         .gte("checked_at", since60d)
         .order("checked_at", { ascending: true })
         .order("id", { ascending: true })
@@ -115,25 +109,21 @@ export async function fetchAllSystemsDetailData(): Promise<{
     supabase
       .from("water_quality_readings")
       .select(waterQualityColumns)
-      .in("system_id", systemIds)
       .gte("tested_at", since60d)
       .order("tested_at", { ascending: true }),
     supabase
       .from("chemical_additions")
       .select("id, system_id, chemical_name, amount, unit, added_at, reason")
-      .in("system_id", systemIds)
       .gte("added_at", since30d)
       .order("added_at", { ascending: false }),
     supabase
       .from("health_observations")
       .select("id, observed_at, severity, issues, notes, has_photo, tanks!inner(system_id, name)")
-      .in("tanks.system_id", systemIds)
       .gte("observed_at", since14d)
       .order("observed_at", { ascending: false }),
     supabase
       .from("maintenance_logs")
       .select("id, system_id, performed_at, task_type, notes")
-      .in("system_id", systemIds)
       .gte("performed_at", since30d)
       .order("performed_at", { ascending: false }),
     supabase
@@ -143,7 +133,6 @@ export async function fetchAllSystemsDetailData(): Promise<{
       supabase
         .from("feeding_logs")
         .select("fed_at, tank_id, tanks!inner(system_id)")
-        .in("tanks.system_id", systemIds)
         .gte("fed_at", since30d)
         .order("fed_at", { ascending: false })
         .order("id", { ascending: false })
@@ -154,15 +143,21 @@ export async function fetchAllSystemsDetailData(): Promise<{
       supabase
         .from("star_treatments")
         .select("administered_at, treatment_type, amount, unit, tanks!inner(system_id)")
-        .in("tanks.system_id", systemIds)
         .gte("administered_at", since30d)
         .order("administered_at", { ascending: false })
         .order("id", { ascending: false })
         .range(from, to),
     ),
     supabase.from("feeding_schedules").select("system_id, tank_position, size_liters, weekdays, updated_at"),
-    supabase.from("tanks").select("id, system_id, name").in("system_id", systemIds),
+    supabase.from("tanks").select("id, system_id, name"),
   ]);
+
+  if (systemsError) {
+    return { dataBySlug: {}, error: systemsError.message };
+  }
+  if (!systemRows || systemRows.length === 0) {
+    return { dataBySlug: {} };
+  }
 
   const loadError =
     dailyChecksError ??
