@@ -79,8 +79,8 @@ weaken each section's UI and direct-Supabase assertions.
 
 | Target | Supabase project | Start the app | Use for |
 |---|---|---|---|
-| Local | Docker stack shared by worktrees | Worktree: `npm run dev -- -p $PORT` | Default for e2e, migrations, and anything destructive |
-| Dev | `hcaopgzlvuyuyjcjxuvy` | Main checkout: `npm run dev:supabase-dev` | Hosted e2e (Auth, Storage, OAuth, redirects) with throwaway data |
+| Dev | `hcaopgzlvuyuyjcjxuvy` | Main checkout: `npm run dev:supabase-dev`; worktree: see below | Default for local testing and e2e, with throwaway data |
+| Local | Docker stack shared by worktrees | Worktree: `npm run dev -- -p $PORT` | Migrations and anything destructive (resets); CI |
 | Production | `bqylxmsifagnztxhixyl` (linked CLI project, real data) | Hosted production app only; local app connections are blocked | Human read-only checks only; never e2e |
 
 - `npm run dev:supabase-dev` loads `.env.supabase-dev.local` (gitignored, human-maintained),
@@ -92,6 +92,15 @@ weaken each section's UI and direct-Supabase assertions.
   For a local port-3000 server both are `http://localhost:3000`; the staging Worker URL
   is the site origin for the hosted app, not for localhost.
   Run `npm run test:e2e:preflight`, then `npm run test:e2e:full -- ...`.
+- In a worktree, source the main checkout's Dev file after the worktree's `.env.local`, and
+  point the site and E2E origins at your own port, in both the server's shell and the test shell:
+  `set -a; . ./.env.local; . <main-checkout>/.env.supabase-dev.local; set +a; unset E2E_RESET_DB;`
+  `export NEXT_PUBLIC_SITE_URL=http://localhost:$PORT E2E_BASE_URL=http://localhost:$PORT`.
+  `NEXT_PUBLIC_*` values are baked in at build time, so rebuild (`npm run build` or
+  `build:vinext`) in that shell before `npm start` or the Workers preview.
+- Dev is shared and keeps whatever earlier runs and humans left there. Tests must not assume
+  an empty table: reuse and restore existing rows (for example, water-quality targets) and
+  clean up only rows they created.
 - `npm run seed:dev` idempotently seeds Dev with tanks and animals shaped like Production's
   (it refuses any other project). Tests must find data by shape, as Production would have
   it (for example `findGrahamStar()`), never by a fixture name.
