@@ -40,11 +40,6 @@ import {
 
 test.describe("ISeaU patient classification", () => {
   test.describe.configure({ mode: "serial" });
-  test.skip(
-    !process.env.E2E_DB_URL ||
-      !["localhost", "127.0.0.1"].includes(new URL(process.env.E2E_DB_URL ?? "http://invalid").hostname),
-    "Classification fixtures require local Supabase.",
-  );
 
   const tag = `${RUN_TAG}-iseau`;
   const names = ["current", "recovered", "past", "healthy"].map((kind) => `${tag}-${kind}`);
