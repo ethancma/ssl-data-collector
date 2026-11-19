@@ -46,6 +46,10 @@ A human reviews and merges every PR — the agent never merges its own work, reg
 ## Agent verification and PR preparation
 
 - During development, run `npm run verify` (typecheck, lint, unit tests).
+- Keep quick checks direct. Use `e2e-verifier` for feature or database-backed browser
+  verification; use a task agent for long or verbose builds and test suites when useful.
+  Keep the exact command and result in the implementation session, and do not repeat a
+  completed run.
 - Before a PR, also run `npm run check:dead-code` and `git diff --check`; report exact
   commands with passed/failed/not-run results using [prepare-pr](../.github/prompts/prepare-pr.prompt.md).
 - Plan session changes with `--files`. For a committed PR use

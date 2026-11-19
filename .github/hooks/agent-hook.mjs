@@ -2,7 +2,7 @@
 // Payloads differ per harness (tool_name/tool_input vs toolName/toolArgs), so both are read and both output shapes are written.
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
 const event = process.argv[2];
@@ -112,10 +112,16 @@ function preToolUse() {
 
 function postToolUse() {
   if (!isEdit) return;
-  const files = editedFiles().filter((f) => /\.(tsx?|mjs|cjs|jsx?)$/.test(f) && existsSync(path.join(root(), f)));
+  const files = editedFiles().filter((f) =>
+    f !== ".." && !f.startsWith(`..${path.sep}`) && !path.isAbsolute(f) &&
+    /\.(tsx?|mjs|cjs|jsx?)$/.test(f) && existsSync(path.join(root(), f)),
+  );
   const eslint = path.join(root(), "node_modules/.bin/eslint");
   if (!files.length || !existsSync(eslint)) return;
-  const r = run(eslint, ["--quiet", "--no-warn-ignored", ...files]);
+  const cacheDir = path.join(root(), "node_modules", ".cache");
+  mkdirSync(cacheDir, { recursive: true });
+  const cacheFile = path.join(cacheDir, "agent-hook-eslint");
+  const r = run(eslint, ["--quiet", "--no-warn-ignored", "--cache", "--cache-location", cacheFile, ...files]);
   if (r.status !== 0) {
     const output = `${r.stdout}${r.stderr}`.trim().slice(0, 3000);
     emit("PostToolUse", { additionalContext: `ESLint errors in edited files:\n${output}` });

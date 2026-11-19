@@ -58,6 +58,21 @@ When writing the code, be careful of structuring your CSS selector specificities
 
 Spend your boldness in one place. Let one element be the memorable thing, keep everything around it quiet and disciplined, and cut any decoration that does not serve the brief. Build to a quality floor without announcing it: responsive down to mobile, visible keyboard focus, reduced motion respected, visually accessible, harmonious color palettes. Critique your own work as you build, taking screenshots to review if your environment supports it — a picture is worth 1000 tokens. Consider Chanel's advice: before leaving the house, take a look in the mirror and remove one accessory. Human creatives have memory and always try to do something new, so if you have a space to quickly jot down notes about what you've tried, it can help you in future passes.
 
+## SSL app workflow
+
+- Read [the UI style guide](../../../docs/style-guide.md) and inspect the target page before
+  proposing visual changes. Preserve established tokens and patterns unless the brief calls
+  for a deliberate system-wide change.
+- For a new page or substantial redesign, present 2–3 meaningfully different concepts before
+  implementation, with a brief rationale and a compact wireframe for each. Wait for the
+  user's choice when the direction materially changes the experience. For narrow polish or
+  bug fixes, skip concept proposals unless requested.
+- After implementation, review the running page at 375, 768, 1280, and 1920 CSS pixels wide
+  when a browser is available. Check both themes when supported, along with alignment,
+  wrapping, keyboard focus, reduced motion, and overflow. Reuse an already-running preview;
+  do not stop or restart the user's port-3000 server. Browser review must not submit forms or
+  create database writes.
+
 ## More on writing in design
 
 Words appear in a design for one reason: to make it easier to understand and use. They are design content, not decoration. Bring the same intentionality and minimalism to copywriting that you would bring to spacing and color. Before writing anything, ask what the design needs to say, and how it can best be said to help the person navigate the experience.
