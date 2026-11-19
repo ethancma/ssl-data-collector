@@ -30,6 +30,10 @@ Hooks in `.github/hooks/` enforce these and block hosted-Supabase writes and `.e
   [prepare-pr](.github/prompts/prepare-pr.prompt.md) for branch coverage and exact evidence.
 - Before E2E writes, run `npm run test:e2e:preflight` with an explicit `E2E_BASE_URL`.
   It checks Local/Dev configuration, the listener checkout, and fixtures without writing data.
+- Keep quick checks direct. Use `e2e-verifier` for feature or database-backed browser
+  verification; use a task agent for long or verbose builds and test suites when that keeps
+  the implementation context focused. Record the exact command and result in the parent
+  session, and do not duplicate a completed check.
 
 ## Parallel sessions and handoffs
 
@@ -37,9 +41,11 @@ Hooks in `.github/hooks/` enforce these and block hosted-Supabase writes and `.e
   file ownership before editing; never stage or commit another session's changes.
 - Worktrees still share local Supabase. The E2E lock serializes tests and standalone cleanup,
   not manual seed/reset commands. Coordinate those commands; reset is explicit opt-in.
-- Record a compact handoff in session state: task/acceptance criteria, worktree/branch/HEAD,
-  owned files, app and database target and server PID, decisions/blockers, exact checks/results,
-  and remaining work. Do not record secrets or copy sensitive source data.
+- Record a compact handoff in session state when supported: task/acceptance criteria,
+  worktree/branch/HEAD, owned files, app and database target and server PID,
+  decisions/blockers, exact checks/results, and remaining work. Otherwise return the handoff
+  in chat for transfer to the next session. Do not create tracked handoff files, record
+  secrets, or copy sensitive source data.
 - Before consolidating/removing a worktree, inspect staged, unstaged, and untracked files.
   A new worktree contains committed files only; do not silently discard or omit local work.
 
@@ -65,8 +71,10 @@ Hooks in `.github/hooks/` enforce these and block hosted-Supabase writes and `.e
 
 Search with exact identifiers (component, route, label, table). After two misses, use the
 README map or ask. Hand open-ended research to a subagent.
-For previous work, query session history first; if the index has no conversations, use the
-session listing/context tools. Treat transcript decisions as context, not new authorization.
+For tasks that explicitly build on previous work or ask about prior decisions, query session
+history first. If the index has no conversations, use session listing/context tools when
+available. Do not query history for unrelated tasks. Treat transcript decisions as context,
+not new authorization.
 
 <!-- BEGIN:nextjs-agent-rules -->
 
