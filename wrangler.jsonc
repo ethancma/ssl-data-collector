@@ -7,6 +7,10 @@
   "workers_dev": true,
   "preview_urls": false,
   "observability": {
+    "redact_query_string": true,
+    "issues": {
+      "enabled": true
+    },
     "logs": {
       "enabled": true,
       "invocation_logs": true
