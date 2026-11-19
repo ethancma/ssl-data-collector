@@ -17,6 +17,28 @@ export async function loadDailyOperationsData(): Promise<SharedFormData> {
     profile?.status === "active" &&
     ["admin", "technician", "volunteer"].includes(profile.role);
 
+  const since = new Date(Date.now() - 36 * 60 * 60 * 1000).toISOString();
+  let pendingFeedingQuery = supabase
+    .from("feeding_logs")
+    .select("id, fed_at, animals(name), tanks!inner(system_id)")
+    .is("consumption_status", null)
+    .gte("fed_at", since)
+    .order("fed_at", { ascending: false });
+
+  if (profile?.role === "volunteer") {
+    pendingFeedingQuery = pendingFeedingQuery.eq("recorded_by", profile.id);
+  }
+
+  // Star species is only needed for Star treatment roles; skip the request otherwise.
+  const speciesQuery = canManageStarTreatments
+    ? supabase
+        .from("species")
+        .select("id, common_name, category")
+        .eq("category", "star")
+        .order("common_name")
+        .order("id")
+    : Promise.resolve(null);
+
   const [
     { data: systems, error: systemsError },
     { data: tanks, error: tanksError },
@@ -25,6 +47,8 @@ export async function loadDailyOperationsData(): Promise<SharedFormData> {
     { data: chemicalCatalog, error: chemicalCatalogError },
     { data: foodCatalog, error: foodCatalogError },
     { data: starTreatmentCatalog, error: starTreatmentCatalogError },
+    { data: logs, error: pendingFeedingError },
+    speciesResult,
   ] = await Promise.all([
     supabase
       .from("systems")
@@ -55,6 +79,8 @@ export async function loadDailyOperationsData(): Promise<SharedFormData> {
       .select("id, name, default_amount_unit, default_concentration_unit")
       .eq("is_active", true)
       .order("name"),
+    pendingFeedingQuery,
+    speciesQuery,
   ]);
   const { tanks: tankOptions, ...options } = deriveDailyOperationsOptions({
     systems: systems ?? [],
@@ -71,19 +97,6 @@ export async function loadDailyOperationsData(): Promise<SharedFormData> {
     animalsError?.message ??
     (options.systems.length === 0 ? "No systems are configured." : undefined);
 
-  const since = new Date(Date.now() - 36 * 60 * 60 * 1000).toISOString();
-  let pendingFeedingQuery = supabase
-    .from("feeding_logs")
-    .select("id, fed_at, animals(name), tanks!inner(system_id)")
-    .is("consumption_status", null)
-    .gte("fed_at", since)
-    .order("fed_at", { ascending: false });
-
-  if (profile?.role === "volunteer") {
-    pendingFeedingQuery = pendingFeedingQuery.eq("recorded_by", profile.id);
-  }
-
-  const { data: logs, error: pendingFeedingError } = await pendingFeedingQuery;
   const todayKey = pacificDateKey(new Date());
   const pendingFeedingLogs = pendingFeedingError
     ? []
@@ -92,13 +105,7 @@ export async function loadDailyOperationsData(): Promise<SharedFormData> {
   let starScope: StarTreatmentScope = { starSystems: [], starTanks: [], stars: [] };
   let starTreatmentLoadError: string | undefined;
 
-  if (canManageStarTreatments) {
-    const speciesResult = await supabase
-      .from("species")
-      .select("id, common_name, category")
-      .eq("category", "star")
-      .order("common_name")
-      .order("id");
+  if (speciesResult) {
     starScope = deriveStarTreatmentScope(
       options.systems,
       tankOptions,
