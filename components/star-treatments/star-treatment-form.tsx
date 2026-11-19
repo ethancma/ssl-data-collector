@@ -226,7 +226,7 @@ export function StarTreatmentForm({
           Log another treatment
         </Button>
         <Button asChild variant="outline">
-          <Link href="/protected/star-treatments">View treatments</Link>
+          <Link href="/protected/star-treatments" prefetch={false}>View treatments</Link>
         </Button>
       </BatchSuccessCard>
     );
@@ -414,7 +414,7 @@ export function StarTreatmentForm({
                 : `Save ${includedCount} ${includedCount === 1 ? "treatment" : "treatments"}`}
             </Button>
             <Button asChild variant="outline">
-              <Link href="/protected/star-treatments">View treatments</Link>
+              <Link href="/protected/star-treatments" prefetch={false}>View treatments</Link>
             </Button>
           </div>
         </HydratedForm>

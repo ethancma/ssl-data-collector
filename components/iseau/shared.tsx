@@ -65,7 +65,7 @@ export function StarCard({ star, href, data }: { star: Star; href: string; data:
   const place = star.location;
   const temperature = lastTemperature(star, data);
   // Every line is a single truncated row, so all tiles keep the same height at any width.
-  return <Link href={href} className={cn("flex h-full w-full min-w-0 flex-col gap-1 rounded-2xl bg-muted p-4 text-left transition-colors motion-reduce:transition-none [@media(hover:hover)]:hover:bg-accent", focusClass)}>
+  return <Link href={href} prefetch={false} className={cn("flex h-full w-full min-w-0 flex-col gap-1 rounded-2xl bg-muted p-4 text-left transition-colors motion-reduce:transition-none [@media(hover:hover)]:hover:bg-accent", focusClass)}>
     <span className="block truncate text-xl font-semibold tracking-tight">{star.name}</span>
     <span className="block truncate text-sm text-muted-foreground">{place.tank} in {place.system}</span>
     <span className="my-2 block truncate text-sm"><SeverityLabel severity={lastHealth(star).severity} /></span>
