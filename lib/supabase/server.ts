@@ -1,7 +1,24 @@
 import { createServerClient } from "@supabase/ssr";
 import { cookies, headers } from "next/headers";
+import { after } from "next/server";
+import { cache } from "react";
 
+import { createQueryStats, formatQueryStats, instrumentFetch } from "@/lib/supabase/query-stats";
 import { assertSafeSupabaseTarget } from "@/lib/supabase/target";
+
+// One stats object per render; after() emits a single log line once the response is sent.
+// Route handlers and server actions get one line per client.
+const getRequestQueryStats = cache(() => {
+  const stats = createQueryStats();
+  try {
+    after(() => {
+      if (stats.queries > 0) console.log(formatQueryStats(stats));
+    });
+  } catch {
+    // Outside a request scope (scripts, tests): skip logging rather than fail the client.
+  }
+  return stats;
+});
 
 export async function assertSafeServerSupabaseTarget() {
   const requestHeaders = await headers();
@@ -26,6 +43,7 @@ export async function createClient() {
     process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!,
     {
       db: { schema: "core" },
+      global: { fetch: instrumentFetch(getRequestQueryStats()) },
       cookies: {
         getAll() {
           return cookieStore.getAll();

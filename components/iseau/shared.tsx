@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import { onPlainClick } from "@/components/systems/snapshot-ui";
 import { cn } from "@/lib/utils";
 import { CompactSelect } from "@/components/ui/app-primitives";
 import { focusClass } from "@/components/ui/app-layout";
@@ -61,15 +61,15 @@ export function RangeSwitch({ state }: { state: IseauState }) {
     options={RANGES.map((days) => ({ value: String(days), label: `Last ${days} days` }))} />;
 }
 
-export function StarCard({ star, href, data }: { star: Star; href: string; data: IseauData }) {
+export function StarCard({ star, href, data, onOpen }: { star: Star; href: string; data: IseauData; onOpen: () => void }) {
   const place = star.location;
   const temperature = lastTemperature(star, data);
   // Every line is a single truncated row, so all tiles keep the same height at any width.
-  return <Link href={href} prefetch={false} className={cn("flex h-full w-full min-w-0 flex-col gap-1 rounded-2xl bg-muted p-4 text-left transition-colors motion-reduce:transition-none [@media(hover:hover)]:hover:bg-accent", focusClass)}>
+  return <a href={href} onClick={onPlainClick(onOpen)} className={cn("flex h-full w-full min-w-0 flex-col gap-1 rounded-2xl bg-muted p-4 text-left transition-colors motion-reduce:transition-none [@media(hover:hover)]:hover:bg-accent", focusClass)}>
     <span className="block truncate text-xl font-semibold tracking-tight">{star.name}</span>
     <span className="block truncate text-sm text-muted-foreground">{place.tank} in {place.system}</span>
     <span className="my-2 block truncate text-sm"><SeverityLabel severity={lastHealth(star).severity} /></span>
     <span className="block truncate text-sm text-muted-foreground">Last observed {relativeDay(lastHealth(star).at, data.now)}</span>
     <span className="block truncate text-sm text-muted-foreground">{temperature ? `AM check ${temperature.celsius.toFixed(1)} °C` : "No AM temperature data"}</span>
-  </Link>;
+  </a>;
 }

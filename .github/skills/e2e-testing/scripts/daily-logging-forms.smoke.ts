@@ -18,6 +18,7 @@ import {
   login,
   loginAs,
   signInRoleClient,
+  trackServerRenders,
   TECH_EMAIL,
   TECH_PASSWORD,
   VOLUNTEER_EMAIL,
@@ -39,11 +40,6 @@ import {
 
 test.describe("ISeaU patient classification", () => {
   test.describe.configure({ mode: "serial" });
-  test.skip(
-    !process.env.E2E_DB_URL ||
-      !["localhost", "127.0.0.1"].includes(new URL(process.env.E2E_DB_URL ?? "http://invalid").hostname),
-    "Classification fixtures require local Supabase.",
-  );
 
   const tag = `${RUN_TAG}-iseau`;
   const names = ["current", "recovered", "past", "healthy"].map((kind) => `${tag}-${kind}`);
@@ -100,6 +96,7 @@ test.describe("ISeaU patient classification", () => {
       expect(observations.filter((row) => Number(row.severity) === 2)).toHaveLength(3);
       await loginAs(page, email, password);
       await gotoHydrated(page, "/protected/iseau");
+      const renders = trackServerRenders(page);
       const card = (index: number) => page.locator(`a[href="/protected/iseau?star=${animalIds[index]}"]`);
       await expect(card(0)).toBeVisible();
       await expect(card(1)).toBeVisible();
@@ -111,8 +108,15 @@ test.describe("ISeaU patient classification", () => {
       await expect(card(1)).toHaveCount(0);
       await expect(card(3)).toHaveCount(0);
       await card(2).click();
+      await expect(page).toHaveURL(new RegExp(`\\?star=${animalIds[2]}$`));
       await expect(page.getByRole("heading", { name: names[2], exact: true })).toBeVisible();
       await expect(page.getByText("No score of 2 or higher in the past 14 days.", { exact: true })).toBeVisible();
+      // Star views pick from data already loaded, so moving between them must not re-render on the server.
+      await page.getByRole("link", { name: "All stars" }).click();
+      await expect(card(2)).toBeVisible();
+      await page.goBack();
+      await expect(page.getByRole("heading", { name: names[2], exact: true })).toBeVisible();
+      expect(renders).toEqual([]);
     });
   }
 
@@ -1346,6 +1350,8 @@ test.describe("P1 water-quality targets", () => {
   let systemPhTargetId: number;
   let labSalinityTargetId: number;
   const readingIds: number[] = [];
+  // Targets that already existed (e.g. on hosted Dev): the tests edit them and afterAll restores them.
+  let preexistingTargets: Record<string, unknown>[] = [];
 
   test.beforeAll(() => {
     const systems = dbQuery(`select id, name from core.systems order by name, id`);
@@ -1355,6 +1361,10 @@ test.describe("P1 water-quality targets", () => {
     );
     expect(grahamSystemId).toBeGreaterThan(0);
     expect(fallbackSystemId).toBeGreaterThan(0);
+    preexistingTargets = dbQuery(`select id, min_value, max_value
+      from core.water_quality_target_ranges
+      where (system_id is null and parameter_key in ('ph', 'salinity'))
+        or (system_id = ${grahamSystemId} and parameter_key = 'ph')`);
   });
 
   test.afterAll(async () => {
@@ -1363,12 +1373,20 @@ test.describe("P1 water-quality targets", () => {
         where notes like ${sqlLiteral(`${tag}%`)}
           or id in (${readingIds.length > 0 ? readingIds.join(", ") : "0"})`,
     ));
+    const preexistingIds = new Set(preexistingTargets.map((target) => Number(target.id)));
     const targetIds = [labPhTargetId, systemPhTargetId, labSalinityTargetId].filter(
-      (id) => Number.isInteger(id) && id > 0,
+      (id) => Number.isInteger(id) && id > 0 && !preexistingIds.has(id),
     );
     for (const id of targetIds) {
       await cleanupStep(`delete target range ${id}`, () => dbQuery(
         `delete from core.water_quality_target_ranges where id = ${id}`,
+      ));
+    }
+    for (const target of preexistingTargets) {
+      await cleanupStep(`restore target range ${target.id}`, () => dbQuery(
+        `update core.water_quality_target_ranges
+          set min_value = ${target.min_value ?? "null"}, max_value = ${target.max_value ?? "null"}
+          where id = ${Number(target.id)}`,
       ));
     }
   });
@@ -1383,7 +1401,7 @@ test.describe("P1 water-quality targets", () => {
     const labPh = page.getByRole("form", { name: "pH target for Lab-wide" });
     await labPh.getByLabel("Minimum (unitless)").fill("7.8");
     await labPh.getByLabel("Maximum (unitless)").fill("8.4");
-    await labPh.getByRole("button", { name: "Add" }).click();
+    await labPh.getByRole("button", { name: /^(Add|Save)$/ }).click();
     await expect(page.getByRole("status")).toContainText("pH target saved for Lab-wide.");
     labPhTargetId = Number(
       dbQuery(`select id from core.water_quality_target_ranges
@@ -1392,10 +1410,10 @@ test.describe("P1 water-quality targets", () => {
 
     await page.getByLabel("Range scope").selectOption(String(grahamSystemId));
     const systemPh = page.getByRole("form", { name: "pH target for Graham" });
-    await expect(systemPh).toContainText("Lab-wide fallback");
+    await expect(systemPh).toContainText(/Lab-wide fallback|Using this system override/);
     await systemPh.getByLabel("Minimum (unitless)").fill("8");
     await systemPh.getByLabel("Maximum (unitless)").fill("8.2");
-    await systemPh.getByRole("button", { name: "Add" }).click();
+    await systemPh.getByRole("button", { name: /^(Add|Save)$/ }).click();
     await expect(page.getByRole("status")).toContainText("pH target saved for Graham.");
     systemPhTargetId = Number(
       dbQuery(`select id from core.water_quality_target_ranges
@@ -1407,7 +1425,8 @@ test.describe("P1 water-quality targets", () => {
       name: "Salinity target for Lab-wide",
     });
     await labSalinity.getByLabel("Minimum (ppt)").fill("30");
-    await labSalinity.getByRole("button", { name: "Add" }).click();
+    await labSalinity.getByLabel("Maximum (ppt)").fill("");
+    await labSalinity.getByRole("button", { name: /^(Add|Save)$/ }).click();
     await expect(page.getByRole("status")).toContainText(
       "Salinity target saved for Lab-wide.",
     );

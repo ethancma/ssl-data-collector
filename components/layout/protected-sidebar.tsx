@@ -1,6 +1,6 @@
 "use client";
 
-import Link, { useLinkStatus } from "next/link";
+import { AppLink, useLinkStatus } from "@/components/ui/app-link";
 import { usePathname } from "next/navigation";
 import {
   Fragment,
@@ -45,36 +45,47 @@ const activeClassName =
 // Matches Tailwind's `sm` breakpoint, where the sidebar expands inline.
 const DESKTOP_QUERY = "(min-width: 640px)";
 
-function LinkPendingTracker({ pendingRef }: { pendingRef: RefObject<boolean> }) {
+// With prefetch off, a click waits on the server render. This overlay confirms the click
+// without shifting layout; the delay keeps fast navigations from flashing.
+function LinkPendingHint({ pendingRef }: { pendingRef: RefObject<boolean> }) {
   const { pending } = useLinkStatus();
   useEffect(() => {
     pendingRef.current = pending;
   }, [pending, pendingRef]);
-  return null;
+  return (
+    <span
+      aria-hidden="true"
+      data-pending={pending || undefined}
+      className={cn(
+        "pointer-events-none absolute inset-0 rounded-[inherit] bg-primary/10 opacity-0 motion-safe:transition-opacity",
+        pending && "opacity-100 motion-safe:delay-150",
+      )}
+    />
+  );
 }
 
-// Each prefetch or navigation is a full server render on the Worker, and bursts of them
-// hit the Workers CPU limit. Sidebar links therefore skip prefetch and ignore repeat clicks
-// on the page already shown or already loading.
+// Each navigation is a full server render on the Worker, and bursts of them hit the Workers
+// CPU limit, so sidebar links ignore repeat clicks on the page already shown or loading.
 function SidebarLink({
   children,
   href,
+  className,
   ...props
-}: Omit<ComponentProps<typeof Link>, "href" | "prefetch" | "onNavigate"> & { href: string }) {
+}: Omit<ComponentProps<typeof AppLink>, "href" | "prefetch" | "onNavigate"> & { href: string }) {
   const pendingRef = useRef(false);
   return (
-    <Link
+    <AppLink
       {...props}
       href={href}
-      prefetch={false}
+      className={cn("relative", className)}
       onNavigate={(event) => {
         const { pathname, search } = window.location;
         if (pendingRef.current || href === pathname + search) event.preventDefault();
       }}
     >
-      <LinkPendingTracker pendingRef={pendingRef} />
+      <LinkPendingHint pendingRef={pendingRef} />
       {children}
-    </Link>
+    </AppLink>
   );
 }
 

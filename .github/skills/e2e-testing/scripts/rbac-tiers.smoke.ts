@@ -1205,6 +1205,43 @@ test.describe("P1 target-range RBAC matrix DB-level", () => {
   let wholeySystemId: number;
   const targetIds: number[] = [];
   const readingIds: number[] = [];
+  // Targets that already existed (e.g. on hosted Dev): edited in place, restored in afterAll.
+  const restoreTargets: { id: number; min_value: number | null; max_value: number | null }[] = [];
+
+  async function setTarget(
+    client: Awaited<ReturnType<typeof signInRoleClient>>,
+    systemId: number | null,
+    parameterKey: string,
+    minValue: number,
+    maxValue: number,
+  ): Promise<number> {
+    const lookup = client
+      .from("water_quality_target_ranges")
+      .select("id, min_value, max_value")
+      .eq("parameter_key", parameterKey);
+    const { data: existing, error: lookupError } = await (systemId === null
+      ? lookup.is("system_id", null)
+      : lookup.eq("system_id", systemId)
+    ).maybeSingle();
+    expect(lookupError).toBeNull();
+    if (existing) {
+      restoreTargets.push(existing);
+      const { error } = await client
+        .from("water_quality_target_ranges")
+        .update({ min_value: minValue, max_value: maxValue })
+        .eq("id", existing.id);
+      expect(error).toBeNull();
+      return Number(existing.id);
+    }
+    const { data, error } = await client
+      .from("water_quality_target_ranges")
+      .insert({ system_id: systemId, parameter_key: parameterKey, min_value: minValue, max_value: maxValue })
+      .select("id")
+      .single();
+    expect(error).toBeNull();
+    targetIds.push(Number(data?.id));
+    return Number(data?.id);
+  }
 
   test.beforeAll(async () => {
     const adminClient = await signInRoleClient(ADMIN_EMAIL, ADMIN_PASSWORD);
@@ -1237,6 +1274,16 @@ test.describe("P1 target-range RBAC matrix DB-level", () => {
           .from("water_quality_target_ranges")
           .delete()
           .eq("id", id);
+        if (error) throw error;
+      });
+    }
+    for (const target of restoreTargets) {
+      await cleanupStep(`restore target-RBAC range ${target.id}`, async () => {
+        const adminClient = await signInRoleClient(ADMIN_EMAIL, ADMIN_PASSWORD);
+        const { error } = await adminClient
+          .from("water_quality_target_ranges")
+          .update({ min_value: target.min_value, max_value: target.max_value })
+          .eq("id", target.id);
         if (error) throw error;
       });
     }
@@ -1447,27 +1494,8 @@ test.describe("P1 target-range RBAC matrix DB-level", () => {
 
   test("system targets take precedence and later changes preserve reading history", async () => {
     const adminClient = await signInRoleClient(ADMIN_EMAIL, ADMIN_PASSWORD);
-    const { data: labTarget, error: labTargetError } = await adminClient
-      .from("water_quality_target_ranges")
-      .insert({ parameter_key: "ph", min_value: 7.5, max_value: 8.5 })
-      .select("id")
-      .single();
-    expect(labTargetError).toBeNull();
-    targetIds.push(Number(labTarget?.id));
-
-    const { data: systemTarget, error: systemTargetError } = await adminClient
-      .from("water_quality_target_ranges")
-      .insert({
-        system_id: grahamSystemId,
-        parameter_key: "ph",
-        min_value: 8,
-        max_value: 8.2,
-      })
-      .select("id")
-      .single();
-    expect(systemTargetError).toBeNull();
-    const systemTargetId = Number(systemTarget?.id);
-    targetIds.push(systemTargetId);
+    await setTarget(adminClient, null, "ph", 7.5, 8.5);
+    const systemTargetId = await setTarget(adminClient, grahamSystemId, "ph", 8, 8.2);
 
     const { data: overridden, error: overriddenError } = await adminClient
       .from("water_quality_readings")

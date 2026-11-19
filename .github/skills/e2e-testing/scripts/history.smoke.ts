@@ -56,11 +56,12 @@ test.beforeAll(() => {
     select ${system.id}, 'AM', true, 10 + g / 10.0, now() - (g || ' hours')::interval, ${technician.id},
       case when g = 1 then ${sqlLiteral(FORMULA_NOTE)} else ${sqlLiteral(TAG + " check ")} || g end
     from generate_series(1, ${CHECK_COUNT}) g`);
-  // One out-of-range ammonia reading (recorded by the volunteer) and one within range.
+  // One out-of-range ammonia reading (recorded by the volunteer) and one within range. Only
+  // ammonia is set so other targets already in a shared database can't flag these rows.
   dbQuery(`
-    insert into core.water_quality_readings (system_id, tested_at, recorded_by, ph, ammonia, notes) values
-      (${system.id}, now() - interval '3 hours', ${volunteer.id}, 8.1, 9999, ${sqlLiteral(TAG + " ammonia high")}),
-      (${system.id}, now() - interval '4 hours', ${volunteer.id}, 8.1, 0, ${sqlLiteral(TAG + " ammonia fine")})`);
+    insert into core.water_quality_readings (system_id, tested_at, recorded_by, ammonia, notes) values
+      (${system.id}, now() - interval '3 hours', ${volunteer.id}, 9999, ${sqlLiteral(TAG + " ammonia high")}),
+      (${system.id}, now() - interval '4 hours', ${volunteer.id}, 0, ${sqlLiteral(TAG + " ammonia fine")})`);
   const inserted = dbQuery(`
     insert into core.water_quality_target_ranges (system_id, parameter_key, max_value)
     values (${system.id}, 'ammonia', 1000) on conflict do nothing returning id`);

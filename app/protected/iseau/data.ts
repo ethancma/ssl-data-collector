@@ -11,26 +11,13 @@ import {
   type Parameter,
   type Place,
 } from "@/lib/iseau/data";
+import { selectAll } from "@/lib/supabase/select-all";
 import { createClient } from "@/lib/supabase/server";
 import { treatmentLabel } from "@/lib/systems/activity";
 
-const PAGE_SIZE = 1000;
 const CHART_WINDOW_DAYS = 60;
 
 type QueryError = { message: string; code?: string };
-type PageResult<Row> = { data: Row[] | null; error: QueryError | null };
-
-async function selectAll<Row>(
-  page: (from: number, to: number) => PromiseLike<PageResult<Row>>,
-) {
-  const rows: Row[] = [];
-  for (let from = 0; ; from += PAGE_SIZE) {
-    const { data, error } = await page(from, from + PAGE_SIZE - 1);
-    if (error) return { data: null, error };
-    rows.push(...(data ?? []));
-    if (!data || data.length < PAGE_SIZE) return { data: rows, error: null };
-  }
-}
 
 type SystemRow = IseauSystem;
 type AnimalRow = {
@@ -141,43 +128,61 @@ export async function fetchIseauData(): Promise<
   const since60Days = new Date(
     now - CHART_WINDOW_DAYS * 24 * 60 * 60 * 1000,
   ).toISOString();
-  const [systemsResult, speciesResult] = await Promise.all([
+  // Two query rounds: everything that doesn't depend on which stars are patients, then the
+  // patients' events with 60 days of chart readings. Tanks, profile names, and readings
+  // for every system cost a few small reads but save four sequential round trips.
+  const [
+    systemsResult,
+    tanksResult,
+    animalsResult,
+    qualifyingHealthResult,
+    targetResult,
+    profileResult,
+  ] = await Promise.all([
     supabase.from("systems").select("id, name").order("name").order("id"),
-    supabase.from("species").select("id").eq("category", "star"),
+    selectAll<TankRow>((from, to) =>
+      supabase.from("tanks").select("id, system_id, name").order("id").range(from, to),
+    ),
+    selectAll<AnimalRow>((from, to) =>
+      supabase
+        .from("animals")
+        .select("id, name, tank_id, updated_at, species!inner(category)")
+        .eq("species.category", "star")
+        .eq("tracking_type", "individual")
+        .order("id")
+        .range(from, to),
+    ),
+    selectAll<{ animal_id: number; severity: number }>((from, to) =>
+      supabase
+        .from("health_observations")
+        .select("animal_id, severity, animals!inner(tracking_type, species!inner(category))")
+        .eq("animals.tracking_type", "individual")
+        .eq("animals.species.category", "star")
+        .gte("severity", 2)
+        .order("observed_at")
+        .order("id")
+        .range(from, to),
+    ),
+    selectAll<TargetRow>((from, to) =>
+      supabase
+        .from("water_quality_target_ranges")
+        .select("system_id, parameter_key, min_value, max_value")
+        .range(from, to),
+    ),
+    selectAll<ProfileNameRow>((from, to) =>
+      supabase.from("v_profile_names").select("id, display_name").order("id").range(from, to),
+    ),
   ]);
-  const initialError = systemsResult.error ?? speciesResult.error;
-  if (initialError) return { error: initialError.message };
+  const setupError =
+    systemsResult.error ??
+    tanksResult.error ??
+    animalsResult.error ??
+    qualifyingHealthResult.error ??
+    targetResult.error ??
+    profileResult.error;
+  if (setupError) return { error: setupError.message };
 
   const systems = (systemsResult.data ?? []) as SystemRow[];
-  const speciesIds = (speciesResult.data ?? []).map((row) => row.id);
-  if (speciesIds.length === 0) return { data: emptyData(now, systems) };
-
-  const animalsResult = await selectAll<AnimalRow>((from, to) =>
-    supabase
-      .from("animals")
-      .select("id, name, tank_id, updated_at")
-      .in("species_id", speciesIds)
-      .eq("tracking_type", "individual")
-      .order("id")
-      .range(from, to),
-  );
-  if (animalsResult.error) return { error: animalsResult.error.message };
-  const animals = animalsResult.data ?? [];
-  if (animals.length === 0) return { data: emptyData(now, systems) };
-
-  const animalIds = animals.map((animal) => animal.id);
-  const qualifyingHealthResult = await selectAll((from, to) =>
-    supabase
-      .from("health_observations")
-      .select("animal_id, severity")
-      .in("animal_id", animalIds)
-      .gte("severity", 2)
-      .order("observed_at")
-      .order("id")
-      .range(from, to),
-  );
-  if (qualifyingHealthResult.error)
-    return { error: qualifyingHealthResult.error.message };
   const candidateIds = [
     ...patientAnimalIds(
       (qualifyingHealthResult.data ?? []).map((row) => ({
@@ -189,43 +194,52 @@ export async function fetchIseauData(): Promise<
   if (candidateIds.length === 0) return { data: emptyData(now, systems) };
 
   const candidateIdSet = new Set(candidateIds);
-  const patientAnimals = animals.filter((animal) =>
+  const patientAnimals = (animalsResult.data ?? []).filter((animal) =>
     candidateIdSet.has(animal.id),
   );
-  const healthPromise = selectAll<HealthRow>((from, to) =>
-    supabase
-      .from("health_observations")
-      .select(
-        "id, animal_id, tank_id, observed_at, severity, issues, notes, has_photo, recorded_by",
-      )
-      .in("animal_id", candidateIds)
-      .order("observed_at")
-      .order("id")
-      .range(from, to),
-  );
-  const feedingLocationsPromise = selectAll<FeedingLocationRow>((from, to) =>
-    supabase
-      .from("feeding_logs")
-      .select("animal_id, tank_id, fed_at")
-      .in("animal_id", candidateIds)
-      .order("fed_at")
-      .order("id")
-      .range(from, to),
-  );
-  const feedingPromise = selectAll<FeedingRow>((from, to) =>
-    supabase
-      .from("feeding_logs")
-      .select(
-        "id, animal_id, tank_id, fed_at, amount_value, food_catalog(name, default_unit), consumption_status, notes, recorded_by",
-      )
-      .in("animal_id", candidateIds)
-      .gte("fed_at", since60Days)
-      .order("fed_at")
-      .order("id")
-      .range(from, to),
-  );
-  const treatmentLocationsPromise = selectAll<TreatmentLocationRow>(
-    (from, to) =>
+  const waterColumns: string = `id, system_id, tested_at, recorded_by, ${WATER_QUALITY_PARAMETERS.join(", ")}`;
+  const [
+    healthResult,
+    feedingLocationsResult,
+    feedingResult,
+    treatmentLocationsResult,
+    treatmentResult,
+    waterResult,
+    temperatureResult,
+  ] = await Promise.all([
+    selectAll<HealthRow>((from, to) =>
+      supabase
+        .from("health_observations")
+        .select(
+          "id, animal_id, tank_id, observed_at, severity, issues, notes, has_photo, recorded_by",
+        )
+        .in("animal_id", candidateIds)
+        .order("observed_at")
+        .order("id")
+        .range(from, to),
+    ),
+    selectAll<FeedingLocationRow>((from, to) =>
+      supabase
+        .from("feeding_logs")
+        .select("animal_id, tank_id, fed_at")
+        .in("animal_id", candidateIds)
+        .order("fed_at")
+        .order("id")
+        .range(from, to),
+    ),
+    selectAll<FeedingRow>((from, to) =>
+      supabase
+        .from("feeding_logs")
+        .select(
+          "id, animal_id, tank_id, fed_at, amount_value, food_catalog(name, default_unit), consumption_status, notes, recorded_by",
+        )
+        .in("animal_id", candidateIds)
+        .gte("fed_at", since60Days)
+        .order("fed_at")
+        .order("id")
+        .range(from, to),
+    ),
+    selectAll<TreatmentLocationRow>((from, to) =>
       supabase
         .from("star_treatments")
         .select("animal_id, tank_id, administered_at")
@@ -233,31 +247,39 @@ export async function fetchIseauData(): Promise<
         .order("administered_at")
         .order("id")
         .range(from, to),
-  );
-  const treatmentPromise = selectAll<TreatmentRow>((from, to) =>
-    supabase
-      .from("star_treatments")
-      .select(
-        "id, animal_id, tank_id, treatment_type, amount, unit, concentration, concentration_unit, notes, administered_at, recorded_by",
-      )
-      .in("animal_id", candidateIds)
-      .gte("administered_at", since60Days)
-      .order("administered_at")
-      .order("id")
-      .range(from, to),
-  );
-  const [
-    healthResult,
-    feedingLocationsResult,
-    feedingResult,
-    treatmentLocationsResult,
-    treatmentResult,
-  ] = await Promise.all([
-    healthPromise,
-    feedingLocationsPromise,
-    feedingPromise,
-    treatmentLocationsPromise,
-    treatmentPromise,
+    ),
+    selectAll<TreatmentRow>((from, to) =>
+      supabase
+        .from("star_treatments")
+        .select(
+          "id, animal_id, tank_id, treatment_type, amount, unit, concentration, concentration_unit, notes, administered_at, recorded_by",
+        )
+        .in("animal_id", candidateIds)
+        .gte("administered_at", since60Days)
+        .order("administered_at")
+        .order("id")
+        .range(from, to),
+    ),
+    selectAll((from, to) =>
+      supabase
+        .from("water_quality_readings")
+        .select(waterColumns)
+        .gte("tested_at", since60Days)
+        .order("tested_at")
+        .order("id")
+        .range(from, to),
+    ),
+    selectAll<TemperatureRow>((from, to) =>
+      supabase
+        .from("daily_checks")
+        .select("id, system_id, checked_at, temperature, recorded_by")
+        .eq("check_type", "AM")
+        .not("temperature", "is", null)
+        .gte("checked_at", since60Days)
+        .order("checked_at")
+        .order("id")
+        .range(from, to),
+    ),
   ]);
   const treatmentErrors = [
     treatmentLocationsResult.error,
@@ -271,6 +293,8 @@ export async function fetchIseauData(): Promise<
     feedingLocationsResult.error ??
     feedingResult.error ??
     treatmentErrors[0] ??
+    waterResult.error ??
+    temperatureResult.error ??
     null;
   if (eventError) return { error: eventError.message };
 
@@ -291,14 +315,7 @@ export async function fetchIseauData(): Promise<
       ...treatmentRows.map((row) => row.tank_id),
     ]),
   ];
-  const tanksResult = await supabase
-    .from("tanks")
-    .select("id, system_id, name")
-    .in("id", tankIds);
-  if (tanksResult.error) return { error: tanksResult.error.message };
-
-  const tanks = (tanksResult.data ?? []) as TankRow[];
-  const tankById = new Map(tanks.map((tank) => [tank.id, tank]));
+  const tankById = new Map((tanksResult.data ?? []).map((tank) => [tank.id, tank]));
   const systemById = new Map(systems.map((system) => [system.id, system]));
   const placeFor = (tankId: number): Place | null => {
     const tank = tankById.get(tankId);
@@ -316,67 +333,16 @@ export async function fetchIseauData(): Promise<
   if (missingPlace !== undefined)
     return { error: `Tank ${missingPlace} or its system could not be loaded.` };
 
-  const profileIds = [
-    ...new Set([
-      ...healthRows.map((row) => row.recorded_by),
-      ...feedingRows.map((row) => row.recorded_by),
-      ...treatmentRows.map((row) => row.recorded_by),
-    ]),
-  ];
-  const systemIds = [...new Set(tanks.map((tank) => tank.system_id))];
-  const waterColumns: string = `id, system_id, tested_at, recorded_by, ${WATER_QUALITY_PARAMETERS.join(", ")}`;
-  const [waterResult, temperatureResult, targetResult] = await Promise.all([
-    selectAll((from, to) =>
-      supabase
-        .from("water_quality_readings")
-        .select(waterColumns)
-        .in("system_id", systemIds)
-        .gte("tested_at", since60Days)
-        .order("tested_at")
-        .order("id")
-        .range(from, to),
-    ),
-    selectAll<TemperatureRow>((from, to) =>
-      supabase
-        .from("daily_checks")
-        .select("id, system_id, checked_at, temperature, recorded_by")
-        .in("system_id", systemIds)
-        .eq("check_type", "AM")
-        .not("temperature", "is", null)
-        .gte("checked_at", since60Days)
-        .order("checked_at")
-        .order("id")
-        .range(from, to),
-    ),
-    selectAll<TargetRow>((from, to) =>
-      supabase
-        .from("water_quality_target_ranges")
-        .select("system_id, parameter_key, min_value, max_value")
-        .range(from, to),
-    ),
-  ]);
-  const chartError =
-    waterResult.error ?? temperatureResult.error ?? targetResult.error;
-  if (chartError) return { error: chartError.message };
-
-  const waterRows = (waterResult.data ?? []) as unknown as WaterRow[];
-  const temperatureRows = temperatureResult.data ?? [];
-  const profileIdsWithCharts = [
-    ...new Set([
-      ...profileIds,
-      ...waterRows.map((row) => row.recorded_by),
-      ...temperatureRows.map((row) => row.recorded_by),
-    ]),
-  ];
-  const profileResult = profileIdsWithCharts.length
-    ? await supabase
-        .from("v_profile_names")
-        .select("id, display_name")
-        .in("id", profileIdsWithCharts)
-    : { data: [], error: null };
-  if (profileResult.error) return { error: profileResult.error.message };
+  // Keep the payload to the systems these stars have lived in.
+  const systemIds = new Set(tankIds.map((tankId) => tankById.get(tankId)!.system_id));
+  const waterRows = ((waterResult.data ?? []) as unknown as WaterRow[]).filter((row) =>
+    systemIds.has(row.system_id),
+  );
+  const temperatureRows = (temperatureResult.data ?? []).filter((row) =>
+    systemIds.has(row.system_id),
+  );
   const profileNames = new Map(
-    ((profileResult.data ?? []) as ProfileNameRow[]).map((profile) => [
+    (profileResult.data ?? []).map((profile) => [
       profile.id,
       profile.display_name ?? "Unknown",
     ]),
@@ -384,13 +350,6 @@ export async function fetchIseauData(): Promise<
   const recorder = (id: number) => profileNames.get(id) ?? "Unknown";
   const getPlace = (tankId: number) => placeFor(tankId)!;
 
-  const unknownChartSystem = [...waterRows, ...temperatureRows].find(
-    (row) => !systemById.has(row.system_id),
-  );
-  if (unknownChartSystem)
-    return {
-      error: `System ${unknownChartSystem.system_id} could not be loaded.`,
-    };
   const water = waterRows.map((row) => ({
     id: row.id,
     at: Date.parse(row.tested_at),

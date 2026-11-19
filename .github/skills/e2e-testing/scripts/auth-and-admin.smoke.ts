@@ -18,6 +18,7 @@ import { getExpectedAuthRole, getRoleClaimAction, isPublicPath } from "../../../
 const SECRET_KEY = process.env.SUPABASE_SECRET_KEY;
 const inviteEmail = `${RUN_TAG}-invite@example.test`;
 const revokedEmail = `${RUN_TAG}-revoked@example.test`;
+const googleInviteEmail = `${RUN_TAG}-google@gmail.com`.toLowerCase();
 const invitePassword = "Invite-password-123!";
 const resetPassword = "Reset-password-123!";
 let inviteLink = "";
@@ -206,7 +207,7 @@ test.describe("current invitation and Admin access lifecycle", () => {
     if (!SECRET_KEY || !db) {
       console.warn("Auth-test cleanup skipped Auth user removal: db client is null.");
     }
-    const createdEmails = [inviteEmail, revokedEmail];
+    const createdEmails = [inviteEmail, revokedEmail, googleInviteEmail];
     if (SECRET_KEY && db) {
       await cleanupStep("delete auth-and-admin test users", async () => {
         let pageNumber = 1;
@@ -259,6 +260,28 @@ test.describe("current invitation and Admin access lifecycle", () => {
       expect(invitation(inviteEmail)).toMatchObject({ accepted_at: null, revoked_at: null });
       await invitee.goto("/invite/not-a-real-token");
       await expect(invitee.getByText(/invalid|expired|revoked|already/i)).toBeVisible();
+    } finally {
+      await invitee.close();
+      await inviteeContext.close();
+    }
+  });
+
+  test("Google-account invite puts Google first and keeps the password form behind a link", async ({ page, browser }) => {
+    await loginAs(page, ADMIN_EMAIL, ADMIN_PASSWORD);
+    await page.goto("/protected/admin");
+    const link = await createInvite(page, googleInviteEmail, "viewer");
+    const inviteeContext = await browser.newContext();
+    const invitee = await inviteeContext.newPage();
+    try {
+      await invitee.goto(link);
+      await expect(invitee.getByText(googleInviteEmail)).toBeVisible();
+      await expect(invitee.getByText("This is a Google account.")).toBeVisible();
+      await expect(invitee.getByRole("button", { name: "Continue with Google" })).toBeVisible();
+      await expect(invitee.getByLabel("Password", { exact: true })).toHaveCount(0);
+      await invitee.getByRole("button", { name: "Use a password instead" }).click();
+      await expect(invitee.getByLabel("Password", { exact: true })).toBeFocused();
+      await expect(invitee.getByRole("button", { name: "Create account" })).toBeVisible();
+      expect(invitation(googleInviteEmail)).toMatchObject({ accepted_at: null, revoked_at: null });
     } finally {
       await invitee.close();
       await inviteeContext.close();

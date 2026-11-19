@@ -1,5 +1,6 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { InvitationAcceptanceForm } from "@/components/auth/invitation-acceptance-form";
+import { isGoogleAccountEmail } from "@/lib/google-account";
 import { getInvitationByToken, isOpenInvitation, isValidInvitationToken, publicInvitationError } from "@/app/invite/invitation-server";
 
 export const dynamic = "force-dynamic";
@@ -19,6 +20,7 @@ export default async function InvitePage({ params }: { params: Promise<{ token: 
     }
   }
   const open = isOpenInvitation(invitation);
+  const preferGoogle = open && invitation ? await isGoogleAccountEmail(invitation.email) : false;
 
   return (
     <main className="flex min-h-svh items-center justify-center p-6">
@@ -35,7 +37,7 @@ export default async function InvitePage({ params }: { params: Promise<{ token: 
               <div><dt className="text-muted-foreground">Role</dt><dd className="font-medium capitalize">{invitation.role}</dd></div>
               <div><dt className="text-muted-foreground">Expires</dt><dd className="font-medium">{formatDate(invitation.expires_at)}</dd></div>
             </dl>
-            <InvitationAcceptanceForm token={token} />
+            <InvitationAcceptanceForm token={token} preferGoogle={preferGoogle} />
           </CardContent>
         ) : null}
       </Card>
