@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { AppLink } from "@/components/ui/app-link";
 
 import { Button } from "@/components/ui/button";
 
@@ -35,7 +35,7 @@ export default function NotFound() {
           or return to the start.
         </p>
         <Button asChild className="mt-8">
-          <Link href="/">Return to the start</Link>
+          <AppLink href="/">Return to the start</AppLink>
         </Button>
       </section>
     </main>

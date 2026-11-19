@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import { AppLink } from "@/components/ui/app-link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { ArrowLeft, Columns3, Download } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
@@ -50,7 +50,7 @@ export default function IseauLineup({ data }: { data: IseauData }) {
     <div className="filter-toolbar"><div className="filter-grid">
       <SystemSwitch state={sliced} />
       <StatusSwitch state={sliced} />
-      <Button asChild variant="outline" className="filter-grid__action touch-target h-9 rounded-full"><Link prefetch={false} href={compareHref(star ? [star, ...state.stars] : state.stars, data)}><Columns3 aria-hidden="true" />Compare stars</Link></Button>
+      <Button asChild variant="outline" className="filter-grid__action touch-target h-9 rounded-full"><AppLink href={compareHref(star ? [star, ...state.stars] : state.stars, data)}><Columns3 aria-hidden="true" />Compare stars</AppLink></Button>
     </div></div>
     {star ? <LineupDetail key={star.id} star={star} state={state} onBack={() => showStar(null)} /> : state.stars.length
       ? <ul className="grid auto-rows-fr gap-4" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 16rem), 1fr))" }}>{state.stars.map((candidate) => <li key={candidate.id} className="min-w-0"><StarCard star={candidate} data={data} href={`${pathname}?star=${candidate.id}`} onOpen={() => showStar(candidate.id)} /></li>)}</ul>

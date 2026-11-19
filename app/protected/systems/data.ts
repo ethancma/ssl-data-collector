@@ -4,6 +4,7 @@ import {
   type MaintenanceTaskType,
   type WaterQualityParameter,
 } from "@/lib/config/reference-data";
+import { selectAll } from "@/lib/supabase/select-all";
 import { createClient } from "@/lib/supabase/server";
 import type { WaterQualityTargetRange } from "@/lib/daily-operations/water-quality-targets";
 import { ACTIVITY_WINDOW_DAYS, buildActivityEvents } from "@/lib/systems/activity";
@@ -48,21 +49,6 @@ const TASK_LABELS: Record<MaintenanceTaskType, string> = {
   sump_flush: "Sump flush",
   other: "Other",
 };
-
-// PostgREST caps each response (max_rows, 1000), so tables that grow by a row
-// per animal or per check are read in pages instead of one truncated query.
-const PAGE_SIZE = 1000;
-async function selectAll<Row>(
-  page: (from: number, to: number) => PromiseLike<{ data: Row[] | null; error: { message: string; code?: string } | null }>,
-) {
-  const rows: Row[] = [];
-  for (let from = 0; ; from += PAGE_SIZE) {
-    const { data, error } = await page(from, from + PAGE_SIZE - 1);
-    if (error) return { data: null, error };
-    rows.push(...(data ?? []));
-    if (!data || data.length < PAGE_SIZE) return { data: rows, error: null };
-  }
-}
 
 // Fetches everything the systems page needs for all configured systems in one page
 // load: daily checks / water quality readings over a 60-day superset (so the

@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { AppLink } from "@/components/ui/app-link";
 import { notFound } from "next/navigation";
 
 import { StarTreatmentRecord } from "@/components/star-treatments/star-treatment-record";
@@ -35,9 +35,9 @@ export default async function StarTreatmentsPage({ searchParams }: { searchParam
           <h1 className="text-3xl font-semibold tracking-tight">Star treatments</h1>
         </div>
         <Button asChild variant="outline">
-          <Link href="/protected/daily-operations?type=star-treatment" prefetch={false}>
+          <AppLink href="/protected/daily-operations?type=star-treatment">
             Log star treatment
-          </Link>
+          </AppLink>
         </Button>
       </header>
 
@@ -118,7 +118,7 @@ export default async function StarTreatmentsPage({ searchParams }: { searchParam
             Apply filters
           </Button>
           <Button asChild variant="ghost">
-            <Link href="/protected/star-treatments" prefetch={false}>Reset</Link>
+            <AppLink href="/protected/star-treatments">Reset</AppLink>
           </Button>
         </div>
       </form>

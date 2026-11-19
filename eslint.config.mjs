@@ -9,6 +9,23 @@ const compat = new FlatCompat({
   baseDirectory: __dirname,
 });
 
+const supabaseClientImports = [
+  {
+    name: "@supabase/supabase-js",
+    importNames: ["createClient"],
+    message: "Use createClient from lib/supabase/client.ts or lib/supabase/server.ts.",
+  },
+  {
+    name: "@supabase/ssr",
+    message: "Use createClient from lib/supabase/client.ts or lib/supabase/server.ts.",
+  },
+];
+
+const nextLinkImport = {
+  name: "next/link",
+  message: "Use AppLink from components/ui/app-link.tsx; it turns prefetch off by default.",
+};
+
 const eslintConfig = [
   { ignores: [".next/**", "dist/**", ".wrangler/**", ".cloudflare/**", ".vinext/**"] },
   ...compat.extends("next/core-web-vitals", "next/typescript"),
@@ -18,17 +35,18 @@ const eslintConfig = [
       "no-restricted-imports": [
         "error",
         {
-          paths: [
-            {
-              name: "@supabase/supabase-js",
-              importNames: ["createClient"],
-              message: "Use createClient from lib/supabase/client.ts or lib/supabase/server.ts.",
-            },
-            {
-              name: "@supabase/ssr",
-              message: "Use createClient from lib/supabase/client.ts or lib/supabase/server.ts.",
-            },
-          ],
+          paths: [...supabaseClientImports, nextLinkImport],
+        },
+      ],
+    },
+  },
+  {
+    files: ["components/ui/app-link.tsx"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          paths: supabaseClientImports,
         },
       ],
     },

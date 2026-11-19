@@ -2,7 +2,7 @@
 
 import { HydratedForm } from "@/components/forms/hydrated-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import Link from "next/link";
+import { AppLink } from "@/components/ui/app-link";
 import { useEffect, useState } from "react";
 import { Controller, useForm } from "react-hook-form";
 
@@ -226,7 +226,7 @@ export function StarTreatmentForm({
           Log another treatment
         </Button>
         <Button asChild variant="outline">
-          <Link href="/protected/star-treatments" prefetch={false}>View treatments</Link>
+          <AppLink href="/protected/star-treatments">View treatments</AppLink>
         </Button>
       </BatchSuccessCard>
     );
@@ -414,7 +414,7 @@ export function StarTreatmentForm({
                 : `Save ${includedCount} ${includedCount === 1 ? "treatment" : "treatments"}`}
             </Button>
             <Button asChild variant="outline">
-              <Link href="/protected/star-treatments" prefetch={false}>View treatments</Link>
+              <AppLink href="/protected/star-treatments">View treatments</AppLink>
             </Button>
           </div>
         </HydratedForm>

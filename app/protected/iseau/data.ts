@@ -11,26 +11,13 @@ import {
   type Parameter,
   type Place,
 } from "@/lib/iseau/data";
+import { selectAll } from "@/lib/supabase/select-all";
 import { createClient } from "@/lib/supabase/server";
 import { treatmentLabel } from "@/lib/systems/activity";
 
-const PAGE_SIZE = 1000;
 const CHART_WINDOW_DAYS = 60;
 
 type QueryError = { message: string; code?: string };
-type PageResult<Row> = { data: Row[] | null; error: QueryError | null };
-
-async function selectAll<Row>(
-  page: (from: number, to: number) => PromiseLike<PageResult<Row>>,
-) {
-  const rows: Row[] = [];
-  for (let from = 0; ; from += PAGE_SIZE) {
-    const { data, error } = await page(from, from + PAGE_SIZE - 1);
-    if (error) return { data: null, error };
-    rows.push(...(data ?? []));
-    if (!data || data.length < PAGE_SIZE) return { data: rows, error: null };
-  }
-}
 
 type SystemRow = IseauSystem;
 type AnimalRow = {

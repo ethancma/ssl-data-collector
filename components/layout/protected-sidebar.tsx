@@ -1,6 +1,6 @@
 "use client";
 
-import Link, { useLinkStatus } from "next/link";
+import { AppLink, useLinkStatus } from "@/components/ui/app-link";
 import { usePathname } from "next/navigation";
 import {
   Fragment,
@@ -64,22 +64,21 @@ function LinkPendingHint({ pendingRef }: { pendingRef: RefObject<boolean> }) {
   );
 }
 
-// Each prefetch or navigation is a full server render on the Worker, and bursts of them
-// hit the Workers CPU limit. Sidebar links therefore skip prefetch and ignore repeat clicks
-// on the page already shown or already loading.
+// Each navigation is a full server render on the Worker, and bursts of them hit the Workers
+// CPU limit, so sidebar links ignore repeat clicks on the page already shown or loading.
 function SidebarLink({
   children,
   href,
   className,
   ...props
-}: Omit<ComponentProps<typeof Link>, "href" | "prefetch" | "onNavigate"> & { href: string }) {
+}: Omit<ComponentProps<typeof AppLink>, "href" | "prefetch" | "onNavigate"> & { href: string }) {
   const pendingRef = useRef(false);
   return (
-    <Link
+    <AppLink
       {...props}
       href={href}
       className={cn("relative", className)}
-      prefetch={false}
+     
       onNavigate={(event) => {
         const { pathname, search } = window.location;
         if (pendingRef.current || href === pathname + search) event.preventDefault();
@@ -87,7 +86,7 @@ function SidebarLink({
     >
       <LinkPendingHint pendingRef={pendingRef} />
       {children}
-    </Link>
+    </AppLink>
   );
 }
 
