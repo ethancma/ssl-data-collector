@@ -78,7 +78,6 @@ function SidebarLink({
       {...props}
       href={href}
       className={cn("relative", className)}
-     
       onNavigate={(event) => {
         const { pathname, search } = window.location;
         if (pendingRef.current || href === pathname + search) event.preventDefault();

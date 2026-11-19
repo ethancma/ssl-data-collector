@@ -5,7 +5,7 @@ type PageResult<Row> = { data: Row[] | null; error: QueryError | null };
 // or per check are read in pages. Each page is a sequential round trip on the Worker, so
 // past the cap this returns an error instead of a slow load or silently truncated data.
 export const PAGE_SIZE = 1000;
-export const MAX_PAGES = 20;
+const MAX_PAGES = 20;
 
 export async function selectAll<Row>(
   page: (from: number, to: number) => PromiseLike<PageResult<Row>>,
