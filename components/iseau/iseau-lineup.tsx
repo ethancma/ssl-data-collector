@@ -32,7 +32,7 @@ export default function IseauLineup({ data }: { data: IseauData }) {
     <div className="filter-toolbar"><div className="filter-grid">
       <SystemSwitch state={sliced} />
       <StatusSwitch state={sliced} />
-      <Button asChild variant="outline" className="filter-grid__action touch-target h-9 rounded-full"><Link href={compareHref(star ? [star, ...state.stars] : state.stars, data)}><Columns3 aria-hidden="true" />Compare stars</Link></Button>
+      <Button asChild variant="outline" className="filter-grid__action touch-target h-9 rounded-full"><Link prefetch={false} href={compareHref(star ? [star, ...state.stars] : state.stars, data)}><Columns3 aria-hidden="true" />Compare stars</Link></Button>
     </div></div>
     {star ? <LineupDetail key={star.id} star={star} state={state} /> : state.stars.length
       ? <ul className="grid auto-rows-fr gap-4" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 16rem), 1fr))" }}>{state.stars.map((candidate) => <li key={candidate.id} className="min-w-0"><StarCard star={candidate} data={data} href={`${pathname}?star=${candidate.id}`} /></li>)}</ul>
@@ -44,7 +44,7 @@ function LineupDetail({ star, state }: { star: Star; state: IseauState }) {
   const [open, setOpen] = useState<SectionId | null>(null);
   const place = star.location;
   return <div className="space-y-6">
-    <Link href="/protected/iseau" className={cn("inline-flex items-center gap-2 rounded text-sm text-muted-foreground hover:text-foreground", focusClass)}><ArrowLeft aria-hidden="true" className="h-4 w-4" />All stars</Link>
+    <Link href="/protected/iseau" prefetch={false} className={cn("inline-flex items-center gap-2 rounded text-sm text-muted-foreground hover:text-foreground", focusClass)}><ArrowLeft aria-hidden="true" className="h-4 w-4" />All stars</Link>
     <Tile className="grid gap-6 sm:grid-cols-[1fr_auto] sm:items-end">
       <div className="space-y-3"><h1 className="break-words text-3xl font-semibold tracking-tight md:text-4xl">{star.name}</h1><p className="max-w-xl text-lg leading-snug">{starSentence(star, state.data.now)}</p></div>
       <dl className="grid grid-cols-2 gap-x-8 gap-y-3 text-sm">

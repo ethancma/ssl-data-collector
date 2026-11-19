@@ -124,10 +124,15 @@ production; it does not support deploying an arbitrary older commit or tag.
   Workers' secrets are existence-checked by CI, but their values and Supabase project
   pairing are intentionally not readable by the workflow.
 - **Observability is in deployment config.** `wrangler.jsonc` enables Workers Logs
-  (`observability.enabled`), so each release keeps logs on for both Workers rather
-  than depending on a dashboard toggle that a deploy could overwrite. After a release,
-  confirm logs appear under the Worker's **Observability** tab. Free-plan log volume
-  and retention are limited; avoid logging request bodies or personal data.
+  (`observability.logs`) and Workers Issues (`observability.issues`), so each release
+  keeps them on for both Workers rather than depending on a dashboard toggle that a
+  deploy could overwrite. After a release, confirm logs appear under the Worker's
+  **Observability** tab. Issues groups failed invocations, including Workers Free
+  `exceededCpu` (Error 1102) kills; set up its notification in the dashboard.
+  `redact_query_string` drops auth codes from logged URLs, but invocation logs still
+  record request headers (including session cookies) and `/invite/<token>` paths, so
+  treat log access as sensitive. Free-plan log volume and retention are limited; avoid
+  logging request bodies or personal data.
 - **Automate staging only if useful later.** Successful `main` CI could eventually deploy
   staging automatically while production stays manual. This needs workflow changes and
   exact-commit promotion safeguards; it is not enabled now and does not require `dev`.

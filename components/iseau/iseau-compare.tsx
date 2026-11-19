@@ -38,7 +38,7 @@ export default function IseauCompare({ data }: { data: IseauData }) {
     router.replace(`${pathname}?stars=${next.join(",")}`, { scroll: false });
   }
   return <div className="mx-auto w-full min-w-0 max-w-7xl space-y-6">
-    <Link href="/protected/iseau" className={cn("inline-flex items-center gap-2 rounded text-sm text-muted-foreground hover:text-foreground", focusClass)}><ArrowLeft aria-hidden="true" className="h-4 w-4" />Back to lineup</Link>
+    <Link href="/protected/iseau" prefetch={false} className={cn("inline-flex items-center gap-2 rounded text-sm text-muted-foreground hover:text-foreground", focusClass)}><ArrowLeft aria-hidden="true" className="h-4 w-4" />Back to lineup</Link>
     <PageHeader title="Compare stars side by side." description="Pick a star in each column, then open any box for its full history." />
     <div className="filter-toolbar"><div className="filter-grid"><RangeSwitch state={state} /></div></div>
     {/* Always three columns; narrow screens scroll sideways instead of stacking so rows stay comparable. */}

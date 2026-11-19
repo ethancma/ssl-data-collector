@@ -35,7 +35,7 @@ export default async function StarTreatmentsPage({ searchParams }: { searchParam
           <h1 className="text-3xl font-semibold tracking-tight">Star treatments</h1>
         </div>
         <Button asChild variant="outline">
-          <Link href="/protected/daily-operations?type=star-treatment">
+          <Link href="/protected/daily-operations?type=star-treatment" prefetch={false}>
             Log star treatment
           </Link>
         </Button>
@@ -118,7 +118,7 @@ export default async function StarTreatmentsPage({ searchParams }: { searchParam
             Apply filters
           </Button>
           <Button asChild variant="ghost">
-            <Link href="/protected/star-treatments">Reset</Link>
+            <Link href="/protected/star-treatments" prefetch={false}>Reset</Link>
           </Button>
         </div>
       </form>
