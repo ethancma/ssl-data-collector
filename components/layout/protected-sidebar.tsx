@@ -1,8 +1,15 @@
 "use client";
 
-import Link from "next/link";
+import Link, { useLinkStatus } from "next/link";
 import { usePathname } from "next/navigation";
-import { Fragment, useEffect, useRef, useState } from "react";
+import {
+  Fragment,
+  useEffect,
+  useRef,
+  useState,
+  type ComponentProps,
+  type RefObject,
+} from "react";
 import {
   CalendarDays,
   ClipboardList,
@@ -37,6 +44,39 @@ const activeClassName =
 
 // Matches Tailwind's `sm` breakpoint, where the sidebar expands inline.
 const DESKTOP_QUERY = "(min-width: 640px)";
+
+function LinkPendingTracker({ pendingRef }: { pendingRef: RefObject<boolean> }) {
+  const { pending } = useLinkStatus();
+  useEffect(() => {
+    pendingRef.current = pending;
+  }, [pending, pendingRef]);
+  return null;
+}
+
+// Each prefetch or navigation is a full server render on the Worker, and bursts of them
+// hit the Workers CPU limit. Sidebar links therefore skip prefetch and ignore repeat clicks
+// on the page already shown or already loading.
+function SidebarLink({
+  children,
+  href,
+  ...props
+}: Omit<ComponentProps<typeof Link>, "href" | "prefetch" | "onNavigate"> & { href: string }) {
+  const pendingRef = useRef(false);
+  return (
+    <Link
+      {...props}
+      href={href}
+      prefetch={false}
+      onNavigate={(event) => {
+        const { pathname, search } = window.location;
+        if (pendingRef.current || href === pathname + search) event.preventDefault();
+      }}
+    >
+      <LinkPendingTracker pendingRef={pendingRef} />
+      {children}
+    </Link>
+  );
+}
 
 function SidebarToggleButton({ expanded, onToggle }: { expanded: boolean; onToggle: () => void }) {
   const label = expanded ? "Collapse sidebar" : "Expand sidebar";
@@ -118,7 +158,7 @@ function ExpandedSidebar({
     <div className="flex h-full w-60 flex-col">
       {/* px-3.5 puts the Waves mark and toggle on the same column as the collapsed rail, so they don't jump. */}
       <div className="flex shrink-0 flex-col gap-1 px-3.5 pb-2 pt-3">
-        <Link
+        <SidebarLink
           href="/protected/home"
           title="Home"
           aria-label="Home"
@@ -133,7 +173,7 @@ function ExpandedSidebar({
             <Waves size={20} strokeWidth={2} className="text-primary" />
           </span>
           <span className="truncate text-sm font-semibold">SSL Data Collection</span>
-        </Link>
+        </SidebarLink>
         <div className="flex items-center">
           <SidebarToggleButton expanded onToggle={onToggleCollapsed} />
         </div>
@@ -157,7 +197,7 @@ function ExpandedSidebar({
                   const Icon = item.icon;
                   return (
                     <li key={item.href}>
-                      <Link
+                      <SidebarLink
                         href={item.href}
                         aria-current={active ? "page" : undefined}
                         className={cn(
@@ -168,7 +208,7 @@ function ExpandedSidebar({
                       >
                         <Icon size={18} strokeWidth={2} className="shrink-0" />
                         <span className="truncate">{item.label}</span>
-                      </Link>
+                      </SidebarLink>
                     </li>
                   );
                 })}
@@ -209,7 +249,7 @@ function CollapsedSidebar({
   return (
     <div className="flex h-full w-full shrink-0 items-center justify-between px-2 sm:w-16 sm:flex-col sm:items-center sm:justify-start sm:px-0">
       <div className="flex w-full items-center justify-between sm:w-auto sm:flex-col sm:items-center sm:gap-1 sm:pb-2 sm:pt-3">
-        <Link
+        <SidebarLink
           href="/protected/home"
           title="Home"
           aria-label="Home"
@@ -217,7 +257,7 @@ function CollapsedSidebar({
           className={cn(iconButtonClassName, isHomeActive && activeClassName)}
         >
           <Waves size={20} strokeWidth={2} className="text-primary" />
-        </Link>
+        </SidebarLink>
         <SidebarToggleButton expanded={overlayOpen} onToggle={onToggleCollapsed} />
       </div>
       <div className="hidden sm:block">{divider}</div>
@@ -235,7 +275,7 @@ function CollapsedSidebar({
               const active = isActive(item);
               const Icon = item.icon;
               return (
-                <Link
+                <SidebarLink
                   key={item.href}
                   href={item.href}
                   title={item.label}
@@ -244,7 +284,7 @@ function CollapsedSidebar({
                   className={cn(iconButtonClassName, active && activeClassName)}
                 >
                   <Icon size={18} strokeWidth={2} />
-                </Link>
+                </SidebarLink>
               );
             })}
           </Fragment>
