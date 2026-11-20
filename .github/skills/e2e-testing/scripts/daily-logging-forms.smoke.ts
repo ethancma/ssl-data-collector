@@ -297,14 +297,65 @@ test.describe("e2e smoke", () => {
         { waitUntil: "commit" },
       );
       await expect(page.getByLabel("Graham notes")).toBeDisabled();
-      await expect(page.getByLabel("Graham temperature (°C)")).toBeDisabled();
+      await expect(page.getByLabel("Graham temperature (°F)")).toBeDisabled();
       await expect(page.getByRole("button", { name: /^Save \d+ checks?$/ })).toBeDisabled();
       expect(heldScripts).toBeGreaterThan(0);
       releaseScripts();
       await expect(page.getByLabel("Graham notes")).toBeEnabled();
       // Unchecked is a deliberate "not running" answer, so the box must start empty.
       await expect(page.getByRole("checkbox", { name: "Graham water running" })).not.toBeChecked();
+      await expect(page.getByRole("button", { name: "°F", exact: true })).toHaveAttribute(
+        "aria-pressed",
+        "true",
+      );
       const systemCount = await fillDailyCheckRound(page, { notes: `${RUN_TAG} hydration check` });
+      const grahamTemperature = page.getByLabel("Graham temperature (°F)");
+      const otherFahrenheitTemperature = page.locator(
+        'input[aria-label$=" temperature (°F)"]:not([aria-label="Graham temperature (°F)"])',
+      ).first();
+      const otherCelsiusTemperature = page.locator(
+        'input[aria-label$=" temperature (°C)"]:not([aria-label="Graham temperature (°C)"])',
+      ).first();
+      await expect(page.getByText("→ 12.50 °C").first()).toBeVisible();
+      await grahamTemperature.fill("55.1");
+      await page.getByRole("button", { name: "°C", exact: true }).click();
+      await expect(page.getByLabel("Graham temperature (°C)")).toHaveValue("12.833333");
+      await page.getByRole("button", { name: "°F", exact: true }).click();
+      await expect(grahamTemperature).toHaveValue("55.1");
+      await grahamTemperature.fill("32.0989999");
+      await page.getByRole("button", { name: "°C", exact: true }).click();
+      await expect(page.getByLabel("Graham temperature (°C)")).toHaveValue("0.0549999");
+      await expect(page.getByText("→ 0.05 °C")).toBeVisible();
+      await page.getByRole("button", { name: "°F", exact: true }).click();
+      await expect(grahamTemperature).toHaveValue("32.0989999");
+      await grahamTemperature.fill("32.099");
+      await expect(page.getByText("→ 0.06 °C")).toBeVisible();
+      await grahamTemperature.fill("31.9");
+      await page.getByRole("button", { name: "°C", exact: true }).click();
+      await expect(page.getByRole("button", { name: "°F", exact: true })).toHaveAttribute(
+        "aria-pressed",
+        "true",
+      );
+      await expect(page.getByText("Enter a temperature in °F between 32 and 122")).toBeVisible();
+      await grahamTemperature.fill("");
+      await expect(page.getByText("Enter a temperature in °F between 32 and 122")).toHaveCount(0);
+      await page.getByRole("button", { name: "°C", exact: true }).click();
+      const grahamCelsiusTemperature = page.getByLabel("Graham temperature (°C)");
+      await grahamCelsiusTemperature.fill("12.5");
+      await expect(grahamCelsiusTemperature).toHaveAttribute("aria-invalid", "false");
+      await page.getByRole("button", { name: "°F", exact: true }).click();
+      await expect(grahamTemperature).toHaveValue("54.5");
+      await otherFahrenheitTemperature.fill("");
+      await page.getByRole("button", { name: "°C", exact: true }).click();
+      await expect(grahamCelsiusTemperature).toHaveValue("12.5");
+      await expect(otherCelsiusTemperature).toHaveValue("");
+      await page.getByRole("button", { name: "°F", exact: true }).click();
+      await expect(grahamTemperature).toHaveValue("54.5");
+      await expect(otherFahrenheitTemperature).toHaveValue("");
+      await otherFahrenheitTemperature.fill("32.0989999");
+      await page.getByRole("button", { name: "°C", exact: true }).click();
+      await expect(otherCelsiusTemperature).toHaveValue("0.0549999");
+      await grahamCelsiusTemperature.fill("12.345");
       const saveRequest = page.waitForRequest((request) =>
         request.method() === "POST" && new URL(request.url()).pathname === "/rest/v1/daily_checks",
       );
@@ -314,15 +365,18 @@ test.describe("e2e smoke", () => {
       expect(payload).toContainEqual(expect.objectContaining({
         system_id: grahamSystemId,
         notes: `${RUN_TAG} hydration check`,
-        temperature: 12.5,
+        temperature: 12.35,
         water_running: true,
       }));
+      expect(payload).toContainEqual(expect.objectContaining({ temperature: 0.05 }));
       await expect(page).toHaveURL(/\/protected\/home/);
-      const rows = dbQuery(`select notes, temperature from core.daily_checks
-        where notes = ${sqlLiteral(`${RUN_TAG} hydration check`)}
-          and system_id = ${grahamSystemId}`);
-      expect(rows).toHaveLength(1);
-      expect(Number(rows[0].temperature)).toBe(12.5);
+      const rows = dbQuery(`select system_id, notes, temperature from core.daily_checks
+        where notes = ${sqlLiteral(`${RUN_TAG} hydration check`)}`);
+      expect(rows).toHaveLength(systemCount);
+      const grahamRow = rows.find((row) => Number(row.system_id) === grahamSystemId);
+      expect(grahamRow).toBeDefined();
+      expect(Number(grahamRow?.temperature)).toBe(12.35);
+      expect(rows.filter((row) => Number(row.temperature) === 0.05)).toHaveLength(1);
     } finally {
       releaseScripts();
       await page.unroute(scriptPattern);
@@ -336,7 +390,7 @@ test.describe("e2e smoke", () => {
       (row) => String(row.name),
     );
     for (const name of systemNames) {
-      await expect(page.getByLabel(`${name} temperature (°C)`, { exact: true })).toBeVisible();
+      await expect(page.getByLabel(`${name} temperature (°F)`, { exact: true })).toBeVisible();
     }
     const systemCount = await fillDailyCheckRound(page, { notes: `${RUN_TAG} AM check` });
     expect(systemCount).toBe(systemNames.length);
@@ -372,7 +426,7 @@ test.describe("e2e smoke", () => {
     await login(page);
     await gotoHydrated(page, "/protected/daily-operations?type=daily-check&check=AM");
     await fillDailyCheckRound(page, { notes });
-    await page.getByLabel("Graham temperature (°C)").fill("");
+    await page.getByLabel("Graham temperature (°F)").fill("");
     await page.getByRole("button", { name: /^Save \d+ checks?$/ }).click();
     await expect(page.getByText("Enter a temperature", { exact: true })).toBeVisible();
     await expect(page).toHaveURL(/type=daily-check/);
@@ -1235,9 +1289,9 @@ test.describe("P1 database-owned systems and Chemical addition quick picks", () 
     // Daily check has no selector: it lists one row per system in the same order.
     await page.goto("/protected/daily-operations?type=daily-check");
     const rowLabels = await page
-      .getByLabel(/ temperature \(°C\)$/)
+      .getByLabel(/ temperature \(°F\)$/)
       .evaluateAll((inputs) => inputs.map((input) => input.getAttribute("aria-label")));
-    expect(rowLabels).toEqual(systems.map(({ name }) => `${name} temperature (°C)`));
+    expect(rowLabels).toEqual(systems.map(({ name }) => `${name} temperature (°F)`));
   });
 
   test("daily forms reject a nonexistent Pacific spring-forward time before writing", async ({

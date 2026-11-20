@@ -150,9 +150,9 @@ export async function selectBatchScope(
 // every row; callers then filter by system_id to assert on one system.
 export async function fillDailyCheckRound(
   page: Page,
-  { notes, temperature = "12.5" }: { notes: string; temperature?: string },
+  { notes, temperature = "54.5" }: { notes: string; temperature?: string },
 ) {
-  const temperatures = page.getByLabel(/ temperature \(°C\)$/);
+  const temperatures = page.getByLabel(/ temperature \(°F\)$/);
   const count = await temperatures.count();
   expect(count).toBeGreaterThan(0);
   for (let index = 0; index < count; index += 1) {

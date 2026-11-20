@@ -29,9 +29,15 @@ import { CHECK_TYPES, CONSUMPTION_STATUSES } from "@/lib/config/reference-data";
 import { createClient } from "@/lib/supabase/client";
 import { nullIfBlank } from "@/lib/utils";
 import {
+  convertTemperatureInput,
   dailyCheckSchema,
+  storedCelsius,
+  TEMPERATURE_UNITS,
+  temperatureInRange,
+  temperatureRangeMessage,
   type DailyCheckFormInput,
   type DailyCheckFormValues,
+  type TemperatureUnit,
 } from "@/lib/validation/daily-check";
 
 type SystemOption = { id: number; name: string };
@@ -77,7 +83,9 @@ export function DailyCheckForm({
     control,
     watch,
     setError,
+    clearErrors,
     setValue,
+    getValues,
     formState: { errors, isSubmitting },
   } = useForm<DailyCheckFormInput, unknown, DailyCheckFormValues>({
     resolver: zodResolver(dailyCheckSchema),
@@ -85,6 +93,7 @@ export function DailyCheckForm({
       date: getPacificDateString(),
       time: getPacificTimeString(),
       checkType: defaultCheckType ?? "AM",
+      temperatureUnit: "F",
       systems: systems.map((system) => ({
         systemId: String(system.id),
         waterRunning: false,
@@ -95,12 +104,49 @@ export function DailyCheckForm({
   });
 
   const checkType = watch("checkType");
+  const temperatureUnit = watch("temperatureUnit");
   const followUpSystems = systems
     .map((system) => ({
       system,
       logs: pendingFeedingLogs.filter((log) => log.systemId === system.id),
     }))
     .filter(({ logs }) => logs.length > 0);
+
+  const changeTemperatureUnit = (nextUnit: TemperatureUnit) => {
+    const currentUnit = getValues("temperatureUnit");
+    if (nextUnit === currentUnit) return;
+
+    const currentRows = getValues("systems");
+    const invalidIndexes = currentRows.flatMap(({ temperature }, index) => {
+      if (!temperature.trim()) return [];
+      const value = Number(temperature);
+      return Number.isFinite(value) && temperatureInRange(value, currentUnit)
+        ? []
+        : [index];
+    });
+    if (invalidIndexes.length > 0) {
+      for (const index of invalidIndexes) {
+        setError(`systems.${index}.temperature`, {
+          message: temperatureRangeMessage(currentUnit),
+        });
+      }
+      return;
+    }
+
+    setValue("temperatureUnit", nextUnit, { shouldDirty: true });
+    currentRows.forEach(({ temperature, temperatureSource }, index) => {
+      if (!temperature.trim()) return;
+      const source = temperatureSource ?? { value: temperature, unit: currentUnit };
+      setValue(
+        `systems.${index}.temperatureSource`,
+        source.unit === nextUnit ? undefined : source,
+      );
+      setValue(`systems.${index}.temperature`, convertTemperatureInput(source.value, source.unit, nextUnit), {
+        shouldDirty: true,
+      });
+      clearErrors(`systems.${index}.temperature`);
+    });
+  };
 
   const onSubmit = async (values: DailyCheckFormValues) => {
     setServerError(null);
@@ -168,7 +214,7 @@ export function DailyCheckForm({
       <CardHeader>
         <CardTitle className="text-2xl">Daily check</CardTitle>
         <CardDescription>
-          Log the AM or PM check for every system in one save.
+          Log the AM or PM check for every system in one save. Temperatures are saved in Celsius.
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -201,22 +247,52 @@ export function DailyCheckForm({
           </div>
 
           <div role="group" aria-labelledby="daily-check-systems-heading" className="grid gap-2">
-            <p id="daily-check-systems-heading" className={QUICK_PICK_HEADING_CLASS}>
-              Systems
-            </p>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <p id="daily-check-systems-heading" className={QUICK_PICK_HEADING_CLASS}>
+                Systems
+              </p>
+              <div role="group" aria-label="Temperature unit" className="flex items-center gap-2">
+                <span className="text-sm text-muted-foreground">Temperature unit</span>
+                {TEMPERATURE_UNITS.map((unit) => (
+                  <Button
+                    key={unit}
+                    type="button"
+                    size="sm"
+                    variant={temperatureUnit === unit ? "default" : "outline"}
+                    aria-pressed={temperatureUnit === unit}
+                    onClick={() => changeTemperatureUnit(unit)}
+                  >
+                    °{unit}
+                  </Button>
+                ))}
+              </div>
+            </div>
             <div className="overflow-hidden rounded-lg border border-input">
               <div
                 aria-hidden="true"
                 className={`${ROW_GRID_CLASS} hidden bg-muted/30 px-4 py-2 text-xs text-muted-foreground sm:grid`}
               >
                 <span>System</span>
-                <span>Temperature (°C)</span>
+                <span>Temperature (°{temperatureUnit})</span>
                 <span>Water running</span>
                 <span>Notes</span>
               </div>
               {systems.map((system, index) => {
                 const rowErrors = errors.systems?.[index];
                 const idPrefix = `daily-check-${system.id}`;
+                const temperature = watch(`systems.${index}.temperature`);
+                const temperatureSource = watch(`systems.${index}.temperatureSource`);
+                const numericTemperature = Number(temperature);
+                const celsiusPreview =
+                  (temperatureUnit === "F" || temperatureSource) &&
+                  temperature.trim() &&
+                  Number.isFinite(numericTemperature) &&
+                  temperatureInRange(numericTemperature, temperatureUnit)
+                    ? storedCelsius(
+                        temperatureSource ? Number(temperatureSource.value) : numericTemperature,
+                        temperatureSource?.unit ?? temperatureUnit,
+                      ).toFixed(2)
+                    : null;
                 return (
                   <div
                     key={system.id}
@@ -229,19 +305,27 @@ export function DailyCheckForm({
                     </p>
                     <div className="grid gap-1">
                       <Label htmlFor={`${idPrefix}-temperature`} className="sm:sr-only">
-                        Temperature (°C)
+                        Temperature (°{temperatureUnit})
                       </Label>
                       <Input
                         id={`${idPrefix}-temperature`}
                         inputMode="decimal"
-                        placeholder="e.g. 12.5"
-                        aria-label={`${system.name} temperature (°C)`}
+                        placeholder={temperatureUnit === "F" ? "e.g. 54.5" : "e.g. 12.5"}
+                        aria-label={`${system.name} temperature (°${temperatureUnit})`}
                         aria-invalid={Boolean(rowErrors?.temperature)}
                         aria-describedby={
                           rowErrors?.temperature ? `${idPrefix}-temperature-error` : undefined
                         }
-                        {...register(`systems.${index}.temperature`)}
+                        {...register(`systems.${index}.temperature`, {
+                          onChange: () => {
+                            setValue(`systems.${index}.temperatureSource`, undefined);
+                            clearErrors(`systems.${index}.temperature`);
+                          },
+                        })}
                       />
+                      {celsiusPreview !== null && (
+                        <p className="text-xs text-muted-foreground">→ {celsiusPreview} °C</p>
+                      )}
                       <FieldError
                         id={`${idPrefix}-temperature-error`}
                         message={rowErrors?.temperature?.message}
