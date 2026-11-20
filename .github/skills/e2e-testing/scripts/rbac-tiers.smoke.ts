@@ -8,6 +8,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   cleanupStep,
   dbQuery,
+  fillDailyCheckRound,
   findGrahamStar,
   collectBrowserFailures,
   loginAs,
@@ -156,16 +157,14 @@ for (const role of [
 
     test(`${role.label} AM check lands in daily_checks`, async ({ page }) => {
       await loginAs(page, role.email, role.password);
-      await gotoHydrated(page, 
-        `/protected/daily-operations?type=daily-check&system=${grahamSystemId}&check=AM`,
-      );
-      await page.getByLabel("Notes").fill(`${TAG} AM check`);
-      await page.getByLabel("Temperature (°C)").fill("12.5");
-      await page.getByRole("button", { name: "Save check" }).click();
+      await gotoHydrated(page, "/protected/daily-operations?type=daily-check&check=AM");
+      await fillDailyCheckRound(page, { notes: `${TAG} AM check` });
+      await page.getByRole("button", { name: /^Save \d+ checks?$/ }).click();
       await expect(page).toHaveURL(/\/protected\/home/);
       const rows = dbQuery(
         `select system_id, check_type, water_running, temperature
-         from core.daily_checks where notes = '${TAG} AM check'`,
+         from core.daily_checks
+         where notes = '${TAG} AM check' and system_id = ${grahamSystemId}`,
       );
       expect(rows).toHaveLength(1);
       expect(Number(rows[0]?.system_id)).toBe(grahamSystemId);
@@ -208,9 +207,7 @@ for (const role of [
 
     test(`${role.label} PM check updates the tagged feeding row`, async ({ page }) => {
       await loginAs(page, role.email, role.password);
-      await gotoHydrated(page, 
-        `/protected/daily-operations?type=daily-check&system=${grahamSystemId}&check=PM`,
-      );
+      await gotoHydrated(page, "/protected/daily-operations?type=daily-check&check=PM");
       await expect(page.getByText("Consumption follow-up")).toBeVisible();
       await page
         .getByText(starName, { exact: true })
@@ -218,12 +215,13 @@ for (const role of [
         .locator("..")
         .getByRole("button", { name: "Full", exact: true })
         .click();
-      await page.getByLabel("Notes").fill(`${TAG} PM check`);
-      await page.getByRole("button", { name: "Save check" }).click();
+      await fillDailyCheckRound(page, { notes: `${TAG} PM check` });
+      await page.getByRole("button", { name: /^Save \d+ checks?$/ }).click();
       await expect(page).toHaveURL(/\/protected\/home/);
 
       const checks = dbQuery(
-        `select check_type from core.daily_checks where notes = '${TAG} PM check'`,
+        `select check_type from core.daily_checks
+         where notes = '${TAG} PM check' and system_id = ${grahamSystemId}`,
       );
       const feedings = dbQuery(
         `select consumption_status, consumption_checked_at
@@ -297,7 +295,7 @@ for (const role of [
       await loginAs(page, role.email, role.password);
       await gotoHydrated(page, "/protected/daily-operations?type=health-observation");
       await page.getByLabel("Animal", { exact: true }).selectOption(String(starAnimalId));
-      await page.locator("#health-observation-severity").fill("2");
+      await page.getByRole("radiogroup", { name: /severity/i }).getByRole("radio", { name: "2", exact: true }).locator("..").click();
       await page.getByLabel("Arm curling").check();
       await page.getByLabel("Flattening").check();
       await page.getByLabel("Notes").fill(`${TAG} health obs`);
@@ -357,7 +355,6 @@ test.describe("volunteer can create ordinary operational logs", () => {
   let technicianProfileId: number;
   let feedingAnimalId: number;
   let feedingTankId: number;
-  let feedingSystemId: number;
 
   test.beforeAll(async () => {
     grahamSystemId = Number(
@@ -375,32 +372,27 @@ test.describe("volunteer can create ordinary operational logs", () => {
     );
     const feedingTarget = dbQuery(`select
       animal.id as animal_id,
-      animal.tank_id,
-      tank.system_id
+      animal.tank_id
       from core.animals as animal
-      join core.tanks as tank on tank.id = animal.tank_id
       where animal.status = 'active'
       order by animal.id
       limit 1`)[0];
     feedingAnimalId = Number(feedingTarget?.animal_id);
     feedingTankId = Number(feedingTarget?.tank_id);
-    feedingSystemId = Number(feedingTarget?.system_id);
   });
 
   test("volunteer AM check lands with Volunteer provenance", async ({
     page,
   }) => {
     await loginAs(page, VOLUNTEER_EMAIL, VOLUNTEER_PASSWORD);
-    await page.goto(
-      `/protected/daily-operations?type=daily-check&system=${grahamSystemId}&check=AM`,
-    );
-    await page.getByLabel("Notes").fill(`${TAG} AM check`);
-    await page.getByLabel("Temperature (°C)").fill("12.5");
-    await page.getByRole("button", { name: "Save check" }).click();
+    await gotoHydrated(page, "/protected/daily-operations?type=daily-check&check=AM");
+    await fillDailyCheckRound(page, { notes: `${TAG} AM check` });
+    await page.getByRole("button", { name: /^Save \d+ checks?$/ }).click();
     await expect(page).toHaveURL(/\/protected\/home/);
 
     const row = dbQuery(`select recorded_by, data_source, entered_at
-      from core.daily_checks where notes = ${sqlLiteral(`${TAG} AM check`)}`)[0];
+      from core.daily_checks
+      where notes = ${sqlLiteral(`${TAG} AM check`)} and system_id = ${grahamSystemId}`)[0];
     expect(Number(row?.recorded_by)).toBe(volunteerProfileId);
     expect(row?.data_source).toBe("live");
     expect(Date.parse(String(row?.entered_at))).not.toBeNaN();
@@ -432,17 +424,14 @@ test.describe("volunteer can create ordinary operational logs", () => {
         where feeding.consumption_status is null
           and feeding.fed_at >= now() - interval '36 hours'
           and (feeding.fed_at at time zone 'America/Los_Angeles')::date =
-            (now() at time zone 'America/Los_Angeles')::date
-          and tank.system_id = ${feedingSystemId}`)[0];
+            (now() at time zone 'America/Los_Angeles')::date`)[0];
       const ownCount = Number(pendingCounts?.own_count);
       const totalCount = Number(pendingCounts?.total_count);
       expect(ownCount).toBeGreaterThan(0);
       expect(totalCount).toBeGreaterThan(ownCount);
 
       await loginAs(page, VOLUNTEER_EMAIL, VOLUNTEER_PASSWORD);
-      await page.goto(
-        `/protected/daily-operations?type=daily-check&system=${feedingSystemId}&check=PM`,
-      );
+      await page.goto("/protected/daily-operations?type=daily-check&check=PM");
       await expect(page.getByText("Consumption follow-up")).toBeVisible();
       await expect(page.getByRole("button", { name: "Full", exact: true })).toHaveCount(
         ownCount,

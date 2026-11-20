@@ -32,6 +32,7 @@ import {
   localTimeOf,
   PICKED_TIME,
   expectDefaultDateAndTime,
+  fillDailyCheckRound,
   findGrahamStar,
   logSingleFeeding,
   selectBatchScope,
@@ -292,28 +293,34 @@ test.describe("e2e smoke", () => {
 
     try {
       await page.goto(
-        `/protected/daily-operations?type=daily-check&system=${grahamSystemId}&check=AM`,
+        "/protected/daily-operations?type=daily-check&check=AM",
         { waitUntil: "commit" },
       );
-      await expect(page.getByLabel("Notes")).toBeDisabled();
-      await expect(page.getByLabel("Temperature (°C)")).toBeDisabled();
-      await expect(page.getByRole("button", { name: "Save check" })).toBeDisabled();
+      await expect(page.getByLabel("Graham notes")).toBeDisabled();
+      await expect(page.getByLabel("Graham temperature (°C)")).toBeDisabled();
+      await expect(page.getByRole("button", { name: /^Save \d+ checks?$/ })).toBeDisabled();
       expect(heldScripts).toBeGreaterThan(0);
       releaseScripts();
-      await expect(page.getByLabel("Notes")).toBeEnabled();
-      await page.getByLabel("Notes").fill(`${RUN_TAG} hydration check`);
-      await page.getByLabel("Temperature (°C)").fill("12.5");
+      await expect(page.getByLabel("Graham notes")).toBeEnabled();
+      // Unchecked is a deliberate "not running" answer, so the box must start empty.
+      await expect(page.getByRole("checkbox", { name: "Graham water running" })).not.toBeChecked();
+      const systemCount = await fillDailyCheckRound(page, { notes: `${RUN_TAG} hydration check` });
       const saveRequest = page.waitForRequest((request) =>
         request.method() === "POST" && new URL(request.url()).pathname === "/rest/v1/daily_checks",
       );
-      await page.getByRole("button", { name: "Save check" }).click();
-      expect((await saveRequest).postDataJSON()).toMatchObject({
+      await page.getByRole("button", { name: /^Save \d+ checks?$/ }).click();
+      const payload = (await saveRequest).postDataJSON();
+      expect(payload).toHaveLength(systemCount);
+      expect(payload).toContainEqual(expect.objectContaining({
+        system_id: grahamSystemId,
         notes: `${RUN_TAG} hydration check`,
         temperature: 12.5,
-      });
+        water_running: true,
+      }));
       await expect(page).toHaveURL(/\/protected\/home/);
       const rows = dbQuery(`select notes, temperature from core.daily_checks
-        where notes = ${sqlLiteral(`${RUN_TAG} hydration check`)}`);
+        where notes = ${sqlLiteral(`${RUN_TAG} hydration check`)}
+          and system_id = ${grahamSystemId}`);
       expect(rows).toHaveLength(1);
       expect(Number(rows[0].temperature)).toBe(12.5);
     } finally {
@@ -322,35 +329,56 @@ test.describe("e2e smoke", () => {
     }
   });
 
-  test("AM check for Graham lands in daily_checks", async ({ page }) => {
+  test("AM check round lists every configured system and lands one row per system", async ({ page }) => {
     await login(page);
-    await page.goto(
-      `/protected/daily-operations?type=daily-check&system=${grahamSystemId}&check=AM`,
+    await gotoHydrated(page, "/protected/daily-operations?type=daily-check&check=AM");
+    const systemNames = dbQuery(`select name from core.systems order by name, id`).map(
+      (row) => String(row.name),
     );
-    await page.getByLabel("Notes").fill(`${RUN_TAG} AM check`);
-    await page.getByLabel("Temperature (°C)").fill("12.5");
-    const saveRequest = page.waitForRequest((request) =>
-      request.method() === "POST" && new URL(request.url()).pathname === "/rest/v1/daily_checks",
-    );
-    await page.getByRole("button", { name: "Save check" }).click();
-    expect((await saveRequest).postDataJSON()).toMatchObject({
-      notes: `${RUN_TAG} AM check`,
-      temperature: 12.5,
-    });
+    for (const name of systemNames) {
+      await expect(page.getByLabel(`${name} temperature (°C)`, { exact: true })).toBeVisible();
+    }
+    const systemCount = await fillDailyCheckRound(page, { notes: `${RUN_TAG} AM check` });
+    expect(systemCount).toBe(systemNames.length);
+    // An unchecked box saves as "not running" for that system only. Leave Graham running:
+    // the Home smoke test expects "All clear: Graham".
+    const stoppedName = systemNames.find((name) => name !== "Graham");
+    expect(stoppedName).toBeDefined();
+    await page.getByRole("checkbox", { name: `${stoppedName} water running` }).uncheck();
+    await page.getByRole("button", { name: `Save ${systemCount} checks` }).click();
     await expect(page).toHaveURL(/\/protected\/home/);
 
     const rows = dbQuery(`
-      select system_id, check_type, water_running, temperature, checked_at
-      from core.daily_checks
-      where notes = '${RUN_TAG} AM check'
+      select sys.name, dc.system_id, dc.check_type, dc.water_running,
+        dc.temperature, dc.checked_at
+      from core.daily_checks as dc
+      join core.systems as sys on sys.id = dc.system_id
+      where dc.notes = '${RUN_TAG} AM check'
     `);
-    expect(rows).toHaveLength(1);
-    const check = rows[0];
-    expect(Number(check.system_id)).toBe(grahamSystemId);
-    expect(check.check_type).toBe("AM");
-    expect(check.water_running).toBe(true);
-    expect(Number(check.temperature)).toBe(12.5);
-    expect(localDateOf(String(check.checked_at))).toBe(todayDateString());
+    expect(rows).toHaveLength(systemCount);
+    expect(new Set(rows.map((row) => row.checked_at)).size).toBe(1);
+    const check = rows.find((row) => Number(row.system_id) === grahamSystemId);
+    expect(check?.check_type).toBe("AM");
+    expect(check?.water_running).toBe(true);
+    expect(Number(check?.temperature)).toBe(12.5);
+    expect(localDateOf(String(check?.checked_at))).toBe(todayDateString());
+    expect(rows.filter((row) => row.water_running === false).map((row) => row.name)).toEqual([
+      stoppedName,
+    ]);
+  });
+
+  test("daily check blocks the round until every system has a temperature", async ({ page }) => {
+    const notes = `${RUN_TAG} incomplete round`;
+    await login(page);
+    await gotoHydrated(page, "/protected/daily-operations?type=daily-check&check=AM");
+    await fillDailyCheckRound(page, { notes });
+    await page.getByLabel("Graham temperature (°C)").fill("");
+    await page.getByRole("button", { name: /^Save \d+ checks?$/ }).click();
+    await expect(page.getByText("Enter a temperature", { exact: true })).toBeVisible();
+    await expect(page).toHaveURL(/type=daily-check/);
+    expect(
+      dbQuery(`select id from core.daily_checks where notes = ${sqlLiteral(notes)}`),
+    ).toHaveLength(0);
   });
 
   test("feeding log for a Graham star lands in feeding_logs", async ({ page }) => {
@@ -395,22 +423,7 @@ test.describe("e2e smoke", () => {
     page,
   }) => {
     await login(page);
-    await page.goto(
-      `/protected/daily-operations?type=daily-check&system=${grahamSystemId}&check=PM`,
-    );
-    await expect(page.getByLabel("System", { exact: true })).toHaveValue(
-      String(grahamSystemId),
-    );
-    await expect(page.getByText("Consumption follow-up")).toBeVisible();
-    await expect(
-      page.getByText(starName, { exact: true }).first().locator(".."),
-    ).toBeVisible();
-
-    await page.goto("/protected/daily-operations?type=daily-check&check=PM");
-    await expect(page.getByLabel("System", { exact: true })).toHaveValue("");
-    await page
-      .getByLabel("System", { exact: true })
-      .selectOption(String(grahamSystemId));
+    await gotoHydrated(page, "/protected/daily-operations?type=daily-check&check=PM");
     await expect(page.getByText("Consumption follow-up")).toBeVisible();
     const newestSsl25PendingFeeding = page
       .getByText(starName, { exact: true })
@@ -427,17 +440,16 @@ test.describe("e2e smoke", () => {
     await newestSsl25PendingFeeding
       .getByRole("button", { name: "Full", exact: true })
       .click();
-    await page.getByLabel("Notes").fill(`${RUN_TAG} PM check`);
-    await page.getByRole("button", { name: "Save check" }).click();
+    await fillDailyCheckRound(page, { notes: `${RUN_TAG} PM check` });
+    await page.getByRole("button", { name: /^Save \d+ checks?$/ }).click();
     await expect(page).toHaveURL(/\/protected\/home/);
 
     const checkRows = dbQuery(`
       select system_id, check_type
       from core.daily_checks
-      where notes = '${RUN_TAG} PM check'
+      where notes = '${RUN_TAG} PM check' and system_id = ${grahamSystemId}
     `);
     expect(checkRows).toHaveLength(1);
-    expect(Number(checkRows[0].system_id)).toBe(grahamSystemId);
     expect(checkRows[0].check_type).toBe("PM");
 
     const feedingAfter = dbQuery(`
@@ -571,18 +583,22 @@ test.describe("e2e smoke", () => {
     expect(localDateOf(String(addition.added_at))).toBe(todayDateString());
   });
 
-  test("health observation blocks submit with a severity outside 1-5", async ({
+  test("health observation requires a severity selection", async ({
     page,
   }) => {
     await login(page);
     await gotoHydrated(page, "/protected/daily-operations?type=health-observation");
     await page.getByLabel("Animal", { exact: true }).selectOption(String(starAnimalId));
-    await page.locator("#health-observation-severity").fill("6");
+    const severity = page.getByRole("radiogroup", { name: /severity/i });
+    await expect(severity.getByRole("radio")).toHaveCount(5);
+    for (const score of [1, 2, 3, 4, 5]) {
+      await expect(severity.getByRole("radio", { name: String(score), exact: true })).not.toBeChecked();
+    }
     await page.getByLabel("Lesion").check();
     await page.getByLabel("Notes").fill(`${RUN_TAG} health obs blocked`);
     await page.getByRole("button", { name: "Save observation" }).click();
     // Client-side zod validation should block the insert and keep us on the form.
-    await expect(page.getByText(/whole number from 1 to 5/i)).toBeVisible();
+    await expect(page.getByText("Enter a severity score")).toBeVisible();
     await expect(page).toHaveURL(
       /\/protected\/daily-operations\?type=health-observation/,
     );
@@ -604,7 +620,11 @@ test.describe("e2e smoke", () => {
     ).toBeVisible();
     await expect(page.locator('input[type="file"]')).toHaveCount(0);
     await page.getByLabel("Animal", { exact: true }).selectOption(String(starAnimalId));
-    await page.locator("#health-observation-severity").fill("3");
+    const severity = page.getByRole("radiogroup", { name: /severity/i });
+    await severity.getByRole("radio", { name: "1", exact: true }).locator("..").click();
+    await severity.getByRole("radio", { name: "3", exact: true }).locator("..").click();
+    await expect(severity.getByRole("radio", { name: "1", exact: true })).not.toBeChecked();
+    await expect(severity.getByRole("radio", { name: "3", exact: true })).toBeChecked();
     await page.getByLabel("Lesion").check();
     await page.getByLabel("Arm curling").check();
     await page.getByLabel("Notes").fill(`${RUN_TAG} health obs without photo`);
@@ -709,18 +729,17 @@ test.describe("e2e smoke", () => {
     page,
   }) => {
     await login(page);
-    await page.goto(
-      `/protected/daily-operations?type=daily-check&system=${grahamSystemId}&check=AM`,
-    );
+    await gotoHydrated(page, "/protected/daily-operations?type=daily-check&check=AM");
     await expectDefaultDateAndTime(page);
     await page.getByLabel("Time").fill(PICKED_TIME);
-    await page.getByLabel("Notes").fill(`${RUN_TAG} AM check picked time`);
-    await page.getByLabel("Temperature (°C)").fill("12.5");
-    await page.getByRole("button", { name: "Save check" }).click();
+    await fillDailyCheckRound(page, { notes: `${RUN_TAG} AM check picked time` });
+    await page.getByRole("button", { name: /^Save \d+ checks?$/ }).click();
     await expect(page).toHaveURL(/\/protected\/home/);
 
     const checkRows = dbQuery(
-      `select checked_at from core.daily_checks where notes = ${sqlLiteral(`${RUN_TAG} AM check picked time`)}`,
+      `select checked_at from core.daily_checks
+       where notes = ${sqlLiteral(`${RUN_TAG} AM check picked time`)}
+         and system_id = ${grahamSystemId}`,
     );
     expect(checkRows).toHaveLength(1);
     expect(localDateOf(String(checkRows[0].checked_at))).toBe(todayDateString());
@@ -810,7 +829,7 @@ test.describe("e2e smoke", () => {
     await expectDefaultDateAndTime(page);
     await page.getByLabel("Time").fill(PICKED_TIME);
     await page.getByLabel("Animal", { exact: true }).selectOption(String(starAnimalId));
-    await page.locator("#health-observation-severity").fill("2");
+    await page.getByRole("radiogroup", { name: /severity/i }).getByRole("radio", { name: "2", exact: true }).locator("..").click();
     await page.getByLabel("Notes").fill(`${RUN_TAG} health obs picked time`);
     await page.getByRole("button", { name: "Save observation" }).click();
     await expect(page).toHaveURL(/\/protected\/home/);
@@ -1196,7 +1215,6 @@ test.describe("P1 database-owned systems and Chemical addition quick picks", () 
 
     await login(page);
     for (const type of [
-      "daily-check",
       "water-quality",
       "chemical-addition",
       "maintenance-log",
@@ -1213,6 +1231,13 @@ test.describe("P1 database-owned systems and Chemical addition quick picks", () 
         );
       expect(options).toEqual(systems);
     }
+
+    // Daily check has no selector: it lists one row per system in the same order.
+    await page.goto("/protected/daily-operations?type=daily-check");
+    const rowLabels = await page
+      .getByLabel(/ temperature \(°C\)$/)
+      .evaluateAll((inputs) => inputs.map((input) => input.getAttribute("aria-label")));
+    expect(rowLabels).toEqual(systems.map(({ name }) => `${name} temperature (°C)`));
   });
 
   test("daily forms reject a nonexistent Pacific spring-forward time before writing", async ({
@@ -1220,15 +1245,12 @@ test.describe("P1 database-owned systems and Chemical addition quick picks", () 
   }) => {
     const notes = `${tag} spring gap`;
     await login(page);
-    await page.goto(
-      `/protected/daily-operations?type=daily-check&system=${grahamSystemId}&check=AM`,
-    );
+    await gotoHydrated(page, "/protected/daily-operations?type=daily-check&check=AM");
     await expectDefaultDateAndTime(page);
     await page.getByLabel("Date").fill("2026-03-08");
     await page.getByLabel("Time").fill("02:30");
-    await page.getByLabel("Temperature (°C)").fill("12.5");
-    await page.getByLabel("Notes").fill(notes);
-    await page.getByRole("button", { name: "Save check" }).click();
+    await fillDailyCheckRound(page, { notes });
+    await page.getByRole("button", { name: /^Save \d+ checks?$/ }).click();
 
     await expect(page.getByText(/does not exist in Pacific time/)).toBeVisible();
     expect(

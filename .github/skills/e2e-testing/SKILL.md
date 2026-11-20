@@ -151,7 +151,8 @@ or cleanup is active before manually removing the exact lock directory named in 
    create a new sign-in, confirm it lands as `profiles.status = pending`, approve it as an
    Admin, confirm the assigned role actually takes effect (e.g. a Viewer can't insert).
 3. **Exercise the changed feature end to end.** Examples for this app:
-   - AM/PM check → confirm a new `daily_checks` row (right `system_id`, `check_type`).
+   - AM/PM check → one save inserts a `daily_checks` row for every system (right `system_id`,
+     `check_type`, one shared `checked_at`). `fillDailyCheckRound` tags every row's notes for teardown.
    - Feeding log → confirm `feeding_logs` row, then do the same-day consumption follow-up and
      confirm it updates that same row rather than creating a duplicate.
    - Water quality reading (configured `WATER_QUALITY_PARAMS`) → confirm `water_quality_readings` row, with
