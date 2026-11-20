@@ -16,13 +16,12 @@ import {
 import { DateTimeFields } from "@/components/forms/date-time-fields";
 import { FieldError } from "@/components/forms/field-error";
 import { HydratedForm } from "@/components/forms/hydrated-form";
-import { Textarea } from "@/components/ui/textarea";
 import {
   getPacificDateString,
   getPacificTimeString,
   parsePacificInstant,
 } from "@/lib/pacific-date-time";
-import { SELECT_CLASS } from "@/components/forms/form-classes";
+import { QUICK_PICK_HEADING_CLASS } from "@/components/forms/form-classes";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -46,21 +45,26 @@ const CONSUMPTION_LABELS: Record<ConsumptionStatus, string> = {
   unknown: "Unknown",
 };
 
+// System | Temperature | Water running | Notes; stacks into one block per system on phones.
+const ROW_GRID_CLASS =
+  "grid gap-3 sm:grid-cols-[minmax(8rem,1fr)_8rem_9rem_minmax(10rem,2fr)] sm:items-start";
+
 export function DailyCheckForm({
   systems,
-  defaultSystemId,
   defaultCheckType,
   pendingFeedingLogs = [],
   pendingFeedingLoadError,
 }: {
   systems: SystemOption[];
-  defaultSystemId?: string;
   defaultCheckType?: (typeof CHECK_TYPES)[number];
   pendingFeedingLogs?: PendingFeedingLog[];
   pendingFeedingLoadError?: string;
 }) {
   const router = useRouter();
   const [serverError, setServerError] = useState<string | null>(null);
+  // Set once the round inserts, so a retry after a failed consumption follow-up
+  // only re-runs the follow-up instead of duplicating every system's check.
+  const [checksSaved, setChecksSaved] = useState(false);
   // Per-animal consumption picks for the PM follow-up section; kept outside the
   // zod-validated form state since it's optional and shouldn't block the check.
   const [consumption, setConsumption] = useState<
@@ -80,19 +84,23 @@ export function DailyCheckForm({
     defaultValues: {
       date: getPacificDateString(),
       time: getPacificTimeString(),
-      systemId: defaultSystemId ?? "",
       checkType: defaultCheckType ?? "AM",
-      waterRunning: true,
-      temperature: "",
-      notes: "",
+      systems: systems.map((system) => ({
+        systemId: String(system.id),
+        waterRunning: false,
+        temperature: "",
+        notes: "",
+      })),
     },
   });
 
   const checkType = watch("checkType");
-  const systemId = watch("systemId");
-  const pendingFeedingLogsForSystem = pendingFeedingLogs.filter(
-    (log) => log.systemId === Number(systemId),
-  );
+  const followUpSystems = systems
+    .map((system) => ({
+      system,
+      logs: pendingFeedingLogs.filter((log) => log.systemId === system.id),
+    }))
+    .filter(({ logs }) => logs.length > 0);
 
   const onSubmit = async (values: DailyCheckFormValues) => {
     setServerError(null);
@@ -103,22 +111,29 @@ export function DailyCheckForm({
     }
 
     const supabase = createClient();
-    const { error } = await supabase.from("daily_checks").insert({
-      checked_at: instant.iso,
-      system_id: values.systemId, // already coerced to a positive int by dailyCheckSchema
-      check_type: values.checkType,
-      water_running: values.waterRunning,
-      temperature: values.temperature ? Number(values.temperature) : null,
-      notes: nullIfBlank(values.notes),
-    });
-    if (error) {
-      setServerError(error.message);
-      return;
+    if (!checksSaved) {
+      // One multi-row insert is a single statement, so the round saves all-or-nothing.
+      const { error } = await supabase.from("daily_checks").insert(
+        values.systems.map((row) => ({
+          checked_at: instant.iso,
+          system_id: row.systemId,
+          check_type: values.checkType,
+          water_running: row.waterRunning,
+          temperature: row.temperature,
+          notes: nullIfBlank(row.notes),
+        })),
+      );
+      if (error) {
+        setServerError(error.message);
+        return;
+      }
+      setChecksSaved(true);
     }
 
-    const consumptionUpdates = pendingFeedingLogsForSystem.filter(
-      (log) => consumption[log.id],
-    );
+    const consumptionUpdates =
+      values.checkType === "PM"
+        ? pendingFeedingLogs.filter((log) => consumption[log.id])
+        : [];
     if (consumptionUpdates.length > 0) {
       const results = await Promise.all(
         consumptionUpdates.map((log) =>
@@ -133,9 +148,8 @@ export function DailyCheckForm({
       );
       const failed = results.find((r) => r.error);
       if (failed?.error) {
-        // The daily check already saved; surface this without re-submitting it.
         setServerError(
-          `Check saved, but consumption follow-up failed: ${failed.error.message}`,
+          `Checks saved, but consumption follow-up failed: ${failed.error.message}. Retry saves only the follow-up.`,
         );
         return;
       }
@@ -145,12 +159,16 @@ export function DailyCheckForm({
     router.refresh();
   };
 
+  const saveLabel = checksSaved
+    ? "Retry consumption follow-up"
+    : `Save ${systems.length} ${systems.length === 1 ? "check" : "checks"}`;
+
   return (
-    <Card className="w-full max-w-lg">
+    <Card className="w-full max-w-4xl">
       <CardHeader>
         <CardTitle className="text-2xl">Daily check</CardTitle>
         <CardDescription>
-          Log the AM or PM check for a system.
+          Log the AM or PM check for every system in one save.
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -163,33 +181,14 @@ export function DailyCheckForm({
           />
 
           <div className="grid gap-2">
-            <Label htmlFor="daily-check-system">System</Label>
-            <select
-              id="daily-check-system"
-              className={SELECT_CLASS}
-              {...register("systemId")}
-            >
-              <option value="">Select a system…</option>
-              {systems.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.name}
-                </option>
-              ))}
-            </select>
-            <FieldError
-              id="daily-check-system-error"
-              message={errors.systemId?.message}
-            />
-          </div>
-
-          <div className="grid gap-2">
             <Label>Check</Label>
-            <div className="flex gap-2">
+            <div className="flex gap-2 sm:max-w-xs">
               {CHECK_TYPES.map((t) => (
                 <Button
                   key={t}
                   type="button"
                   variant={checkType === t ? "default" : "outline"}
+                  aria-pressed={checkType === t}
                   className="flex-1"
                   onClick={() =>
                     setValue("checkType", t, { shouldValidate: true })
@@ -201,46 +200,97 @@ export function DailyCheckForm({
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
-            <Controller
-              control={control}
-              name="waterRunning"
-              render={({ field }) => (
-                <Checkbox
-                  id="daily-check-water-running"
-                  checked={field.value}
-                  onCheckedChange={(v) => field.onChange(v === true)}
-                />
-              )}
-            />
-            <Label htmlFor="daily-check-water-running">Water running</Label>
-          </div>
-
-          <div className="grid gap-2">
-            <Label htmlFor="daily-check-temperature">Temperature (°C)</Label>
-            <Input
-              id="daily-check-temperature"
-              inputMode="decimal"
-              placeholder="e.g. 12.5"
-              {...register("temperature")}
-            />
-            <FieldError
-              id="daily-check-temperature-error"
-              message={errors.temperature?.message}
-            />
-          </div>
-
-          <div className="grid gap-2">
-            <Label htmlFor="daily-check-notes">Notes</Label>
-            <Textarea
-              id="daily-check-notes"
-              rows={3}
-              {...register("notes")}
-            />
-            <FieldError
-              id="daily-check-notes-error"
-              message={errors.notes?.message}
-            />
+          <div role="group" aria-labelledby="daily-check-systems-heading" className="grid gap-2">
+            <p id="daily-check-systems-heading" className={QUICK_PICK_HEADING_CLASS}>
+              Systems
+            </p>
+            <div className="overflow-hidden rounded-lg border border-input">
+              <div
+                aria-hidden="true"
+                className={`${ROW_GRID_CLASS} hidden bg-muted/30 px-4 py-2 text-xs text-muted-foreground sm:grid`}
+              >
+                <span>System</span>
+                <span>Temperature (°C)</span>
+                <span>Water running</span>
+                <span>Notes</span>
+              </div>
+              {systems.map((system, index) => {
+                const rowErrors = errors.systems?.[index];
+                const idPrefix = `daily-check-${system.id}`;
+                return (
+                  <div
+                    key={system.id}
+                    role="group"
+                    aria-labelledby={`${idPrefix}-name`}
+                    className={`${ROW_GRID_CLASS} border-t border-input px-4 py-3 [&:nth-child(2)]:border-t-0 sm:[&:nth-child(2)]:border-t`}
+                  >
+                    <p id={`${idPrefix}-name`} className="text-sm font-medium sm:pt-2">
+                      {system.name}
+                    </p>
+                    <div className="grid gap-1">
+                      <Label htmlFor={`${idPrefix}-temperature`} className="sm:sr-only">
+                        Temperature (°C)
+                      </Label>
+                      <Input
+                        id={`${idPrefix}-temperature`}
+                        inputMode="decimal"
+                        placeholder="e.g. 12.5"
+                        aria-label={`${system.name} temperature (°C)`}
+                        aria-invalid={Boolean(rowErrors?.temperature)}
+                        aria-describedby={
+                          rowErrors?.temperature ? `${idPrefix}-temperature-error` : undefined
+                        }
+                        {...register(`systems.${index}.temperature`)}
+                      />
+                      <FieldError
+                        id={`${idPrefix}-temperature-error`}
+                        message={rowErrors?.temperature?.message}
+                      />
+                    </div>
+                    <div className="flex h-9 items-center gap-2">
+                      <Controller
+                        control={control}
+                        name={`systems.${index}.waterRunning`}
+                        render={({ field }) => (
+                          <Checkbox
+                            id={`${idPrefix}-water-running`}
+                            aria-label={`${system.name} water running`}
+                            checked={field.value}
+                            onCheckedChange={(v) => field.onChange(v === true)}
+                          />
+                        )}
+                      />
+                      <Label htmlFor={`${idPrefix}-water-running`}>
+                        <span className="sm:sr-only">Water running</span>
+                        <span aria-hidden="true" className="hidden sm:inline">Running</span>
+                      </Label>
+                    </div>
+                    <div className="grid gap-1">
+                      <Label htmlFor={`${idPrefix}-notes`} className="sm:sr-only">
+                        Notes
+                      </Label>
+                      <Input
+                        id={`${idPrefix}-notes`}
+                        aria-label={`${system.name} notes`}
+                        aria-invalid={Boolean(rowErrors?.notes)}
+                        aria-describedby={
+                          rowErrors?.notes ? `${idPrefix}-notes-error` : undefined
+                        }
+                        {...register(`systems.${index}.notes`)}
+                      />
+                      <FieldError
+                        id={`${idPrefix}-notes-error`}
+                        message={rowErrors?.notes?.message}
+                      />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            <p className="text-sm text-muted-foreground">
+              Check the box only after you see water running. Unchecked saves as not running.
+            </p>
+            <FieldError message={errors.systems?.root?.message ?? errors.systems?.message} />
           </div>
 
           {pendingFeedingLoadError && (
@@ -250,32 +300,37 @@ export function DailyCheckForm({
             </p>
           )}
 
-          {pendingFeedingLogsForSystem.length > 0 && checkType === "PM" && (
+          {followUpSystems.length > 0 && checkType === "PM" && (
             <div className="grid gap-4">
               <Label>Consumption follow-up</Label>
-              {pendingFeedingLogsForSystem.map((log) => (
-                <div key={log.id} className="grid gap-2">
-                  <Label>{log.animalName}</Label>
-                  <div className="flex gap-2">
-                    {CONSUMPTION_STATUSES.map((status) => (
-                      <Button
-                        key={status}
-                        type="button"
-                        variant={
-                          consumption[log.id] === status ? "default" : "outline"
-                        }
-                        className="flex-1"
-                        onClick={() =>
-                          setConsumption((prev) => ({
-                            ...prev,
-                            [log.id]: status,
-                          }))
-                        }
-                      >
-                        {CONSUMPTION_LABELS[status]}
-                      </Button>
-                    ))}
-                  </div>
+              {followUpSystems.map(({ system, logs }) => (
+                <div key={system.id} className="grid gap-3">
+                  <p className="text-sm text-muted-foreground">{system.name}</p>
+                  {logs.map((log) => (
+                    <div key={log.id} className="grid gap-2">
+                      <Label>{log.animalName}</Label>
+                      <div className="flex gap-2">
+                        {CONSUMPTION_STATUSES.map((status) => (
+                          <Button
+                            key={status}
+                            type="button"
+                            variant={
+                              consumption[log.id] === status ? "default" : "outline"
+                            }
+                            className="flex-1"
+                            onClick={() =>
+                              setConsumption((prev) => ({
+                                ...prev,
+                                [log.id]: status,
+                              }))
+                            }
+                          >
+                            {CONSUMPTION_LABELS[status]}
+                          </Button>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
                 </div>
               ))}
             </div>
@@ -283,8 +338,8 @@ export function DailyCheckForm({
 
           <FieldError message={serverError ?? undefined} />
 
-          <Button type="submit" disabled={isSubmitting}>
-            {isSubmitting ? "Saving…" : "Save check"}
+          <Button type="submit" disabled={isSubmitting} className="sm:self-end">
+            {isSubmitting ? "Saving…" : saveLabel}
           </Button>
         </HydratedForm>
       </CardContent>
