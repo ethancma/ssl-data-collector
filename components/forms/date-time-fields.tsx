@@ -4,6 +4,9 @@ import { FieldError } from "@/components/forms/field-error";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
+// iOS Safari gives native date/time inputs an intrinsic width that overflows narrow containers.
+const nativePickerClassName = "min-w-0 appearance-none [&::-webkit-date-and-time-value]:text-left";
+
 export function DateTimeFields({
   idPrefix,
   date,
@@ -28,11 +31,12 @@ export function DateTimeFields({
 
   return (
     <div className="grid gap-4 rounded-lg border border-input bg-muted/30 p-4 sm:grid-cols-2">
-      <div className="grid content-start gap-2">
+      <div className="grid min-w-0 content-start gap-2">
         <Label htmlFor={dateId}>{dateLabel}</Label>
         <Input
           id={dateId}
           type="date"
+          className={nativePickerClassName}
           aria-invalid={Boolean(errors.date)}
           aria-describedby={errors.date ? dateErrorId : undefined}
           {...date}
@@ -41,11 +45,12 @@ export function DateTimeFields({
         />
         <FieldError id={dateErrorId} message={errors.date} />
       </div>
-      <div className="grid content-start gap-2">
+      <div className="grid min-w-0 content-start gap-2">
         <Label htmlFor={timeId}>Time</Label>
         <Input
           id={timeId}
           type="time"
+          className={nativePickerClassName}
           aria-invalid={Boolean(errors.time)}
           aria-describedby={errors.time ? timeErrorId : undefined}
           {...time}
