@@ -10,6 +10,7 @@ export const HEALTH_ISSUE_TYPES = [
   "lesion",
   "arm_curling",
   "flattening",
+  "balding",
   "other",
 ] as const;
 export type HealthIssueType = (typeof HEALTH_ISSUE_TYPES)[number];
@@ -20,6 +21,7 @@ export const HEALTH_ISSUE_LABELS: Record<HealthIssueType, string> = {
   lesion: "Lesion",
   arm_curling: "Arm curling",
   flattening: "Flattening",
+  balding: "Balding",
   other: "Other",
 };
 

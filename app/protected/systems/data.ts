@@ -1,4 +1,5 @@
 import {
+  HEALTH_ISSUE_LABELS,
   WATER_QUALITY_PARAMETERS,
   type HealthIssueType,
   type MaintenanceTaskType,
@@ -34,15 +35,6 @@ type WaterQualityRow = {
   tested_at: string;
   ph_source: string | null;
 } & Record<WaterQualityParameter, number | null>;
-
-const ISSUE_LABELS: Record<HealthIssueType, string> = {
-  arm_drop: "Arm drop",
-  spine_drop: "Spine drop",
-  lesion: "Lesion",
-  arm_curling: "Arm curling",
-  flattening: "Flattening",
-  other: "Other",
-};
 
 const TASK_LABELS: Record<MaintenanceTaskType, string> = {
   filter_change: "Filter change",
@@ -243,7 +235,7 @@ export async function fetchAllSystemsDetailData(): Promise<{
           hasPhoto: r.has_photo,
           tankName: tank?.name ?? "Unknown tank",
           issues: (r.issues as HealthIssueType[]).map(
-            (issue) => ISSUE_LABELS[issue] ?? issue,
+            (issue) => HEALTH_ISSUE_LABELS[issue] ?? issue,
           ),
         };
       });

@@ -147,20 +147,35 @@ export async function selectBatchScope(
 }
 
 // Daily check saves one row per system. Teardown deletes daily_checks by tagged notes, so tag
-// every row; callers then filter by system_id to assert on one system.
+// every row; callers then filter by system_id to assert on one system. Systems that don't
+// require a temperature (e.g. Micro-Algae) have no input, so fill it only where present.
+// Returns the number of system rows, which is the number of rows the round saves.
 export async function fillDailyCheckRound(
   page: Page,
   { notes, temperature = "54.5" }: { notes: string; temperature?: string },
 ) {
-  const temperatures = page.getByLabel(/ temperature \(°F\)$/);
-  const count = await temperatures.count();
-  expect(count).toBeGreaterThan(0);
-  for (let index = 0; index < count; index += 1) {
-    await temperatures.nth(index).fill(temperature);
-    await page.getByLabel(/ notes$/).nth(index).fill(notes);
-    await page.getByRole("checkbox", { name: / water running$/ }).nth(index).check();
+  const systemNames = await page
+    .getByLabel(/ notes$/)
+    .evaluateAll((inputs) =>
+      inputs.map((input) => input.getAttribute("aria-label")?.replace(/ notes$/, "") ?? ""),
+    );
+  expect(systemNames.length).toBeGreaterThan(0);
+  for (const name of systemNames) {
+    const row = page.getByRole("group", { name, exact: true });
+    const temperatureInput = row.getByLabel(`${name} temperature (°F)`, { exact: true });
+    if (await temperatureInput.count()) await temperatureInput.fill(temperature);
+    await row.getByLabel(`${name} notes`, { exact: true }).fill(notes);
+    await row.getByRole("checkbox", { name: `${name} water running`, exact: true }).check();
   }
-  return count;
+  return systemNames.length;
+}
+
+// Ordinary daily-operation forms stay on the same type after a save and confirm inline.
+export async function expectSavedInPlace(page: Page, type: string, message: string) {
+  await expect(page.getByRole("status").filter({ hasText: message })).toHaveText(message);
+  await expect(page).toHaveURL(
+    new RegExp(`/protected/daily-operations\\?(.*&)?type=${type}(&|$)`),
+  );
 }
 
 export async function logSingleFeeding(

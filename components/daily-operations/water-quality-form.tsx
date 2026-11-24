@@ -72,24 +72,28 @@ export function WaterQualityForm({
 }) {
   const router = useRouter();
   const [serverError, setServerError] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
+
+  const freshValues = (): WaterQualityFormInput => ({
+    date: getPacificDateString(),
+    time: getPacificTimeString(),
+    systemId: defaultSystemId ?? "",
+    phSource: "manual",
+    ...Object.fromEntries(WATER_QUALITY_PARAMETERS.map((key) => [key, ""])),
+    notes: "",
+  });
 
   const {
     register,
     handleSubmit,
+    reset,
     watch,
     setError,
     setValue,
     formState: { errors, isSubmitting },
   } = useForm<WaterQualityFormInput, unknown, WaterQualityFormValues>({
     resolver: zodResolver(waterQualitySchema),
-    defaultValues: {
-      date: getPacificDateString(),
-      time: getPacificTimeString(),
-      systemId: defaultSystemId ?? "",
-      phSource: "manual",
-      ...Object.fromEntries(WATER_QUALITY_PARAMETERS.map((key) => [key, ""])),
-      notes: "",
-    },
+    defaultValues: freshValues(),
   });
 
   const watchedValues = watch();
@@ -98,6 +102,7 @@ export function WaterQualityForm({
 
   const onSubmit = async (values: WaterQualityFormValues) => {
     setServerError(null);
+    setSaved(false);
     const numericValues = Object.fromEntries(
       WATER_QUALITY_PARAMETERS.map((key) => [
         key,
@@ -142,7 +147,8 @@ export function WaterQualityForm({
       setServerError(error.message);
       return;
     }
-    router.push("/protected/home");
+    reset(freshValues());
+    setSaved(true);
     router.refresh();
   };
 
@@ -270,6 +276,11 @@ export function WaterQualityForm({
 
           <FieldError message={errors.root?.message} />
           <FieldError role="alert" message={serverError ?? undefined} />
+          {saved && (
+            <p className="text-sm text-emerald-700 dark:text-emerald-400" role="status" aria-live="polite">
+              Water quality saved.
+            </p>
+          )}
 
           <Button
             type="submit"

@@ -45,7 +45,7 @@ export type LogType = {
 };
 
 export type SharedFormData = {
-  systems: { id: number; name: string }[];
+  systems: { id: number; name: string; requiresTemperature: boolean }[];
   animals: { id: number; name: string; tankId: number }[];
   feedingSystems: BatchScopeSystem[];
   feedingTanks: BatchScopeTank[];
@@ -79,6 +79,11 @@ export const LOG_TYPES: LogType[] = [
     icon: ClipboardCheck,
   },
   {
+    id: "health-observation",
+    label: "Health observation",
+    icon: HeartPulse,
+  },
+  {
     id: "feeding",
     label: "Feeding",
     icon: UtensilsCrossed,
@@ -97,11 +102,6 @@ export const LOG_TYPES: LogType[] = [
     id: "star-treatment",
     label: "Star treatment",
     icon: Syringe,
-  },
-  {
-    id: "health-observation",
-    label: "Health observation",
-    icon: HeartPulse,
   },
   {
     id: "maintenance-log",

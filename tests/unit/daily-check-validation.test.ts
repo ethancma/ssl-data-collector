@@ -13,6 +13,7 @@ const round = (systems: Record<string, unknown>[]) => ({
 
 const row = (overrides: Record<string, unknown> = {}) => ({
   systemId: "3",
+  requiresTemperature: true,
   waterRunning: true,
   temperature: "54.5",
   notes: "",
@@ -135,4 +136,27 @@ test("a round needs at least one configured system", () => {
   const result = dailyCheckSchema.safeParse(round([]));
   assert.equal(result.success, false);
   assert.equal(result.error?.issues[0]?.message, "No systems are configured");
+});
+
+test("systems that do not require a temperature save null and skip range checks", () => {
+  for (const temperatureUnit of ["F", "C"]) {
+    const result = dailyCheckSchema.parse({
+      ...round([
+        row({ temperature: temperatureUnit === "F" ? "54.5" : "12.5" }),
+        row({
+          systemId: "9",
+          requiresTemperature: false,
+          temperature: "",
+          temperatureSource: { value: "999", unit: "F" },
+        }),
+      ]),
+      temperatureUnit,
+    });
+    assert.deepEqual(result.systems.map(({ temperature }) => temperature), [12.5, null]);
+    assert.equal("requiresTemperature" in result.systems[1], false);
+  }
+
+  const required = dailyCheckSchema.safeParse(round([row({ temperature: "" }), row({ systemId: "9", requiresTemperature: false, temperature: "" })]));
+  assert.equal(required.success, false);
+  assert.deepEqual(required.error?.issues.map((issue) => issue.path), [["systems", 0, "temperature"]]);
 });

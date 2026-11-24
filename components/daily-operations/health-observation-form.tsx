@@ -24,12 +24,13 @@ import {
 } from "@/lib/pacific-date-time";
 import { QUICK_PICK_HEADING_CLASS, SELECT_CLASS } from "@/components/forms/form-classes";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
+  HEALTH_ISSUE_LABELS,
   HEALTH_ISSUE_TYPES,
   SEVERITY_MAX,
   SEVERITY_MIN,
-  type HealthIssueType,
 } from "@/lib/config/reference-data";
 import { createClient } from "@/lib/supabase/client";
 import { nullIfBlank } from "@/lib/utils";
@@ -41,15 +42,6 @@ import {
 
 type AnimalOption = { id: number; name: string; tankId: number };
 
-const ISSUE_LABELS: Record<HealthIssueType, string> = {
-  arm_drop: "Arm drop",
-  spine_drop: "Spine drop",
-  lesion: "Lesion",
-  arm_curling: "Arm curling",
-  flattening: "Flattening",
-  other: "Other",
-};
-
 export function HealthObservationForm({
   animals,
 }: {
@@ -57,26 +49,35 @@ export function HealthObservationForm({
 }) {
   const router = useRouter();
   const [serverError, setServerError] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
+
+  const freshValues = (): HealthObservationFormInput => ({
+    date: getPacificDateString(),
+    time: getPacificTimeString(),
+    animalId: "",
+    tankId: "",
+    severity: "",
+    issues: [],
+    spineCount: "",
+    notes: "",
+  });
 
   const {
     register,
     handleSubmit,
+    reset,
     control,
+    watch,
     setError,
+    clearErrors,
     setValue,
     formState: { errors, isSubmitting },
   } = useForm<HealthObservationFormInput, unknown, HealthObservationFormValues>({
     resolver: zodResolver(healthObservationSchema),
-    defaultValues: {
-      date: getPacificDateString(),
-      time: getPacificTimeString(),
-      animalId: "",
-      tankId: "",
-      severity: "",
-      issues: [],
-      notes: "",
-    },
+    defaultValues: freshValues(),
   });
+
+  const issues = watch("issues");
 
   const onAnimalChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const animal = animals.find((a) => String(a.id) === e.target.value);
@@ -87,6 +88,7 @@ export function HealthObservationForm({
 
   const onSubmit = async (values: HealthObservationFormValues) => {
     setServerError(null);
+    setSaved(false);
     const instant = parsePacificInstant(values.date, values.time);
     if (instant.error !== undefined) {
       setError("time", { message: instant.error });
@@ -103,6 +105,7 @@ export function HealthObservationForm({
         tank_id: values.tankId,
         severity: values.severity,
         issues: values.issues,
+        spine_count: values.spineCount,
         notes: nullIfBlank(values.notes),
       });
     if (error) {
@@ -110,7 +113,8 @@ export function HealthObservationForm({
       return;
     }
 
-    router.push("/protected/home");
+    reset(freshValues());
+    setSaved(true);
     router.refresh();
   };
 
@@ -202,10 +206,14 @@ export function HealthObservationForm({
                               ? [...current, issue]
                               : current.filter((i) => i !== issue),
                           );
+                          if (issue === "spine_drop" && checked !== true) {
+                            setValue("spineCount", "");
+                            clearErrors("spineCount");
+                          }
                         }}
                       />
                       <Label htmlFor={`health-observation-issue-${issue.replace(/_/g, "-")}`}>
-                        {ISSUE_LABELS[issue]}
+                        {HEALTH_ISSUE_LABELS[issue]}
                       </Label>
                     </div>
                   ))}
@@ -213,6 +221,34 @@ export function HealthObservationForm({
               )}
             />
           </div>
+
+          {issues?.includes("spine_drop") && (
+            <div className="grid gap-2">
+              <Label htmlFor="health-observation-spine-count">Spines found</Label>
+              <Input
+                id="health-observation-spine-count"
+                type="number"
+                inputMode="numeric"
+                min={1}
+                step={1}
+                className="sm:max-w-40"
+                aria-invalid={Boolean(errors.spineCount)}
+                aria-describedby={
+                  errors.spineCount
+                    ? "health-observation-spine-count-hint health-observation-spine-count-error"
+                    : "health-observation-spine-count-hint"
+                }
+                {...register("spineCount")}
+              />
+              <p id="health-observation-spine-count-hint" className="text-sm text-muted-foreground">
+                Leave blank if unknown.
+              </p>
+              <FieldError
+                id="health-observation-spine-count-error"
+                message={errors.spineCount?.message}
+              />
+            </div>
+          )}
 
           <p className="text-sm text-muted-foreground">
             Photo uploads are temporarily unavailable.
@@ -232,6 +268,11 @@ export function HealthObservationForm({
           </div>
 
           <FieldError message={serverError ?? undefined} />
+          {saved && (
+            <p className="text-sm text-emerald-700 dark:text-emerald-400" role="status" aria-live="polite">
+              Health observation saved.
+            </p>
+          )}
 
           <Button type="submit" disabled={isSubmitting}>
             {isSubmitting ? "Saving…" : "Save observation"}

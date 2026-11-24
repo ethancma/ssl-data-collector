@@ -16,8 +16,8 @@ import {
 
 const source: DailyOperationsSourceData = {
   systems: [
-    { id: 1, name: "Graham" },
-    { id: 2, name: "Moss" },
+    { id: 1, name: "Graham", requires_temperature: true },
+    { id: 2, name: "Micro-Algae", requires_temperature: false },
   ],
   tanks: [
     { id: 10, name: "Graham 1", system_id: 1 },
@@ -47,6 +47,12 @@ test("derives feeding scope from tanks that hold animals and marks cohorts", () 
     options.feedingAnimals.map((animal) => animal.detail),
     [undefined, "Cohort"],
   );
+});
+
+test("keeps each system's temperature requirement for the daily check", () => {
+  const { systems } = deriveDailyOperationsOptions(source);
+
+  assert.deepEqual(systems.map((system) => system.requiresTemperature), [true, false]);
 });
 
 test("drops unknown water-quality parameters and converts bounds to numbers", () => {

@@ -40,7 +40,7 @@ import {
   type TemperatureUnit,
 } from "@/lib/validation/daily-check";
 
-type SystemOption = { id: number; name: string };
+type SystemOption = { id: number; name: string; requiresTemperature: boolean };
 type PendingFeedingLog = { id: number; animalName: string; systemId: number };
 type ConsumptionStatus = (typeof CONSUMPTION_STATUSES)[number];
 
@@ -68,6 +68,7 @@ export function DailyCheckForm({
 }) {
   const router = useRouter();
   const [serverError, setServerError] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
   // Set once the round inserts, so a retry after a failed consumption follow-up
   // only re-runs the follow-up instead of duplicating every system's check.
   const [checksSaved, setChecksSaved] = useState(false);
@@ -77,11 +78,26 @@ export function DailyCheckForm({
     Record<number, ConsumptionStatus | "">
   >({});
 
+  const freshValues = (): DailyCheckFormInput => ({
+    date: getPacificDateString(),
+    time: getPacificTimeString(),
+    checkType: defaultCheckType ?? "AM",
+    temperatureUnit: "F",
+    systems: systems.map((system) => ({
+      systemId: String(system.id),
+      requiresTemperature: system.requiresTemperature,
+      waterRunning: false,
+      temperature: "",
+      notes: "",
+    })),
+  });
+
   const {
     register,
     handleSubmit,
     control,
     watch,
+    reset,
     setError,
     clearErrors,
     setValue,
@@ -89,18 +105,7 @@ export function DailyCheckForm({
     formState: { errors, isSubmitting },
   } = useForm<DailyCheckFormInput, unknown, DailyCheckFormValues>({
     resolver: zodResolver(dailyCheckSchema),
-    defaultValues: {
-      date: getPacificDateString(),
-      time: getPacificTimeString(),
-      checkType: defaultCheckType ?? "AM",
-      temperatureUnit: "F",
-      systems: systems.map((system) => ({
-        systemId: String(system.id),
-        waterRunning: false,
-        temperature: "",
-        notes: "",
-      })),
-    },
+    defaultValues: freshValues(),
   });
 
   const checkType = watch("checkType");
@@ -117,8 +122,8 @@ export function DailyCheckForm({
     if (nextUnit === currentUnit) return;
 
     const currentRows = getValues("systems");
-    const invalidIndexes = currentRows.flatMap(({ temperature }, index) => {
-      if (!temperature.trim()) return [];
+    const invalidIndexes = currentRows.flatMap(({ temperature, requiresTemperature }, index) => {
+      if (!requiresTemperature || !temperature.trim()) return [];
       const value = Number(temperature);
       return Number.isFinite(value) && temperatureInRange(value, currentUnit)
         ? []
@@ -134,8 +139,8 @@ export function DailyCheckForm({
     }
 
     setValue("temperatureUnit", nextUnit, { shouldDirty: true });
-    currentRows.forEach(({ temperature, temperatureSource }, index) => {
-      if (!temperature.trim()) return;
+    currentRows.forEach(({ temperature, temperatureSource, requiresTemperature }, index) => {
+      if (!requiresTemperature || !temperature.trim()) return;
       const source = temperatureSource ?? { value: temperature, unit: currentUnit };
       setValue(
         `systems.${index}.temperatureSource`,
@@ -150,6 +155,7 @@ export function DailyCheckForm({
 
   const onSubmit = async (values: DailyCheckFormValues) => {
     setServerError(null);
+    setSaved(false);
     const instant = parsePacificInstant(values.date, values.time);
     if (instant.error !== undefined) {
       setError("time", { message: instant.error });
@@ -201,7 +207,10 @@ export function DailyCheckForm({
       }
     }
 
-    router.push("/protected/home");
+    reset(freshValues());
+    setChecksSaved(false);
+    setConsumption({});
+    setSaved(true);
     router.refresh();
   };
 
@@ -303,34 +312,40 @@ export function DailyCheckForm({
                     <p id={`${idPrefix}-name`} className="text-sm font-medium sm:pt-2">
                       {system.name}
                     </p>
-                    <div className="grid gap-1">
-                      <Label htmlFor={`${idPrefix}-temperature`} className="sm:sr-only">
-                        Temperature (°{temperatureUnit})
-                      </Label>
-                      <Input
-                        id={`${idPrefix}-temperature`}
-                        inputMode="decimal"
-                        placeholder={temperatureUnit === "F" ? "e.g. 54.5" : "e.g. 12.5"}
-                        aria-label={`${system.name} temperature (°${temperatureUnit})`}
-                        aria-invalid={Boolean(rowErrors?.temperature)}
-                        aria-describedby={
-                          rowErrors?.temperature ? `${idPrefix}-temperature-error` : undefined
-                        }
-                        {...register(`systems.${index}.temperature`, {
-                          onChange: () => {
-                            setValue(`systems.${index}.temperatureSource`, undefined);
-                            clearErrors(`systems.${index}.temperature`);
-                          },
-                        })}
-                      />
-                      {celsiusPreview !== null && (
-                        <p className="text-xs text-muted-foreground">→ {celsiusPreview} °C</p>
-                      )}
-                      <FieldError
-                        id={`${idPrefix}-temperature-error`}
-                        message={rowErrors?.temperature?.message}
-                      />
-                    </div>
+                    {!system.requiresTemperature ? (
+                      <p className="text-sm text-muted-foreground sm:pt-2">
+                        <span className="sm:sr-only">Temperature: </span>Not required
+                      </p>
+                    ) : (
+                      <div className="grid gap-1">
+                        <Label htmlFor={`${idPrefix}-temperature`} className="sm:sr-only">
+                          Temperature (°{temperatureUnit})
+                        </Label>
+                        <Input
+                          id={`${idPrefix}-temperature`}
+                          inputMode="decimal"
+                          placeholder={temperatureUnit === "F" ? "e.g. 54.5" : "e.g. 12.5"}
+                          aria-label={`${system.name} temperature (°${temperatureUnit})`}
+                          aria-invalid={Boolean(rowErrors?.temperature)}
+                          aria-describedby={
+                            rowErrors?.temperature ? `${idPrefix}-temperature-error` : undefined
+                          }
+                          {...register(`systems.${index}.temperature`, {
+                            onChange: () => {
+                              setValue(`systems.${index}.temperatureSource`, undefined);
+                              clearErrors(`systems.${index}.temperature`);
+                            },
+                          })}
+                        />
+                        {celsiusPreview !== null && (
+                          <p className="text-xs text-muted-foreground">→ {celsiusPreview} °C</p>
+                        )}
+                        <FieldError
+                          id={`${idPrefix}-temperature-error`}
+                          message={rowErrors?.temperature?.message}
+                        />
+                      </div>
+                    )}
                     <div className="flex h-9 items-center gap-2">
                       <Controller
                         control={control}
@@ -421,6 +436,11 @@ export function DailyCheckForm({
           )}
 
           <FieldError message={serverError ?? undefined} />
+          {saved && (
+            <p className="text-sm text-emerald-700 dark:text-emerald-400" role="status" aria-live="polite">
+              Daily check saved.
+            </p>
+          )}
 
           <Button type="submit" disabled={isSubmitting} className="sm:self-end">
             {isSubmitting ? "Saving…" : saveLabel}

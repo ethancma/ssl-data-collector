@@ -6,7 +6,7 @@ import {
 import { createClient } from "@/lib/supabase/server";
 
 export type HomeDashboardSourceData = {
-  systems: Array<{ id: number; name: string }>;
+  systems: Array<{ id: number; name: string; requires_weekly_water_quality: boolean }>;
   checks: Array<{ system_id: number; check_type: string; checked_at: string }>;
   feedingLogs: Array<{ fed_at: string; tank_id: number; tanks: unknown }>;
   feedingSchedules: Array<{
@@ -62,7 +62,7 @@ export async function loadHomeDashboardData(): Promise<HomeDashboardLoadResult> 
     { data: tanks, error: tankRowsError },
   ] = await Promise.all([    supabase
       .from("systems")
-      .select("id, name")
+      .select("id, name, requires_weekly_water_quality")
       .order("name", { ascending: true })
       .order("id", { ascending: true }),
     supabase

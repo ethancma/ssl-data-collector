@@ -32,6 +32,7 @@ const health = (
   at: daysAgo(days),
   severity,
   issues: ["lesion"],
+  spineCount: null,
   notes: "",
   photo: false,
   by: "Tech",

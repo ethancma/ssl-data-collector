@@ -32,6 +32,7 @@ import {
   localTimeOf,
   PICKED_TIME,
   expectDefaultDateAndTime,
+  expectSavedInPlace,
   fillDailyCheckRound,
   findGrahamStar,
   logSingleFeeding,
@@ -252,21 +253,28 @@ test.describe("e2e smoke", () => {
     });
 
     await login(page);
+    const operationSelect = page.getByRole("combobox", { name: "Operation" });
+    await page.goto("/protected/daily-operations");
+    await expect(operationSelect).toHaveValue("daily-check");
     await page.goto("/protected/daily-operations?type=daily-check&check=PM");
     await expect(page.locator("form")).toBeVisible();
 
-    const tabs = [
+    const operations = [
+      ["Daily check", "daily-check"],
+      ["Health observation", "health-observation"],
       ["Feeding", "feeding"],
       ["Water quality", "water-quality"],
       ["System chemical addition", "chemical-addition"],
       ["Star treatment", "star-treatment"],
-      ["Health observation", "health-observation"],
       ["Maintenance", "maintenance-log"],
-      ["Daily check", "daily-check"],
     ] as const;
+    await expect(operationSelect.locator("option")).toHaveText(
+      operations.map(([name]) => name),
+    );
 
-    for (const [name, type] of tabs) {
-      await page.getByRole("combobox", { name: "Operation" }).selectOption({ label: name });
+    // Daily check is already selected (with a stale check=PM), so revisit it last.
+    for (const [name, type] of [...operations.slice(1), operations[0]]) {
+      await operationSelect.selectOption({ label: name });
       await expect(page).toHaveURL(
         `${BASE_URL}/protected/daily-operations?type=${type}`,
       );
@@ -369,7 +377,9 @@ test.describe("e2e smoke", () => {
         water_running: true,
       }));
       expect(payload).toContainEqual(expect.objectContaining({ temperature: 0.05 }));
-      await expect(page).toHaveURL(/\/protected\/home/);
+      await expectSavedInPlace(page, "daily-check", "Daily check saved.");
+      await expect(page.getByLabel("Graham notes")).toHaveValue("");
+      await expect(page.getByRole("checkbox", { name: "Graham water running" })).not.toBeChecked();
       const rows = dbQuery(`select system_id, notes, temperature from core.daily_checks
         where notes = ${sqlLiteral(`${RUN_TAG} hydration check`)}`);
       expect(rows).toHaveLength(systemCount);
@@ -386,11 +396,20 @@ test.describe("e2e smoke", () => {
   test("AM check round lists every configured system and lands one row per system", async ({ page }) => {
     await login(page);
     await gotoHydrated(page, "/protected/daily-operations?type=daily-check&check=AM");
-    const systemNames = dbQuery(`select name from core.systems order by name, id`).map(
-      (row) => String(row.name),
-    );
-    for (const name of systemNames) {
-      await expect(page.getByLabel(`${name} temperature (°F)`, { exact: true })).toBeVisible();
+    const systems = dbQuery(`select name, requires_temperature from core.systems order by name, id`)
+      .map((row) => ({ name: String(row.name), requiresTemperature: row.requires_temperature === true }));
+    const systemNames = systems.map(({ name }) => name);
+    for (const name of ["Header", "Nursery", "Micro-Algae"]) expect(systemNames).toContain(name);
+    expect(systems.find(({ name }) => name === "Micro-Algae")?.requiresTemperature).toBe(false);
+    for (const { name, requiresTemperature } of systems) {
+      const row = page.getByRole("group", { name, exact: true });
+      const temperature = row.getByLabel(`${name} temperature (°F)`, { exact: true });
+      if (requiresTemperature) {
+        await expect(temperature).toBeVisible();
+      } else {
+        await expect(temperature).toHaveCount(0);
+        await expect(row.getByText("Not required")).toBeVisible();
+      }
     }
     const systemCount = await fillDailyCheckRound(page, { notes: `${RUN_TAG} AM check` });
     expect(systemCount).toBe(systemNames.length);
@@ -400,7 +419,8 @@ test.describe("e2e smoke", () => {
     expect(stoppedName).toBeDefined();
     await page.getByRole("checkbox", { name: `${stoppedName} water running` }).uncheck();
     await page.getByRole("button", { name: `Save ${systemCount} checks` }).click();
-    await expect(page).toHaveURL(/\/protected\/home/);
+    await expectSavedInPlace(page, "daily-check", "Daily check saved.");
+    await expect(page.getByLabel("Graham notes")).toHaveValue("");
 
     const rows = dbQuery(`
       select sys.name, dc.system_id, dc.check_type, dc.water_running,
@@ -419,6 +439,25 @@ test.describe("e2e smoke", () => {
     expect(rows.filter((row) => row.water_running === false).map((row) => row.name)).toEqual([
       stoppedName,
     ]);
+    expect(rows.find((row) => row.name === "Micro-Algae")?.temperature).toBeNull();
+    for (const name of ["Header", "Nursery"]) {
+      expect(Number(rows.find((row) => row.name === name)?.temperature)).toBe(12.5);
+    }
+
+    // The reset form saves a fresh round on the same page; check type stays preselected.
+    await expect(page.getByRole("button", { name: "AM", exact: true })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    await fillDailyCheckRound(page, { notes: `${RUN_TAG} AM check again` });
+    await page.getByRole("button", { name: `Save ${systemCount} checks` }).click();
+    await expectSavedInPlace(page, "daily-check", "Daily check saved.");
+    const secondRows = dbQuery(`select id, check_type from core.daily_checks
+      where notes = ${sqlLiteral(`${RUN_TAG} AM check again`)}`);
+    expect(secondRows).toHaveLength(systemCount);
+    expect(secondRows.every((row) => row.check_type === "AM")).toBe(true);
+    expect(dbQuery(`select id from core.daily_checks
+      where notes = ${sqlLiteral(`${RUN_TAG} AM check`)}`)).toHaveLength(systemCount);
   });
 
   test("daily check blocks the round until every system has a temperature", async ({ page }) => {
@@ -496,7 +535,7 @@ test.describe("e2e smoke", () => {
       .click();
     await fillDailyCheckRound(page, { notes: `${RUN_TAG} PM check` });
     await page.getByRole("button", { name: /^Save \d+ checks?$/ }).click();
-    await expect(page).toHaveURL(/\/protected\/home/);
+    await expectSavedInPlace(page, "daily-check", "Daily check saved.");
 
     const checkRows = dbQuery(`
       select system_id, check_type
@@ -542,7 +581,8 @@ test.describe("e2e smoke", () => {
     await page.getByLabel("Nitrite").fill("41");
     await page.getByLabel("Notes").fill(`${RUN_TAG} water quality`);
     await page.getByRole("button", { name: "Save reading" }).click();
-    await expect(page).toHaveURL(/\/protected\/home/);
+    await expectSavedInPlace(page, "water-quality", "Water quality saved.");
+    await expect(page.getByLabel("Notes")).toHaveValue("");
 
     const rows = dbQuery(`
       select system_id, ph_source, ph, salinity, nitrate, nitrite, tested_at
@@ -619,7 +659,8 @@ test.describe("e2e smoke", () => {
     await page.getByLabel("Amount").fill("50");
     await page.getByLabel("Reason").fill(`${RUN_TAG} chemical addition`);
     await page.getByRole("button", { name: "Save system addition" }).click();
-    await expect(page).toHaveURL(/\/protected\/home/);
+    await expectSavedInPlace(page, "chemical-addition", "Chemical addition saved.");
+    await expect(page.getByLabel("Reason")).toHaveValue("");
 
     const rows = dbQuery(`
       select system_id, catalog_id, chemical_name, amount, unit, reason, added_at
@@ -683,7 +724,8 @@ test.describe("e2e smoke", () => {
     await page.getByLabel("Arm curling").check();
     await page.getByLabel("Notes").fill(`${RUN_TAG} health obs without photo`);
     await page.getByRole("button", { name: "Save observation" }).click();
-    await expect(page).toHaveURL(/\/protected\/home/);
+    await expectSavedInPlace(page, "health-observation", "Health observation saved.");
+    await expect(page.getByLabel("Notes")).toHaveValue("");
 
     const observations = dbQuery(`
       select id, animal_id, severity, has_photo, observed_at, to_json(issues) as issues
@@ -714,6 +756,57 @@ test.describe("e2e smoke", () => {
     expect(attachments).toHaveLength(0);
   });
 
+  test("health observation saves Balding and an optional Spines found count", async ({ page }) => {
+    await login(page);
+    await gotoHydrated(page, "/protected/daily-operations?type=health-observation");
+    const severity = page.getByRole("radiogroup", { name: /severity/i });
+    const spinesFound = page.getByLabel("Spines found");
+
+    await page.getByLabel("Animal", { exact: true }).selectOption(String(starAnimalId));
+    await severity.getByRole("radio", { name: "2", exact: true }).locator("..").click();
+    await expect(spinesFound).toHaveCount(0);
+    await page.getByLabel("Spine drop").check();
+    await expect(spinesFound).toBeVisible();
+    await expect(page.getByText("Leave blank if unknown.")).toBeVisible();
+    await spinesFound.fill("5");
+    await page.getByLabel("Spine drop").uncheck();
+    await expect(spinesFound).toHaveCount(0);
+    await page.getByLabel("Spine drop").check();
+    await expect(spinesFound).toHaveValue("");
+    await spinesFound.fill("3");
+    await page.getByLabel("Balding").check();
+    await page.getByLabel("Notes").fill(`${RUN_TAG} health obs spines counted`);
+    await page.getByRole("button", { name: "Save observation" }).click();
+    await expectSavedInPlace(page, "health-observation", "Health observation saved.");
+    await expect(spinesFound).toHaveCount(0);
+
+    await page.getByLabel("Animal", { exact: true }).selectOption(String(starAnimalId));
+    await severity.getByRole("radio", { name: "2", exact: true }).locator("..").click();
+    await page.getByLabel("Spine drop").check();
+    await page.getByLabel("Notes").fill(`${RUN_TAG} health obs spines blank`);
+    await page.getByRole("button", { name: "Save observation" }).click();
+    await expectSavedInPlace(page, "health-observation", "Health observation saved.");
+
+    const rows = dbQuery(`
+      select notes, spine_count, to_json(issues) as issues
+      from core.health_observations
+      where notes in (${sqlLiteral(`${RUN_TAG} health obs spines counted`)},
+        ${sqlLiteral(`${RUN_TAG} health obs spines blank`)})
+    `);
+    expect(rows).toHaveLength(2);
+    const counted = rows.find((row) => row.notes === `${RUN_TAG} health obs spines counted`);
+    expect(counted?.issues).toHaveLength(2);
+    expect(counted?.issues).toEqual(expect.arrayContaining(["balding", "spine_drop"]));
+    expect(Number(counted?.spine_count)).toBe(3);
+    const blank = rows.find((row) => row.notes === `${RUN_TAG} health obs spines blank`);
+    expect(blank?.issues).toEqual(["spine_drop"]);
+    expect(blank?.spine_count).toBeNull();
+
+    await gotoHydrated(page, `/protected/iseau?star=${starAnimalId}`);
+    await page.getByRole("button", { name: `Health observations for ${starName}:` }).click();
+    await expect(page.getByRole("dialog")).toContainText("Spines found: 3");
+  });
+
   test("one maintenance submission creates one row with the selected task_type", async ({
     page,
   }) => {
@@ -726,7 +819,8 @@ test.describe("e2e smoke", () => {
     await page.getByLabel("Sump flush").check();
     await page.getByLabel("Notes").fill(`${RUN_TAG} maintenance default date`);
     await page.getByRole("button", { name: "Save maintenance log" }).click();
-    await expect(page).toHaveURL(/\/protected\/home/);
+    await expectSavedInPlace(page, "maintenance-log", "Maintenance saved.");
+    await expect(page.getByLabel("Notes")).toHaveValue("");
 
     const rows = dbQuery(`
       select system_id, task_type, performed_at
@@ -752,7 +846,7 @@ test.describe("e2e smoke", () => {
     await page.getByLabel("Other").check();
     await page.getByLabel("Notes").fill(`${RUN_TAG} maintenance backdated`);
     await page.getByRole("button", { name: "Save maintenance log" }).click();
-    await expect(page).toHaveURL(/\/protected\/home/);
+    await expectSavedInPlace(page, "maintenance-log", "Maintenance saved.");
 
     const rows = dbQuery(`
       select system_id, task_type, performed_at
@@ -788,7 +882,8 @@ test.describe("e2e smoke", () => {
     await page.getByLabel("Time").fill(PICKED_TIME);
     await fillDailyCheckRound(page, { notes: `${RUN_TAG} AM check picked time` });
     await page.getByRole("button", { name: /^Save \d+ checks?$/ }).click();
-    await expect(page).toHaveURL(/\/protected\/home/);
+    await expectSavedInPlace(page, "daily-check", "Daily check saved.");
+    await expectDefaultDateAndTime(page);
 
     const checkRows = dbQuery(
       `select checked_at from core.daily_checks
@@ -836,7 +931,8 @@ test.describe("e2e smoke", () => {
     await page.getByLabel("Salinity").fill("32");
     await page.getByLabel("Notes").fill(`${RUN_TAG} water quality picked time`);
     await page.getByRole("button", { name: "Save reading" }).click();
-    await expect(page).toHaveURL(/\/protected\/home/);
+    await expectSavedInPlace(page, "water-quality", "Water quality saved.");
+    await expectDefaultDateAndTime(page);
 
     const readingRows = dbQuery(
       `select tested_at from core.water_quality_readings where notes = ${sqlLiteral(`${RUN_TAG} water quality picked time`)}`,
@@ -863,7 +959,8 @@ test.describe("e2e smoke", () => {
     await page.getByLabel("Unit", { exact: true }).selectOption("mL");
     await page.getByLabel("Reason").fill(`${RUN_TAG} chemical addition picked time`);
     await page.getByRole("button", { name: "Save system addition" }).click();
-    await expect(page).toHaveURL(/\/protected\/home/);
+    await expectSavedInPlace(page, "chemical-addition", "Chemical addition saved.");
+    await expectDefaultDateAndTime(page);
 
     const rows = dbQuery(`
       select added_at
@@ -886,7 +983,8 @@ test.describe("e2e smoke", () => {
     await page.getByRole("radiogroup", { name: /severity/i }).getByRole("radio", { name: "2", exact: true }).locator("..").click();
     await page.getByLabel("Notes").fill(`${RUN_TAG} health obs picked time`);
     await page.getByRole("button", { name: "Save observation" }).click();
-    await expect(page).toHaveURL(/\/protected\/home/);
+    await expectSavedInPlace(page, "health-observation", "Health observation saved.");
+    await expectDefaultDateAndTime(page);
 
     const rows = dbQuery(`
       select animal_id, severity, observed_at, to_json(issues) as issues
@@ -912,7 +1010,8 @@ test.describe("e2e smoke", () => {
     await page.getByLabel("Filter change").check();
     await page.getByLabel("Notes").fill(`${RUN_TAG} maintenance picked time`);
     await page.getByRole("button", { name: "Save maintenance log" }).click();
-    await expect(page).toHaveURL(/\/protected\/home/);
+    await expectSavedInPlace(page, "maintenance-log", "Maintenance saved.");
+    await expectDefaultDateAndTime(page);
 
     const rows = dbQuery(`
       select task_type, performed_at
@@ -1288,10 +1387,10 @@ test.describe("P1 database-owned systems and Chemical addition quick picks", () 
 
     // Daily check has no selector: it lists one row per system in the same order.
     await page.goto("/protected/daily-operations?type=daily-check");
-    const rowLabels = await page
-      .getByLabel(/ temperature \(°F\)$/)
+    const rowNames = await page
+      .getByLabel(/ notes$/)
       .evaluateAll((inputs) => inputs.map((input) => input.getAttribute("aria-label")));
-    expect(rowLabels).toEqual(systems.map(({ name }) => `${name} temperature (°F)`));
+    expect(rowNames).toEqual(systems.map(({ name }) => `${name} notes`));
   });
 
   test("daily forms reject a nonexistent Pacific spring-forward time before writing", async ({
@@ -1336,7 +1435,7 @@ test.describe("P1 database-owned systems and Chemical addition quick picks", () 
     await page.getByLabel("Other unit").fill("drops");
     await page.getByLabel("Reason").fill(`${tag} referenced`);
     await page.getByRole("button", { name: "Save system addition" }).click();
-    await expect(page).toHaveURL(/\/protected\/home/);
+    await expectSavedInPlace(page, "chemical-addition", "Chemical addition saved.");
 
     const row = dbQuery(`select id, catalog_id, chemical_name, amount, unit
       from core.chemical_additions
@@ -1362,7 +1461,7 @@ test.describe("P1 database-owned systems and Chemical addition quick picks", () 
     await page.getByLabel("Other unit").fill(" g ");
     await page.getByLabel("Reason").fill(`${tag} free text`);
     await page.getByRole("button", { name: "Save system addition" }).click();
-    await expect(page).toHaveURL(/\/protected\/home/);
+    await expectSavedInPlace(page, "chemical-addition", "Chemical addition saved.");
 
     const row = dbQuery(`select catalog_id, chemical_name, unit
       from core.chemical_additions
@@ -1546,7 +1645,7 @@ test.describe("P1 water-quality targets", () => {
 
     await page.getByLabel("Notes").fill(`${tag} override`);
     await page.getByRole("button", { name: "Save reading" }).click();
-    await expect(page).toHaveURL(/\/protected\/home/);
+    await expectSavedInPlace(page, "water-quality", "Water quality saved.");
     const row = dbQuery(`select id, system_id, ph, notes
       from core.water_quality_readings
       where notes = ${sqlLiteral(`${tag} override`)}`)[0];

@@ -52,7 +52,7 @@ export async function loadDailyOperationsData(): Promise<SharedFormData> {
   ] = await Promise.all([
     supabase
       .from("systems")
-      .select("id, name")
+      .select("id, name, requires_temperature")
       .order("name", { ascending: true })
       .order("id", { ascending: true }),
     supabase.from("tanks").select("id, name, system_id").order("name").order("id"),

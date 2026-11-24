@@ -33,7 +33,11 @@ function csvRows(star: Star, range: Range, data: IseauData) {
     ...entries.health.map((entry) => [
       iso(entry.at), "health", ...place(entry.place.system, entry.place.tank), entry.by,
       entry.issues.map((issue) => ISSUE_LABELS[issue]).join("; "),
-      [`Severity ${entry.severity}`, entry.notes].filter(Boolean).join(". "),
+      [
+        `Severity ${entry.severity}`,
+        entry.spineCount === null ? "" : `Spines found ${entry.spineCount}`,
+        entry.notes,
+      ].filter(Boolean).join(". "),
     ]),
     ...entries.treatments.map((entry) => [
       iso(entry.at), "treatment", ...place(entry.place.system, entry.place.tank), entry.by,
