@@ -24,7 +24,7 @@ export type DailyOperationsAnimalRow = {
 };
 
 export type DailyOperationsSourceData = {
-  systems: { id: number; name: string }[];
+  systems: { id: number; name: string; requires_temperature: boolean }[];
   tanks: { id: number; name: string; system_id: number }[];
   animals: DailyOperationsAnimalRow[];
   waterQualityTargets: {
@@ -72,6 +72,7 @@ export function deriveDailyOperationsOptions(
   const systemOptions = source.systems.map((system) => ({
     id: system.id,
     name: system.name,
+    requiresTemperature: system.requires_temperature,
   }));
   const animalOptions = source.animals.map((animal) => ({
     id: animal.id,

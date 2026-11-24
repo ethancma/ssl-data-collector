@@ -77,7 +77,7 @@ timestamped and attributable like the other logs.
 - **Chemical additions** — as-needed per system (C balance, buffers, etc.), logged
   whenever dosed.
 - **Health observations** — logged whenever a sighting/issue occurs (arm drops, spine
-  drops, lesions, arm curling, flattening, other), against the individual animal.
+  drops, lesions, arm curling, flattening, balding, other), against the individual animal.
   Severity is a whole-number score from 1 (healthy) to 5 (dead), the same scale as the
   historical star score sheets. Photos are always optional.
 - **Maintenance** — recurring filter changes and sump flushes, on an interval that's

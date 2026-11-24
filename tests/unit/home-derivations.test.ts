@@ -6,7 +6,7 @@ import { deriveHomeDashboard } from "@/app/protected/home/derivations";
 
 test("deriveHomeDashboard preserves Pacific-day totals and daily status", () => {
   const source: HomeDashboardSourceData = {
-    systems: [{ id: 1, name: "Graham" }],
+    systems: [{ id: 1, name: "Graham", requires_weekly_water_quality: true }],
     checks: [
       { system_id: 1, check_type: "AM", checked_at: "2026-09-26T15:00:00.000Z" },
       { system_id: 1, check_type: "PM", checked_at: "2026-09-27T06:30:00.000Z" },
@@ -53,7 +53,7 @@ test("deriveHomeDashboard preserves Pacific-day totals and daily status", () => 
 const feedingSource = (
   overrides: Partial<HomeDashboardSourceData>,
 ): HomeDashboardSourceData => ({
-  systems: [{ id: 1, name: "Graham" }],
+  systems: [{ id: 1, name: "Graham", requires_weekly_water_quality: true }],
   checks: [
     { system_id: 1, check_type: "AM", checked_at: "2026-10-13T15:00:00.000Z" },
     { system_id: 1, check_type: "PM", checked_at: "2026-10-13T20:00:00.000Z" },
@@ -116,4 +116,26 @@ test("Home lists the tank groups still due when overrides differ", () => {
     TUESDAY_NOW,
   );
   assert.deepEqual(dashboard.attentionSystems[0].outstanding, ["Feeding (Other tanks)"]);
+});
+test("weekly water quality is outstanding only for systems that require it", () => {
+  const dashboard = deriveHomeDashboard(
+    feedingSource({
+      systems: [
+        { id: 1, name: "Graham", requires_weekly_water_quality: true },
+        { id: 2, name: "Header", requires_weekly_water_quality: false },
+      ],
+      checks: [1, 2].flatMap((system_id) => [
+        { system_id, check_type: "AM", checked_at: "2026-10-13T15:00:00.000Z" },
+        { system_id, check_type: "PM", checked_at: "2026-10-13T20:00:00.000Z" },
+      ]),
+      waterQualityReadings: [],
+    }),
+    TUESDAY_NOW,
+  );
+
+  assert.deepEqual(
+    dashboard.attentionSystems.map(({ name, outstanding }) => ({ name, outstanding })),
+    [{ name: "Graham", outstanding: ["Water quality"] }],
+  );
+  assert.deepEqual(dashboard.allClearSystems, ["Header"]);
 });

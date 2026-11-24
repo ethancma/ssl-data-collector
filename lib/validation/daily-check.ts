@@ -62,11 +62,13 @@ const temperatureField = z
   .transform(Number);
 
 // One row per configured system. The water box starts unchecked, so unchecked is saved as
-// "not running"; temperature is required so every system is actually read in the round.
+// "not running"; temperature is required where the system requires it so every such system
+// is actually read in the round. Other systems save a null temperature.
 const dailyCheckSystemSchema = z.object({
   systemId: idField("Select a system"),
+  requiresTemperature: z.boolean(),
   waterRunning: z.boolean(),
-  temperature: temperatureField,
+  temperature: z.string(),
   temperatureSource: z.object({
     value: temperatureField,
     unit: z.enum(TEMPERATURE_UNITS),
@@ -85,10 +87,21 @@ export const dailyCheckSchema = z
   })
   .superRefine((values, ctx) => {
     values.systems.forEach((system, index) => {
-      if (!temperatureInRange(system.temperature, values.temperatureUnit)) {
+      if (!system.requiresTemperature) return;
+      const path = ["systems", index, "temperature"];
+      const temperature = system.temperature.trim();
+      if (!temperature) {
+        ctx.addIssue({ code: "custom", path, message: "Enter a temperature" });
+        return;
+      }
+      if (!Number.isFinite(Number(temperature))) {
+        ctx.addIssue({ code: "custom", path, message: "Enter a valid temperature" });
+        return;
+      }
+      if (!temperatureInRange(Number(temperature), values.temperatureUnit)) {
         ctx.addIssue({
           code: "custom",
-          path: ["systems", index, "temperature"],
+          path,
           message: temperatureRangeMessage(values.temperatureUnit),
         });
       }
@@ -98,7 +111,7 @@ export const dailyCheckSchema = z
       )) {
         ctx.addIssue({
           code: "custom",
-          path: ["systems", index, "temperature"],
+          path,
           message: temperatureRangeMessage(system.temperatureSource.unit),
         });
       }
@@ -106,15 +119,15 @@ export const dailyCheckSchema = z
   })
   .transform((values) => ({
     ...values,
-    systems: values.systems.map(({ temperatureSource, ...system }) => {
-      return {
-        ...system,
-        temperature: storedCelsius(
-          temperatureSource?.value ?? system.temperature,
+    systems: values.systems.map(({ temperatureSource, requiresTemperature, ...system }) => ({
+      ...system,
+      temperature: requiresTemperature
+        ? storedCelsius(
+          temperatureSource?.value ?? Number(system.temperature),
           temperatureSource?.unit ?? values.temperatureUnit,
-        ),
-      };
-    }),
+        )
+        : null,
+    })),
   }));
 
 // Raw form state (string values straight from HTML inputs) vs. the parsed,

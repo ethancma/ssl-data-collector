@@ -33,6 +33,7 @@ type HealthRow = {
   observed_at: string;
   severity: number;
   issues: string[];
+  spine_count: number | null;
   notes: string | null;
   has_photo: boolean;
   recorded_by: number;
@@ -211,7 +212,7 @@ export async function fetchIseauData(): Promise<
       supabase
         .from("health_observations")
         .select(
-          "id, animal_id, tank_id, observed_at, severity, issues, notes, has_photo, recorded_by",
+          "id, animal_id, tank_id, observed_at, severity, issues, spine_count, notes, has_photo, recorded_by",
         )
         .in("animal_id", candidateIds)
         .order("observed_at")
@@ -412,6 +413,7 @@ export async function fetchIseauData(): Promise<
         at: Date.parse(row.observed_at),
         severity: row.severity,
         issues: row.issues as HealthIssueType[],
+        spineCount: row.spine_count,
         notes: row.notes ?? "",
         photo: row.has_photo,
         by: recorder(row.recorded_by),

@@ -23,6 +23,7 @@ export type HealthRecord = {
   at: number;
   severity: number;
   issues: Issue[];
+  spineCount: number | null;
   notes: string;
   photo: boolean;
   by: string;

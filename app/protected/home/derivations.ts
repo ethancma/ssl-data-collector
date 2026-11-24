@@ -1,17 +1,8 @@
 import { pacificDateKey } from "@/lib/pacific-date-time";
-import type { HealthIssueType } from "@/lib/config/reference-data";
+import { HEALTH_ISSUE_LABELS, type HealthIssueType } from "@/lib/config/reference-data";
 import { deriveSystemFeeding, toFeedingScheduleRow } from "@/lib/systems/feeding-schedule";
 
 import type { HomeDashboardSourceData } from "./data";
-
-const ISSUE_LABELS: Record<HealthIssueType, string> = {
-  arm_drop: "Arm drop",
-  spine_drop: "Spine drop",
-  lesion: "Lesion",
-  arm_curling: "Arm curling",
-  flattening: "Flattening",
-  other: "Other",
-};
 
 export type SystemAgendaStatus = {
   id: number;
@@ -23,6 +14,7 @@ export type SystemAgendaStatus = {
   // Tank groups still due, listed only when the system has overrides.
   feedingDueScopes: string[];
   testedThisWeek: boolean;
+  requiresWeeklyWaterQuality: boolean;
 };
 
 type HealthObservationEntry = {
@@ -42,7 +34,7 @@ function outstandingItems(status: SystemAgendaStatus) {
       status.feedingDueScopes.length > 0 ? `Feeding (${status.feedingDueScopes.join(", ")})` : "Feeding",
     );
   }
-  if (!status.testedThisWeek) items.push("Water quality");
+  if (status.requiresWeeklyWaterQuality && !status.testedThisWeek) items.push("Water quality");
   return items;
 }
 
@@ -91,6 +83,7 @@ export function deriveHomeDashboard(
     pmDone: doneChecks.has(`${system.id}:PM`),
     ...(feedingBySystem.get(system.id) ?? { feedingDue: false, feedingDueScopes: [] }),
     testedThisWeek: testedThisWeekSystems.has(system.id),
+    requiresWeeklyWaterQuality: system.requires_weekly_water_quality,
   }));
   const statusesWithOutstanding = systemStatuses.map((status) => ({
     ...status,
@@ -105,7 +98,7 @@ export function deriveHomeDashboard(
         system: tank?.systems?.name ?? "Unknown system",
         issue:
           (observation.issues as HealthIssueType[])
-            .map((issue) => ISSUE_LABELS[issue] ?? issue)
+            .map((issue) => HEALTH_ISSUE_LABELS[issue] ?? issue)
             .join(", ") || "—",
         severity: observation.severity,
         observedAt: observation.observed_at,

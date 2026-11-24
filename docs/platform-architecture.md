@@ -40,7 +40,7 @@ star health and SSWD symptom onset over time.
   painted), microalgae — varies by species/life stage — plus a same-day follow-up on
   whether food was eaten.
 - **Daily AM/PM checks**: water running in all tubes/systems, star health (arm drops,
-  spine drops, lesions, arm curling, flattening, other), sump/system temperature. One
+  spine drops, lesions, arm curling, flattening, balding, other), sump/system temperature. One
   round logs every system listed in `systems` on a single form and save, so new systems
   appear without code changes. A temperature is required for each system; entry defaults to
   Fahrenheit, with Celsius available for the round, and readings are stored in Celsius to two
@@ -143,8 +143,11 @@ erDiagram
 **Core tables:**
 - `profiles` — id (-> auth.users), email, display_name, role (admin|technician|volunteer|viewer), status (pending|active|denied)
 - `systems` — id, name, description, has_animals (bool, false for e.g. the micro-algae
-  system). Authenticated UI lists sort by name and then ID without separate ordering
-  metadata (see lab operations plan for the full list of 8 systems).
+  system), requires_temperature (bool, false for micro-algae: AM/PM checks save a null
+  temperature), requires_weekly_water_quality (bool, false for Header and Nursery: Home does
+  not list weekly water quality as outstanding). Authenticated UI lists sort by name and then
+  ID without separate ordering metadata (see lab operations plan for the original 8 systems;
+  Header and Nursery were added later).
 - `tanks` — id, system_id, name/label, tank_type (shelf|cone_bottom|main), pair_group (nullable, for larval pairs — feeding/health/water-quality logs for larval tanks are recorded once per `pair_group`, not per individual cone-bottom tank)
 - `species` — id, common_name, scientific_name, category (star|urchin|abalone|other)
 - `animals` — id, tank_id (current), species_id, name (nickname, e.g. "Sitara"; unique lab-wide among active animals, ignoring case, reusable after death or transfer), life_stage/size_class, tracking_type (individual|cohort), quantity (default 1), status (active|deceased|transferred), date_added, notes
@@ -187,7 +190,7 @@ erDiagram
   event-time snapshots, amount, added_at, recorded_by, reason, data_source
 - `daily_checks` — id, system_id, check_type (AM|PM), checked_at, water_running (bool), temperature, recorded_by, notes, flagged_health_observation_id (nullable, set when a check flags an issue and a follow-up health observation is opened but not yet completed), data_source
 - `microalgae_logs` — id, system_id (the Micro-Algae system), logged_at, density_reading, harvest_volume, condition_notes, recorded_by, data_source
-- `health_observations` — id, animal_id, tank_id, observed_at, issues (multi-select: arm_drop, spine_drop, lesion, arm_curling, flattening, other), severity (smallint 1-5; 1 = healthy, 5 = dead), optional photo, notes, recorded_by, data_source
+- `health_observations` — id, animal_id, tank_id, observed_at, issues (multi-select: arm_drop, spine_drop, lesion, arm_curling, flattening, balding, other), spine_count (nullable positive integer; spines found during this observation, only with spine_drop; not cumulative), severity (smallint 1-5; 1 = healthy, 5 = dead), optional photo, notes, recorded_by, data_source
 - `feeding_logs` — id, tank_id, animal_id (required for tanks with named individuals; logged per animal even when multiple animals share a tank), required food_catalog_id (name and unit come from the catalog's `name`/`default_unit`), optional amount_value (positive, fractions allowed, in the catalog unit), fed_at, recorded_by, consumption_status (full|partial|none|unknown), consumption_checked_at, notes, data_source
 - `star_treatments` — id, animal_id, tank_id treatment-time snapshot, optional catalog_id,
   treatment_type and unit event-time snapshots, optional amount/unit and

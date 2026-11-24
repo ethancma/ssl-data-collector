@@ -49,7 +49,14 @@ test("the CSV starts with a BOM and uses CRLF line breaks", () => {
 test("arrays are joined with semicolons using the issue labels", () => {
   const csv = buildCsv(DATASET_COLUMNS.health_observation, [row({ issues: ["lesion", "arm_drop"], severity: 4, has_photo: true, notes: "=oops" })]);
   const [, line] = csv.slice(1).split("\r\n");
-  assert.match(line, /"4","Lesion; Arm drop","Yes","Test Technician","Live","'=oops"$/);
+  assert.match(line, /"4","Lesion; Arm drop","","Yes","Test Technician","Live","'=oops"$/);
+});
+
+test("health rows export Balding and the spines found count", () => {
+  const csv = buildCsv(DATASET_COLUMNS.health_observation, [row({ issues: ["spine_drop", "balding"], severity: 2, spine_count: 3, has_photo: false })]);
+  const [header, line] = csv.slice(1).split("\r\n");
+  assert.match(header, /"Issues","Spines found","Photo"/);
+  assert.match(line, /"2","Spine drop; Balding","3","No",/);
 });
 
 test("missing recorder names read Unknown and empty cells stay empty", () => {

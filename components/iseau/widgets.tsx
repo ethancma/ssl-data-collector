@@ -92,7 +92,7 @@ function HealthBody({ star, range, data: appData }: Props) {
   return <ol className="divide-y divide-border">{data.health.map((entry) => <li key={entry.id} className="grid gap-2 py-5 sm:grid-cols-[9rem_1fr]">
     <div className="space-y-1"><time dateTime={new Date(entry.at).toISOString()} className="block text-sm font-medium">{dateLabel(entry.at)}</time><p className="text-xs text-muted-foreground">{entry.place.tank} in {entry.place.system}</p></div>
     <div className="space-y-2">
-      <p className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm font-medium"><SeverityLabel severity={entry.severity} /><span>{entry.issues.map((issue) => ISSUE_LABELS[issue]).join(", ")}</span></p>
+      <p className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm font-medium"><SeverityLabel severity={entry.severity} /><span>{entry.issues.map((issue) => ISSUE_LABELS[issue]).join(", ")}</span>{entry.spineCount !== null && <span>Spines found: {entry.spineCount}</span>}</p>
       <p className="text-sm text-muted-foreground">{entry.notes}</p>
       <p className="text-xs text-muted-foreground">Recorded by {entry.by}</p>
       {entry.photo && <div className="flex items-center gap-1 text-xs text-muted-foreground"><ImageIcon aria-hidden="true" className="h-4 w-4" />Photo attached</div>}

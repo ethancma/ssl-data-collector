@@ -74,15 +74,29 @@ export function ChemicalAdditionForm({
 }) {
   const router = useRouter();
   const [serverError, setServerError] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
   const defaultCatalog = catalogs[0] ?? null;
   const defaultSelection = defaultCatalog
     ? selectChemicalCatalogItem(defaultCatalog)
     : { catalogId: null, name: "", unit: "" };
 
+  const freshValues = (): SystemChemicalAdditionFormInput => ({
+    date: getPacificDateString(),
+    time: getPacificTimeString(),
+    systemId: defaultSystemId ?? "",
+    catalogId:
+      defaultSelection.catalogId === null ? "" : String(defaultSelection.catalogId),
+    chemicalName: defaultSelection.name,
+    amount: "",
+    unit: defaultSelection.unit,
+    reason: "",
+  });
+
   const {
     control,
     register,
     handleSubmit,
+    reset,
     watch,
     setError,
     setValue,
@@ -93,17 +107,7 @@ export function ChemicalAdditionForm({
     SystemChemicalAdditionFormValues
   >({
     resolver: zodResolver(systemChemicalAdditionSchema),
-    defaultValues: {
-      date: getPacificDateString(),
-      time: getPacificTimeString(),
-      systemId: defaultSystemId ?? "",
-      catalogId:
-        defaultSelection.catalogId === null ? "" : String(defaultSelection.catalogId),
-      chemicalName: defaultSelection.name,
-      amount: "",
-      unit: defaultSelection.unit,
-      reason: "",
-    },
+    defaultValues: freshValues(),
   });
   const catalogId = watch("catalogId");
 
@@ -123,6 +127,7 @@ export function ChemicalAdditionForm({
 
   const onSubmit = async (values: SystemChemicalAdditionFormValues) => {
     setServerError(null);
+    setSaved(false);
     const instant = parsePacificInstant(values.date, values.time);
     if (instant.error !== undefined) {
       setError("time", { message: instant.error });
@@ -146,7 +151,8 @@ export function ChemicalAdditionForm({
       setServerError(error.message);
       return;
     }
-    router.push("/protected/home");
+    reset(freshValues());
+    setSaved(true);
     router.refresh();
   };
 
@@ -290,6 +296,11 @@ export function ChemicalAdditionForm({
           </div>
 
           <FieldError message={serverError ?? undefined} />
+          {saved && (
+            <p className="text-sm text-emerald-700 dark:text-emerald-400" role="status" aria-live="polite">
+              Chemical addition saved.
+            </p>
+          )}
 
           <Button type="submit" disabled={isSubmitting}>
             {isSubmitting ? "Saving…" : "Save system addition"}

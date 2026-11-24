@@ -58,25 +58,30 @@ export function MaintenanceLogForm({
 }) {
   const router = useRouter();
   const [serverError, setServerError] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
+
+  const freshValues = (): MaintenanceLogFormInput => ({
+    date: getPacificDateString(),
+    time: getPacificTimeString(),
+    systemId: defaultSystemId ?? "",
+    taskType: "filter_change",
+    notes: "",
+  });
 
   const {
     register,
     handleSubmit,
+    reset,
     setError,
     formState: { errors, isSubmitting },
   } = useForm<MaintenanceLogFormInput, unknown, MaintenanceLogFormValues>({
     resolver: zodResolver(maintenanceLogSchema),
-    defaultValues: {
-      date: getPacificDateString(),
-      time: getPacificTimeString(),
-      systemId: defaultSystemId ?? "",
-      taskType: "filter_change",
-      notes: "",
-    },
+    defaultValues: freshValues(),
   });
 
   const onSubmit = async (values: MaintenanceLogFormValues) => {
     setServerError(null);
+    setSaved(false);
     const instant = parsePacificInstant(values.date, values.time);
     if (instant.error !== undefined) {
       setError("time", { message: instant.error });
@@ -96,7 +101,8 @@ export function MaintenanceLogForm({
       return;
     }
 
-    router.push("/protected/home");
+    reset(freshValues());
+    setSaved(true);
     router.refresh();
   };
 
@@ -182,6 +188,11 @@ export function MaintenanceLogForm({
           </div>
 
           <FieldError message={serverError ?? undefined} />
+          {saved && (
+            <p className="text-sm text-emerald-700 dark:text-emerald-400" role="status" aria-live="polite">
+              Maintenance saved.
+            </p>
+          )}
 
           <Button type="submit" disabled={isSubmitting}>
             {isSubmitting ? "Saving…" : "Save maintenance log"}

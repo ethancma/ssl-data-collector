@@ -8,6 +8,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   cleanupStep,
   dbQuery,
+  expectSavedInPlace,
   fillDailyCheckRound,
   findGrahamStar,
   collectBrowserFailures,
@@ -160,7 +161,7 @@ for (const role of [
       await gotoHydrated(page, "/protected/daily-operations?type=daily-check&check=AM");
       await fillDailyCheckRound(page, { notes: `${TAG} AM check` });
       await page.getByRole("button", { name: /^Save \d+ checks?$/ }).click();
-      await expect(page).toHaveURL(/\/protected\/home/);
+      await expectSavedInPlace(page, "daily-check", "Daily check saved.");
       const rows = dbQuery(
         `select system_id, check_type, water_running, temperature
          from core.daily_checks
@@ -217,7 +218,7 @@ for (const role of [
         .click();
       await fillDailyCheckRound(page, { notes: `${TAG} PM check` });
       await page.getByRole("button", { name: /^Save \d+ checks?$/ }).click();
-      await expect(page).toHaveURL(/\/protected\/home/);
+      await expectSavedInPlace(page, "daily-check", "Daily check saved.");
 
       const checks = dbQuery(
         `select check_type from core.daily_checks
@@ -251,7 +252,7 @@ for (const role of [
       await page.getByLabel("Salinity").fill("32");
       await page.getByLabel("Notes").fill(`${TAG} water quality`);
       await page.getByRole("button", { name: "Save reading" }).click();
-      await expect(page).toHaveURL(/\/protected\/home/);
+      await expectSavedInPlace(page, "water-quality", "Water quality saved.");
       const rows = dbQuery(
         `select system_id, ph_source, ph, magnesium, ammonia, alkalinity, calcium, phosphate, salinity
          from core.water_quality_readings where notes = '${TAG} water quality'`,
@@ -279,7 +280,7 @@ for (const role of [
       await page.getByLabel("Unit", { exact: true }).selectOption("mL");
       await page.getByLabel("Reason").fill(`${TAG} chemical addition`);
       await page.getByRole("button", { name: "Save system addition" }).click();
-      await expect(page).toHaveURL(/\/protected\/home/);
+      await expectSavedInPlace(page, "chemical-addition", "Chemical addition saved.");
       const rows = dbQuery(
         `select system_id, chemical_name, amount, unit
          from core.chemical_additions where reason = '${TAG} chemical addition'`,
@@ -300,7 +301,7 @@ for (const role of [
       await page.getByLabel("Flattening").check();
       await page.getByLabel("Notes").fill(`${TAG} health obs`);
       await page.getByRole("button", { name: "Save observation" }).click();
-      await expect(page).toHaveURL(/\/protected\/(today|home)/);
+      await expectSavedInPlace(page, "health-observation", "Health observation saved.");
       const rows = dbQuery(
         `select animal_id, severity, to_json(issues) as issues
          from core.health_observations where notes = '${TAG} health obs'`,
@@ -318,7 +319,7 @@ for (const role of [
       await page.getByLabel("Other").check();
       await page.getByLabel("Notes").fill(`${TAG} maintenance`);
       await page.getByRole("button", { name: "Save maintenance log" }).click();
-      await expect(page).toHaveURL(/\/protected\/home/);
+      await expectSavedInPlace(page, "maintenance-log", "Maintenance saved.");
       const rows = dbQuery(
         `select system_id, task_type from core.maintenance_logs
          where notes = '${TAG} maintenance'`,
@@ -388,7 +389,7 @@ test.describe("volunteer can create ordinary operational logs", () => {
     await gotoHydrated(page, "/protected/daily-operations?type=daily-check&check=AM");
     await fillDailyCheckRound(page, { notes: `${TAG} AM check` });
     await page.getByRole("button", { name: /^Save \d+ checks?$/ }).click();
-    await expect(page).toHaveURL(/\/protected\/home/);
+    await expectSavedInPlace(page, "daily-check", "Daily check saved.");
 
     const row = dbQuery(`select recorded_by, data_source, entered_at
       from core.daily_checks
