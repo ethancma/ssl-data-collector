@@ -25,7 +25,7 @@
     "test:e2e:cleanup": "tsx .github/skills/e2e-testing/scripts/global-teardown.ts"
   },
   "dependencies": {
-    "@hookform/resolvers": "^5.9.1",
+    "@hookform/resolvers": "^7.0.8",
     "@radix-ui/react-checkbox": "^1.4.1",
     "@radix-ui/react-label": "^2.1.17",
     "@radix-ui/react-slot": "^1.2.2",
